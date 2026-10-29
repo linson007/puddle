@@ -1,0 +1,8 @@
+.build/
+build/
+.DS_Store
+*.xcuserstate
+client_secret*.json
+credentials.json
+.env
+*.log
