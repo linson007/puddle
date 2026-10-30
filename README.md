@@ -2,6 +2,8 @@
 
 Your personal AI assistant, running locally on your Mac.
 
+Explore the [product website and interactive demo](https://linson007.github.io/puddle/).
+
 Puddle opens to **Today**: your priorities, commitments, follow-ups and agenda.
 Keep your role and objectives in a local work profile, prepare for meetings,
 or open a persistent conversation to think through decisions and plans. Gmail,

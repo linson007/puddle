@@ -2,6 +2,15 @@
 
 A responsive, buildless product website for the Puddle macOS application.
 
+## GitHub Pages
+
+Visit [linson007.github.io/puddle](https://linson007.github.io/puddle/).
+
+The repository's `Deploy website to GitHub Pages` workflow publishes only
+`website/dist/` when those files change on `main`. It can also be run manually
+from GitHub Actions. Repository Settings → Pages uses **GitHub Actions** as
+the publishing source. Relative asset links support the `/puddle/` project path.
+
 ## Preview
 
 Run from this directory:
