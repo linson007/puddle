@@ -21,6 +21,15 @@ import XCTest
         XCTAssertNil(subject.meetingLinkStatus); XCTAssertNotNil(subject.errorMessage)
     }
 
+    func testPastedMeetPrefixOpensTheDirectMeetingURL() {
+        let opener = FakeURLOpener()
+        let subject = PuddleStore(urlOpener: opener)
+        subject.openMeetingLink("https://meet.google.com/meet/abc-defg-hij")
+        XCTAssertEqual(opener.urls.map(\.absoluteString), ["https://meet.google.com/abc-defg-hij"])
+        XCTAssertNotNil(subject.meetingLinkStatus)
+        XCTAssertNil(subject.errorMessage)
+    }
+
     func testDemoCannotOpenMeetingAndLaunchFailureIsVisible() {
         let opener = FakeURLOpener(), store = PuddleStore(urlOpener: opener)
         opener.succeeds = false

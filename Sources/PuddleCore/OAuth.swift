@@ -54,7 +54,7 @@ public protocol SecretStore: Sendable {
 
 public struct KeychainStore: SecretStore {
     private let service: String
-    public init(service: String = "app.puddle.mac") { self.service = service }
+    public init(service: String = Bundle.main.bundleIdentifier ?? "app.puddle.mac") { self.service = service }
     private func query(_ key: String) -> [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
          kSecAttrService as String: service, kSecAttrAccount as String: key,
@@ -93,6 +93,17 @@ public struct KeychainStore: SecretStore {
 public struct OAuthFlow: Sendable {
     public static let scope = "https://www.googleapis.com/auth/gmail.readonly"
     public static let calendarScope = "https://www.googleapis.com/auth/calendar.events.readonly"
+    public static let mailSendScope = "https://www.googleapis.com/auth/gmail.send"
+    public static let mailModifyScope = "https://www.googleapis.com/auth/gmail.modify"
+    public static let calendarWriteScope = "https://www.googleapis.com/auth/calendar.events"
+    public static let calendarListScope = "https://www.googleapis.com/auth/calendar.calendarlist.readonly"
+    public static func expandedScopes(_ scopes: Set<String>) -> Set<String> {
+        var result = scopes
+        if scopes.contains(mailModifyScope) { result.formUnion([scope, mailSendScope]) }
+        if scopes.contains(calendarWriteScope) || scopes.contains("https://www.googleapis.com/auth/calendar") || scopes.contains("https://www.googleapis.com/auth/calendar.readonly") { result.insert(calendarScope) }
+        if scopes.contains("https://www.googleapis.com/auth/calendar") { result.insert(calendarWriteScope) }
+        return result
+    }
     public static let identityScopes = ["openid", "https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile"]
     public let verifier: String
     public let state: String
@@ -183,12 +194,39 @@ public actor GoogleSession {
         guard let data = try store.read("google-tokens") else { return nil }
         return try JSONDecoder().decode(GoogleCredentials.self, from: data).account
     }
+    public func accounts() throws -> [GoogleAccount] {
+        var known = try storedAccounts()
+        if let data = try store.read("google-tokens"), let current = try? JSONDecoder().decode(GoogleCredentials.self, from: data), let account = current.account {
+            known.removeAll { $0.account?.id == account.id }; known.append(current)
+        }
+        return known.compactMap(\.account).sorted { $0.email < $1.email }
+    }
+    private func storedAccounts() throws -> [GoogleCredentials] {
+        try store.read("google-accounts").map { try JSONDecoder().decode([GoogleCredentials].self, from: $0) } ?? []
+    }
+    private func retain(_ credentials: GoogleCredentials) throws {
+        guard let account = credentials.account else { return }
+        var known = try storedAccounts(); known.removeAll { $0.account?.id == account.id }
+        guard known.count < 10 else { throw PuddleError("Keep up to ten Google accounts. Disconnect an unused account before adding another.") }
+        known.append(credentials); try store.write(JSONEncoder().encode(known), key: "google-accounts")
+    }
+    public func selectAccount(email: String) throws {
+        guard let chosen = try storedAccounts().first(where: { $0.account?.email == email }) else { throw PuddleError("Connect this Google account first.") }
+        if let data = try store.read("google-tokens") { try retain(JSONDecoder().decode(GoogleCredentials.self, from: data)) }
+        generation = UUID(); refreshTask?.cancel(); refreshTask = nil
+        try store.write(JSONEncoder().encode(chosen), key: "google-tokens")
+    }
     public func grantedScopes() throws -> Set<String> {
         guard let data = try store.read("google-tokens") else { return [] }
-        return Set(try JSONDecoder().decode(GoogleCredentials.self, from: data).scope.split(separator: " ").map(String.init))
+        return OAuthFlow.expandedScopes(Set(try JSONDecoder().decode(GoogleCredentials.self, from: data).scope.split(separator: " ").map(String.init)))
     }
     public func disconnect() throws {
         generation = UUID(); refreshTask?.cancel(); refreshTask = nil
+        if let current = try account() {
+            let remaining = try storedAccounts().filter { $0.account?.id != current.id }
+            if remaining.isEmpty { try store.delete("google-accounts") }
+            else { try store.write(JSONEncoder().encode(remaining), key: "google-accounts") }
+        }
         try store.delete("google-tokens")
     }
     public func exchange(code: String, flow: OAuthFlow, redirect: URL) async throws {
@@ -201,6 +239,8 @@ public actor GoogleSession {
         tokens.account = try await Self.identity(access: tokens.accessToken, transport: transport)
         try Task.checkCancellation()
         guard generation == expectedGeneration else { throw CancellationError() }
+        if let data = try store.read("google-tokens") { try retain(JSONDecoder().decode(GoogleCredentials.self, from: data)) }
+        try retain(tokens)
         try store.write(JSONEncoder().encode(tokens), key: "google-tokens")
         generation = UUID(); refreshTask?.cancel(); refreshTask = nil
     }
@@ -218,10 +258,11 @@ public actor GoogleSession {
         }
         return GoogleAccount(id: identity.sub, email: identity.email, name: identity.name)
     }
-    public func accessToken(rejected: String? = nil) async throws -> String {
+    public func accessToken(rejected: String? = nil, expectedAccount: String? = nil) async throws -> String {
         try Task.checkCancellation()
         guard let data = try store.read("google-tokens") else { throw PuddleError("Connect Google in Connections first.") }
         let credentials = try JSONDecoder().decode(GoogleCredentials.self, from: data)
+        guard expectedAccount == nil || credentials.account?.email == expectedAccount else { throw PuddleError("The Google account changed before dispatch. Review the action again.") }
         if credentials.expiresAt > Date().addingTimeInterval(60), credentials.accessToken != rejected {
             return credentials.accessToken
         }
@@ -247,6 +288,7 @@ public actor GoogleSession {
             let updated = try await task.value
             try Task.checkCancellation()
             guard generation == expectedGeneration else { throw CancellationError() }
+            try retain(updated)
             try store.write(JSONEncoder().encode(updated), key: "google-tokens")
             refreshTask = nil
             return updated.accessToken
@@ -270,7 +312,7 @@ public actor GoogleSession {
         }
         let tokens = try JSONDecoder().decode(Tokens.self, from: data)
         let scope = tokens.scope ?? previous?.scope ?? requiredScopes.joined(separator: " ")
-        var granted = Set(scope.split(separator: " ").map(String.init))
+        var granted = OAuthFlow.expandedScopes(Set(scope.split(separator: " ").map(String.init)))
         if granted.contains("https://www.googleapis.com/auth/calendar.readonly") { granted.insert(OAuthFlow.calendarScope) }
         let services = Set(requiredScopes).intersection([OAuthFlow.scope, OAuthFlow.calendarScope])
         // Google lets people approve services individually. Keep the services

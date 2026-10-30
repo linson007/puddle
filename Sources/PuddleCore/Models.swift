@@ -17,10 +17,17 @@ public struct MailMessage: Codable, Identifiable, Equatable, Sendable {
     public let body: String
     public let labels: [String]
     public let attachments: [String]
+    public let internetMessageID: String?
+    public let provider: MailProvider?
+    public let providerURL: URL?
+    public let attachmentParts: [MailAttachment]?
+    public let newsletter: NewsletterTarget?
     public var summary: String?
     public var isNew: Bool
     public var isUnread: Bool { labels.contains("UNREAD") }
     public var sourceURL: URL {
+        if let providerURL, providerURL.scheme == "https", ["outlook.office.com", "outlook.office365.com", "outlook.live.com"].contains(providerURL.host ?? "") { return providerURL }
+        if provider == .outlook { return URL(string: "https://outlook.office.com/mail/")! }
         let identifier = (threadID.isEmpty ? id : threadID).addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         return URL(string: "https://mail.google.com/mail/u/0/#all/\(identifier)")!
     }
@@ -28,11 +35,15 @@ public struct MailMessage: Codable, Identifiable, Equatable, Sendable {
     public init(id: String, threadID: String = "", subject: String, sender: String,
                 recipient: String = "", date: Date = Date(), snippet: String = "",
                 body: String, labels: [String] = [], attachments: [String] = [],
-                summary: String? = nil, isNew: Bool = false) {
+                summary: String? = nil, isNew: Bool = false, internetMessageID: String? = nil, provider: MailProvider? = nil, providerURL: URL? = nil, attachmentParts: [MailAttachment]? = nil, newsletter: NewsletterTarget? = nil) {
         self.id = id; self.threadID = threadID; self.subject = subject
         self.sender = sender; self.recipient = recipient; self.date = date
         self.snippet = snippet; self.body = body; self.labels = labels
         self.attachments = attachments; self.summary = summary; self.isNew = isNew
+        self.internetMessageID = internetMessageID
+        self.provider = provider; self.providerURL = providerURL
+        self.attachmentParts = attachmentParts
+        self.newsletter = newsletter
     }
 }
 
@@ -43,6 +54,7 @@ public struct ChatLine: Codable, Identifiable, Equatable, Sendable {
     public var receipts: [ToolReceipt]?
     public var metrics: TurnMetrics?
     public var kind: String?
+    public var profileName: String?
     public init(role: String, content: String) { self.role = role; self.content = content }
 }
 
@@ -100,10 +112,23 @@ public struct PuddleSettings: Codable, Sendable {
     public var readRepliesAloud = false
     public var speechLanguage = "en-US"
     public var speechSpeed = 1.0
+    public var networkDisabled = false
+    public var archiveRetentionDays = 0
+    public var lockOnBackground = false
+    public var systemDictationEnabled = false
+    public var dictationPunctuation = true
+    public var dictationVocabulary: [String: String] = [:]
+    public var mailProvider = MailProvider.google
+    public var workdayStartHour = 9
+    public var workdayEndHour = 17
+    public var meetingBufferMinutes = 15
     public init() {}
     enum CodingKeys: String, CodingKey {
         case splashAddress, pollSeconds, automaticallyCheck, automaticallySummarize, notifications, automaticallyLearn, contextTokens
-        case readRepliesAloud, speechLanguage, speechSpeed
+        case readRepliesAloud, speechLanguage, speechSpeed, networkDisabled, archiveRetentionDays, lockOnBackground
+        case systemDictationEnabled, dictationPunctuation, dictationVocabulary
+        case mailProvider
+        case workdayStartHour, workdayEndHour, meetingBufferMinutes
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -117,11 +142,21 @@ public struct PuddleSettings: Codable, Sendable {
         readRepliesAloud = try values.decodeIfPresent(Bool.self, forKey: .readRepliesAloud) ?? readRepliesAloud
         speechLanguage = try values.decodeIfPresent(String.self, forKey: .speechLanguage) ?? speechLanguage
         speechSpeed = max(0.7, min(1.3, try values.decodeIfPresent(Double.self, forKey: .speechSpeed) ?? speechSpeed))
+        networkDisabled = try values.decodeIfPresent(Bool.self, forKey: .networkDisabled) ?? false
+        archiveRetentionDays = max(0, try values.decodeIfPresent(Int.self, forKey: .archiveRetentionDays) ?? 0)
+        lockOnBackground = try values.decodeIfPresent(Bool.self, forKey: .lockOnBackground) ?? false
+        systemDictationEnabled = try values.decodeIfPresent(Bool.self, forKey: .systemDictationEnabled) ?? false
+        dictationPunctuation = try values.decodeIfPresent(Bool.self, forKey: .dictationPunctuation) ?? true
+        dictationVocabulary = try values.decodeIfPresent([String: String].self, forKey: .dictationVocabulary) ?? [:]
+        mailProvider = try values.decodeIfPresent(MailProvider.self, forKey: .mailProvider) ?? .google
+        workdayStartHour = max(0, min(23, try values.decodeIfPresent(Int.self, forKey: .workdayStartHour) ?? 9))
+        workdayEndHour = max(workdayStartHour + 1, min(24, try values.decodeIfPresent(Int.self, forKey: .workdayEndHour) ?? 17))
+        meetingBufferMinutes = max(0, min(120, try values.decodeIfPresent(Int.self, forKey: .meetingBufferMinutes) ?? 15))
     }
 }
 
 public struct AppSnapshot: Codable, Sendable {
-    public static let currentSchemaVersion = 3
+    public static let currentSchemaVersion = 8
     public var schemaVersion = currentSchemaVersion
     public var account: String?
     public var messages: [MailMessage] = []
@@ -134,17 +169,49 @@ public struct AppSnapshot: Codable, Sendable {
     public var lastSync: Date?
     public var mailHistoryID: String?
     public var calendarHasMore: Bool = false
+    public var calendarLastSync: Date?
+    public var profileLibrary = AssistantProfileLibrary()
+    /// Compatibility accessor: existing work-context editing targets the selected role profile.
+    public var profile: ExecutiveProfile {
+        get { profileLibrary.context }
+        set { profileLibrary.context = newValue }
+    }
     public var memories: [MemoryNote] = []
     public var tasks: [AssistantTask] = []
     public var meetings: [MeetingNote] = []
     public var calendarEvents: [CalendarEvent] = []
+    public var developerProjects: [DeveloperProject] = []
+    public var activeDeveloperProjectID: UUID?
+    public var developmentSessions: [DevelopmentSession] = []
+    public var actionProposals: [ActionProposal] = []
+    public var meetingCaptureRecoveries: [MeetingCaptureRecovery] = []
+    public var browserErrands: [BrowserErrand] = []
+    public var routines: [AssistantRoutine] = []
+    public var routineRuns: [RoutineRun] = []
+    public var outlookAccount: String?
+    public var outlookMessages: [MailMessage] = []
+    public var outlookLastSync: Date?
+    public var knowledgeSources: [KnowledgeSource] = []
+    public var knowledgeDocuments: [KnowledgeDocument] = []
+    public var workProjects: [WorkProject] = []
+    public var people: [PersonContext] = []
+    public var workDecisions: [WorkDecision] = []
+    public var mailSnoozes: [MailSnooze] = []
     public var assistantInstructions = "Be warm, practical, and concise. Help me think clearly and follow through."
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, account, messages, chat, currentConversationID, currentConversationCreatedAt, conversations, activity, settings, lastSync, mailHistoryID, calendarHasMore
-        case memories, tasks, meetings, calendarEvents, assistantInstructions
+        case memories, tasks, meetings, calendarEvents, assistantInstructions, calendarLastSync, profileLibrary
+        case developerProjects, activeDeveloperProjectID, developmentSessions, actionProposals, meetingCaptureRecoveries
+        case browserErrands
+        case routines, routineRuns
+        case outlookAccount, outlookMessages, outlookLastSync
+        case knowledgeSources, knowledgeDocuments
+        case workProjects, people, workDecisions
+        case mailSnoozes
     }
+    private enum LegacyProfileKey: String, CodingKey { case profile }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
@@ -162,17 +229,45 @@ public struct AppSnapshot: Codable, Sendable {
         lastSync = try values.decodeIfPresent(Date.self, forKey: .lastSync)
         mailHistoryID = try values.decodeIfPresent(String.self, forKey: .mailHistoryID)
         calendarHasMore = try values.decodeIfPresent(Bool.self, forKey: .calendarHasMore) ?? false
+        calendarLastSync = try values.decodeIfPresent(Date.self, forKey: .calendarLastSync)
+        if let library = try values.decodeIfPresent(AssistantProfileLibrary.self, forKey: .profileLibrary) { profileLibrary = library }
+        else {
+            let legacy = try decoder.container(keyedBy: LegacyProfileKey.self)
+            profileLibrary = AssistantProfileLibrary(legacyContext: try legacy.decodeIfPresent(ExecutiveProfile.self, forKey: .profile) ?? ExecutiveProfile())
+        }
         memories = try values.decodeIfPresent([MemoryNote].self, forKey: .memories) ?? []
         tasks = try values.decodeIfPresent([AssistantTask].self, forKey: .tasks) ?? []
         meetings = try values.decodeIfPresent([MeetingNote].self, forKey: .meetings) ?? []
         calendarEvents = try values.decodeIfPresent([CalendarEvent].self, forKey: .calendarEvents) ?? []
+        developerProjects = try values.decodeIfPresent([DeveloperProject].self, forKey: .developerProjects) ?? []
+        activeDeveloperProjectID = try values.decodeIfPresent(UUID.self, forKey: .activeDeveloperProjectID)
+        developmentSessions = try values.decodeIfPresent([DevelopmentSession].self, forKey: .developmentSessions) ?? []
+        actionProposals = try values.decodeIfPresent([ActionProposal].self, forKey: .actionProposals) ?? []
+        meetingCaptureRecoveries = try values.decodeIfPresent([MeetingCaptureRecovery].self, forKey: .meetingCaptureRecoveries) ?? []
+        browserErrands = try values.decodeIfPresent([BrowserErrand].self, forKey: .browserErrands) ?? []
+        routines = try values.decodeIfPresent([AssistantRoutine].self, forKey: .routines) ?? []
+        routineRuns = try values.decodeIfPresent([RoutineRun].self, forKey: .routineRuns) ?? []
+        outlookAccount = try values.decodeIfPresent(String.self, forKey: .outlookAccount)
+        outlookMessages = try values.decodeIfPresent([MailMessage].self, forKey: .outlookMessages) ?? []
+        outlookLastSync = try values.decodeIfPresent(Date.self, forKey: .outlookLastSync)
+        knowledgeSources = try values.decodeIfPresent([KnowledgeSource].self, forKey: .knowledgeSources) ?? []
+        knowledgeDocuments = try values.decodeIfPresent([KnowledgeDocument].self, forKey: .knowledgeDocuments) ?? []
+        workProjects = try values.decodeIfPresent([WorkProject].self, forKey: .workProjects) ?? []
+        people = try values.decodeIfPresent([PersonContext].self, forKey: .people) ?? []
+        workDecisions = try values.decodeIfPresent([WorkDecision].self, forKey: .workDecisions) ?? []
+        mailSnoozes = try values.decodeIfPresent([MailSnooze].self, forKey: .mailSnoozes) ?? []
+        guard Set(actionProposals.map(\.id)).count == actionProposals.count else { throw PuddleError("Saved actions contain repeated identifiers.") }
+        guard Set(developerProjects.map(\.id)).count == developerProjects.count,
+              Set(developmentSessions.map(\.id)).count == developmentSessions.count else { throw PuddleError("Saved development work contains repeated identifiers.") }
+        if !developerProjects.contains(where: { $0.id == activeDeveloperProjectID }) { activeDeveloperProjectID = nil }
         if let instructions = try values.decodeIfPresent(String.self, forKey: .assistantInstructions) {
             assistantInstructions = instructions
         }
     }
 
     public mutating func remember(title: String, content: String, source: String? = nil, sourceMessageID: UUID? = nil) {
-        if let index = memories.firstIndex(where: { MemoryLearning.identity($0.title) == MemoryLearning.identity(title) }) {
+        let identity = MemoryLearning.identity(title)
+        if let index = memories.firstIndex(where: { MemoryLearning.identity($0.title) == identity }) {
             memories[index].content = content; memories[index].updatedAt = Date()
             memories[index].source = source; memories[index].sourceMessageID = sourceMessageID
         } else { memories.append(MemoryNote(title: title, content: content, source: source, sourceMessageID: sourceMessageID)) }
@@ -203,9 +298,14 @@ public struct AppSnapshot: Codable, Sendable {
 
     public func matchingConversations(_ query: String) -> [Conversation] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return conversationHistory.filter { conversation in
-            query.isEmpty || conversation.lines.contains { $0.content.localizedCaseInsensitiveContains(query) }
+        let history = conversationHistory
+        guard !query.isEmpty else { return history }
+        var matches: [Conversation] = []
+        for conversation in history {
+            guard !Task.isCancelled else { break }
+            if conversation.lines.contains(where: { !Task.isCancelled && $0.content.localizedCaseInsensitiveContains(query) }) { matches.append(conversation) }
         }
+        return matches
     }
 
     public mutating func deleteConversation(_ id: UUID) {

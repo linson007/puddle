@@ -7,17 +7,18 @@ private actor FixtureChrome: ChromeCommanding {
     struct Call: Sendable { let method: String; let data: Data; let session: String? }
     var calls: [Call] = []; var closed = 0
     let existing: Bool, denyFailure: Bool, closeSuccess: Bool
+    var created = false
     init(existing: Bool = false, denyFailure: Bool = false, closeSuccess: Bool = true) {
         self.existing = existing; self.denyFailure = denyFailure; self.closeSuccess = closeSuccess
     }
     func command(_ method: String, parameters: Data, sessionID: String?) async throws -> Data {
         try Task.checkCancellation(); calls.append(Call(method: method, data: parameters, session: sessionID))
         switch method {
-        case "Target.getTargets": return try ChromeJSON.data(["targetInfos": existing ? [["type": "page", "url": "https://meet.google.com/abc-defg-hij", "targetId": "previous"]] : []])
+        case "Target.getTargets": return try ChromeJSON.data(["targetInfos": existing ? [["type": "page", "url": "https://meet.google.com/abc-defg-hij", "targetId": "previous"]] : (created ? [["type": "page", "targetId": "owned-target"]] : [])])
         case "Browser.setPermission": if denyFailure { throw PuddleError("Fixture permissions rejected") }; return Data("{}".utf8)
-        case "Target.createTarget": return try ChromeJSON.data(["targetId": "owned-target"])
+        case "Target.createTarget": created = true; return try ChromeJSON.data(["targetId": "owned-target"])
         case "Target.attachToTarget": return try ChromeJSON.data(["sessionId": "owned-session"])
-        case "Target.closeTarget": return try ChromeJSON.data(["success": closeSuccess])
+        case "Target.closeTarget": if closeSuccess { created = false }; return try ChromeJSON.data(["success": closeSuccess])
         case "Runtime.evaluate": return try ChromeJSON.data(["result": ["value": #"{"stage":"waiting","clickedJoin":true}"#]])
         default: return Data("{}".utf8)
         }
@@ -49,8 +50,10 @@ final class GoogleMeetBrowserTests: XCTestCase {
         XCTAssertEqual(navigation.session, "owned-session")
         XCTAssertTrue((try ChromeJSON.object(navigation.data)["url"] as? String)?.contains("hl=en") == true)
         let left = await subject.leave(); XCTAssertTrue(left)
-        let last = await chrome.calls.last; XCTAssertEqual(last?.method, "Target.closeTarget")
-        XCTAssertEqual(try ChromeJSON.object(last!.data)["targetId"] as? String, "owned-target")
+        let finished = await chrome.calls
+        XCTAssertEqual(finished.last?.method, "Target.getTargets")
+        let close = try XCTUnwrap(finished.first { $0.method == "Target.closeTarget" })
+        XCTAssertEqual(try ChromeJSON.object(close.data)["targetId"] as? String, "owned-target")
     }
     func testExistingMeetTabAndPermissionFailureNeverNavigateOrCloseAnotherTab() async throws {
         for chrome in [FixtureChrome(existing: true), FixtureChrome(denyFailure: true)] {

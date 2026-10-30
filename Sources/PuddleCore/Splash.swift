@@ -30,7 +30,7 @@ public struct SplashClient: Sendable {
               ["127.0.0.1", "localhost", "::1", "[::1]"].contains(parts.host?.lowercased() ?? ""),
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
               ["", "/", "/v1", "/v1/"].contains(parts.path) else {
-            throw PuddleError("Use a local Splash address, such as http://127.0.0.1:8000. Puddle’s MVP keeps AI processing on this Mac.")
+            throw PuddleError("Use a local Splash address, such as http://127.0.0.1:8000. Puddle keeps AI processing on this Mac.")
         }
         if parts.host?.lowercased() == "localhost" { parts.host = "127.0.0.1" }
         parts.path = ""

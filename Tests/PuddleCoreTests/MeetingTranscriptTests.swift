@@ -2,6 +2,17 @@ import XCTest
 @testable import PuddleCore
 
 final class MeetingTranscriptTests: XCTestCase {
+    func testPunctuationFromSilenceDoesNotCreatePassagesAndRealSpeechStillReplacesIt() throws {
+        var timeline = MeetingTranscriptTimeline()
+        for value in [".", "...", "?!", "—", "\n"] {
+            try timeline.receive(.init(channel: .meetingAudio, start: 0, end: 1, text: value, isFinal: true))
+            XCTAssertTrue(timeline.text.isEmpty)
+        }
+        try timeline.receive(.init(channel: .meetingAudio, start: 0, end: 2, text: "नमस्ते 🙂 +1", isFinal: false))
+        XCTAssertTrue(timeline.text.contains("नमस्ते 🙂 +1"))
+        try timeline.receive(.init(channel: .meetingAudio, start: 0, end: 2, text: "...", isFinal: false))
+        XCTAssertTrue(timeline.text.isEmpty)
+    }
     func testRevisionsReplaceProvisionalPassagesAndLatePartialsCannotChangeFinalText() throws {
         var timeline = MeetingTranscriptTimeline()
         try timeline.receive(.init(channel: .microphone, start: 0, end: 2, text: "We plan", isFinal: false))

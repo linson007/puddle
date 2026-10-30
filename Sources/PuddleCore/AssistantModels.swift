@@ -65,7 +65,38 @@ public struct AssistantTask: Codable, Identifiable, Equatable, Sendable {
     public var completed = false
     public var notifiedAt: Date?
     public var meetingSource: MeetingTaskSource?
+    public var priority: TaskPriority = .normal
+    /// Empty means the user owns the next step. A named owner is local tracking, not delegation.
+    public var owner = ""
+    public var workflow: TaskWorkflow = .active
+    public var notes = ""
+    public var focusDate: Date?
+    public var projectID: UUID?
+    public var repetition: TaskRepetition?
+    public var nextOccurrenceID: UUID?
     public init(title: String, dueAt: Date? = nil) { self.title = title; self.dueAt = dueAt }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, createdAt, dueAt, completed, notifiedAt, meetingSource, priority, owner, workflow, notes, focusDate, projectID, repetition, nextOccurrenceID
+    }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        createdAt = try values.decode(Date.self, forKey: .createdAt)
+        dueAt = try values.decodeIfPresent(Date.self, forKey: .dueAt)
+        completed = try values.decodeIfPresent(Bool.self, forKey: .completed) ?? false
+        notifiedAt = try values.decodeIfPresent(Date.self, forKey: .notifiedAt)
+        meetingSource = try values.decodeIfPresent(MeetingTaskSource.self, forKey: .meetingSource)
+        priority = try values.decodeIfPresent(TaskPriority.self, forKey: .priority) ?? .normal
+        owner = try values.decodeIfPresent(String.self, forKey: .owner) ?? ""
+        workflow = try values.decodeIfPresent(TaskWorkflow.self, forKey: .workflow) ?? .active
+        notes = try values.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        focusDate = try values.decodeIfPresent(Date.self, forKey: .focusDate)
+        projectID = try values.decodeIfPresent(UUID.self, forKey: .projectID)
+        repetition = try values.decodeIfPresent(TaskRepetition.self, forKey: .repetition)
+        nextOccurrenceID = try values.decodeIfPresent(UUID.self, forKey: .nextOccurrenceID)
+    }
 }
 
 public struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
@@ -77,16 +108,24 @@ public struct CalendarEvent: Codable, Identifiable, Equatable, Sendable {
     public let description: String
     public let sourceURL: URL?
     public let meetingLinks: [MeetingJoinLink]?
+    public let etag: String?
+    public let calendarID: String?
+    public let attendeeEmails: [String]?
+    public let providerEventID: String?
+    public let seriesID: String?
     public var joinLinks: [MeetingJoinLink] {
         if let meetingLinks, !meetingLinks.isEmpty { return meetingLinks }
         return MeetingJoinLink.discover(in: [location, description])
     }
     public init(id: String, title: String, start: String, end: String = "", location: String = "", description: String = "", sourceURL: URL? = nil,
-                meetingLinks: [MeetingJoinLink] = []) {
+                meetingLinks: [MeetingJoinLink] = [], etag: String? = nil, calendarID: String? = nil, attendeeEmails: [String]? = nil, providerEventID: String? = nil, seriesID: String? = nil) {
         self.id = id; self.title = title; self.start = start; self.end = end
         self.location = location; self.description = description
         self.sourceURL = sourceURL
         self.meetingLinks = meetingLinks
+        self.etag = etag; self.calendarID = calendarID; self.attendeeEmails = attendeeEmails
+        self.providerEventID = providerEventID
+        self.seriesID = seriesID
     }
 }
 
@@ -96,11 +135,11 @@ public enum AssistantDates {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
-    public static func calendarDate(_ value: String) -> Date? {
+    public static func calendarDate(_ value: String, timezone: TimeZone = .current) -> Date? {
         if let date = parse(value) { return date }
         guard value.range(of: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
         let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.calendar = Calendar(identifier: .gregorian); formatter.timeZone = .current
+        formatter.calendar = Calendar(identifier: .gregorian); formatter.timeZone = timezone
         formatter.dateFormat = "yyyy-MM-dd"; formatter.isLenient = false
         guard let date = formatter.date(from: value), formatter.string(from: date) == value else { return nil }
         return date

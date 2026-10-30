@@ -20,6 +20,11 @@ public struct MeetingJoinLink: Codable, Equatable, Sendable, Identifiable {
               parts.port == nil || parts.port == 443 else {
             throw PuddleError("Use an HTTPS meeting link from Google Meet, Zoom, Microsoft Teams, or Webex.")
         }
+        // Recover a pasted /meet/<code> address without broadening the provider allowlist.
+        if host == "meet.google.com", parts.path.range(of: #"^/meet/[a-z]{3}-[a-z]{4}-[a-z]{3}/?$"#,
+                options: [.regularExpression, .caseInsensitive]) != nil {
+            parts.path = String(parts.path.dropFirst("/meet".count))
+        }
         let path = parts.path
         if host == "meet.google.com", path.range(of: #"^/(?:[a-z]{3}-[a-z]{4}-[a-z]{3}|lookup/[^/]+?)/?$"#, options: [.regularExpression, .caseInsensitive]) != nil {
             provider = .googleMeet

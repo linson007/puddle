@@ -58,6 +58,7 @@ public struct LocalMeetingSummarizer: MeetingSummarizing {
     key_points: substantive updates; decisions: explicit agreed decisions only; actions: explicit commitments or assigned work;
     questions: unresolved questions. Empty arrays are correct when there is no evidence. Never turn agenda items into outcomes.
     For each action, owner and timing must be exact substrings of that action's quote, or empty strings when absent.
+    Keep a speaker's name inside the quoted text if you use it as owner. For the quote "I will review by Friday", use owner "I" (or empty), never a name outside that quote. Use timing "Friday", never a resolved date.
     Do not infer owners, resolve relative dates, invent facts, or claim tasks were created. Keep each quote under 1200 characters.
     These are reviewable extracts, not an authoritative record. Output only the required tool call.
     """
@@ -88,7 +89,18 @@ public struct LocalMeetingSummarizer: MeetingSummarizing {
                   call.function.name == AgentTool.meetingSummary.rawValue else {
                 throw PuddleError("The model returned an incomplete meeting extract. Existing notes and summaries were retained. Try again.")
             }
-            let part = try Self.validate(arguments: call.function.arguments, source: chunk, model: model.id)
+            let part: MeetingSummary
+            do { part = try Self.validate(arguments: call.function.arguments, source: chunk, model: model.id) }
+            catch {
+                // One local repair, with the same strict validator and no writable tools.
+                let feedback = AgentMessage(role: "system", content: "The previous extraction failed literal-source validation: \(String(error.localizedDescription.prefix(300))) Regenerate exact source quotes. Owner/timing must occur inside their own quote, otherwise leave them empty. Include a speaker prefix in the quote when using that name. Do not infer or normalize evidence.")
+                let repairMessages = [system, feedback, AgentMessage(role: "user", content: chunk)]
+                guard PromptBudget.tokens(messages: repairMessages, tools: [.meetingSummary]) + output <= context else { throw error }
+                let repair = try await connection.client.agentStep(messages: repairMessages, tools: [.meetingSummary], model: model.id, requireToolCall: true, maxTokens: output)
+                try Task.checkCancellation()
+                guard repair.finishReason != "length", repair.calls.count == 1, let repairedCall = repair.calls.first, repairedCall.function.name == AgentTool.meetingSummary.rawValue else { throw error }
+                part = try Self.validate(arguments: repairedCall.function.arguments, source: chunk, model: model.id)
+            }
             // Boundary labels are never accepted as meeting evidence.
             let quotes = part.keyPoints.map(\.quote) + part.decisions.map(\.quote) + part.actions.map(\.quote) + part.questions.map(\.quote)
             guard quotes.allSatisfy({ note.notes.contains($0) || note.transcript.contains($0) }) else {

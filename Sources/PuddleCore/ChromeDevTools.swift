@@ -11,6 +11,21 @@ public protocol ChromeWire: Sendable {
     func close() async
 }
 
+public struct ChromeProtocolError: Error, LocalizedError, Equatable, Sendable {
+    public let method: String
+    public let code: Int?
+    public let reason: String
+    public init(method: String, code: Int?, reason: String) {
+        self.method = method; self.code = code
+        self.reason = String(reason.components(separatedBy: .controlCharacters).joined(separator: " ").prefix(240))
+    }
+    public var errorDescription: String? {
+        let number = code.map { " (CDP \($0))" } ?? ""
+        let advice = code == -32601 ? "This command is unavailable in this Chrome version. Update Chrome or join manually." : "Check the dedicated Chrome window; continue manually if needed."
+        return "Chrome rejected \(method)\(number): \(reason.isEmpty ? "No reason was supplied." : reason) \(advice)"
+    }
+}
+
 public enum ChromeJSON {
     public static func data(_ object: [String: Any]) throws -> Data { try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) }
     public static func object(_ data: Data) throws -> [String: Any] {
@@ -33,6 +48,7 @@ public actor ChromeDevTools: ChromeCommanding {
     private let wire: any ChromeWire
     private var reader: Task<Void, Never>?
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
+    private var methods: [Int: String] = [:]
     private var deadlines: [Int: Task<Void, Never>] = [:]
     private var sequence = 0
     private var closed = false
@@ -59,6 +75,7 @@ public actor ChromeDevTools: ChromeCommanding {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { continuation in
                 pending[id] = continuation
+                methods[id] = method
                 deadlines[id] = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(self?.timeout ?? 8)) } catch { return }
                     await self?.fail(id, message: "The managed browser did not respond. Check its window and retry.")
@@ -74,7 +91,11 @@ public actor ChromeDevTools: ChromeCommanding {
                 let response = try ChromeJSON.object(data)
                 guard let id = response["id"] as? Int, let continuation = pending.removeValue(forKey: id) else { continue }
                 deadlines.removeValue(forKey: id)?.cancel()
-                if response["error"] != nil { continuation.resume(throwing: PuddleError("The browser rejected a Meet automation command. Update Chrome or continue joining manually.")) }
+                let method = methods.removeValue(forKey: id) ?? "Meet command"
+                if response["error"] != nil {
+                    let error = response["error"] as? [String: Any] ?? [:]
+                    continuation.resume(throwing: ChromeProtocolError(method: method, code: error["code"] as? Int, reason: error["message"] as? String ?? "No reason was supplied."))
+                }
                 else { continuation.resume(returning: try ChromeJSON.data(response["result"] as? [String: Any] ?? [:])) }
             }
         } catch { if !closed { finishPending(message: "The dedicated Meet browser disconnected. Check its window before retrying."); await wire.close() } }
@@ -85,14 +106,16 @@ public actor ChromeDevTools: ChromeCommanding {
         catch { fail(id, message: "The managed browser connection failed. Reopen the Meet browser and retry.") }
     }
     private func fail(_ id: Int, message: String) {
+        methods.removeValue(forKey: id)
         deadlines.removeValue(forKey: id)?.cancel(); pending.removeValue(forKey: id)?.resume(throwing: PuddleError(message))
     }
     private func cancel(_ id: Int) {
+        methods.removeValue(forKey: id)
         deadlines.removeValue(forKey: id)?.cancel(); pending.removeValue(forKey: id)?.resume(throwing: CancellationError())
     }
     private func finishPending(message: String) {
         closed = true
-        let waiting = pending; pending = [:]; deadlines.values.forEach { $0.cancel() }; deadlines = [:]
+        let waiting = pending; pending = [:]; methods = [:]; deadlines.values.forEach { $0.cancel() }; deadlines = [:]
         for continuation in waiting.values { continuation.resume(throwing: PuddleError(message)) }
     }
     public func close() async {

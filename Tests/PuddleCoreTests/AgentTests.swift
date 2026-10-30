@@ -26,6 +26,11 @@ private actor ToolRecorder {
     func record(_ call: AgentToolCall) -> String { names.append(call.function.name); return "Fixture result" }
 }
 
+private actor BriefingPartials {
+    var values: [String] = []
+    func add(_ text: String) { values.append(text) }
+}
+
 private func reply(_ content: String, calls: [[String: Any]] = [], reason: String = "stop") -> [String: Any] {
     var message: [String: Any] = ["content": content]
     if !calls.isEmpty { message["tool_calls"] = calls }
@@ -36,6 +41,59 @@ private func call(_ name: String, arguments: Any, id: String = "call_1") -> [Str
 }
 
 final class AgentTests: XCTestCase {
+    func testLongHistoryLeavesRoomForAnOlderMemoryToolResultAsValidJSON() async throws {
+        let fixture = AgentFixture([reply("", calls: [call("list_memories", arguments: ["query": "Older proof"])]), reply("The saved value is older-proof.")])
+        let memories = [MemoryNote(title: "Older proof", content: "older-proof")]
+        let history = (0..<1000).map { ChatLine(role: $0.isMultiple(of: 2) ? "user" : "assistant", content: String(repeating: "Previous discussion. ", count: 100)) }
+        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+            question: "Recall Older proof", history: history, context: AgentContext(), tools: [.memories],
+            execute: { _ in try MemoryContext.encode(query: "Older proof", memories: memories) }, contextTokens: 8192)
+        XCTAssertTrue(answer.contains("older-proof"))
+        let requests = await fixture.requests
+        let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: requests.last!.httpBody!) as? [String: Any])
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let content = try XCTUnwrap(messages.last { $0["role"] as? String == "tool" }?["content"] as? String)
+        XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(content.utf8)))
+        XCTAssertTrue(content.contains("older-proof"))
+    }
+    func testBriefingRejectsModelCountdownBeforeReturningOrStreamingIt() async throws {
+        let incorrect = "The 14:00 UI test review is coming up in ~3h 17m."
+        let fixture = AgentFixture([reply("", calls: [call("read_executive_brief", arguments: [:])]), reply(incorrect)])
+        let partials = BriefingPartials()
+        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+            question: AssistantRoutine().prompt, history: [], context: AgentContext(), tools: [.briefing],
+            execute: { _ in BriefingRegressionFixture.context }, onPartial: { await partials.add($0) })
+        XCTAssertTrue(answer.contains("Starts in 1h 17m"), answer)
+        XCTAssertFalse(answer.contains("3h 17m"))
+        let streamed = await partials.values
+        XCTAssertFalse(streamed.contains { $0.contains("3h 17m") }, "An unverified countdown reached the UI")
+    }
+
+    func testBriefingCannotPublishAnInferredDeadlineForAnUndatedTask() async throws {
+        let fixture = AgentFixture([reply("", calls: [call("read_executive_brief", arguments: [:])]),
+            reply("Alex's release checklist is due today, Friday.")])
+        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+            question: AssistantRoutine().prompt, history: [], context: AgentContext(), tools: [.briefing],
+            execute: { _ in BriefingRegressionFixture.context })
+        XCTAssertTrue(answer.contains("No scheduled due date"), answer)
+        XCTAssertFalse(answer.contains("is due today"), answer)
+    }
+
+    func testBriefingRetainsActualActionReceiptWithoutReplayingItsTool() async throws {
+        let fixture = AgentFixture([
+            reply("", calls: [call("read_executive_brief", arguments: [:]), call("create_reminder", arguments: [:], id: "action")]),
+            reply(#"{"next_steps":[]}"#)])
+        let calls = ToolRecorder()
+        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+            question: "Brief me and add the reminder I requested.", history: [], context: AgentContext(), tools: [.briefing, .remind],
+            execute: { call in
+                _ = await calls.record(call)
+                return call.function.name == AgentTool.briefing.rawValue ? BriefingRegressionFixture.context : "User declined. Nothing was saved."
+            })
+        XCTAssertTrue(answer.contains("Other tool receipts")); XCTAssertTrue(answer.contains("User declined. Nothing was saved."))
+        let names = await calls.names; XCTAssertEqual(names, [AgentTool.briefing.rawValue, AgentTool.remind.rawValue])
+    }
+
     func testNewChatSendsSavedNameWithoutPreviousConversationHistory() async throws {
         var state = AppSnapshot()
         state.remember(title: NameMemoryProposal.title, content: "Mira Rao")

@@ -1,5 +1,13 @@
 import Foundation
 
+public struct MeetingCaptureRecovery: Codable, Identifiable, Sendable {
+    public var id: UUID { noteID }
+    public let noteID: UUID
+    public var text: String
+    public var updatedAt: Date
+    public init(noteID: UUID, text: String, updatedAt: Date = Date()) { self.noteID = noteID; self.text = text; self.updatedAt = updatedAt }
+}
+
 public enum MeetingAudioChannel: String, Codable, Sendable, CaseIterable {
     case microphone, meetingAudio
     public var title: String { self == .microphone ? "Microphone" : "Meeting audio" }
@@ -34,7 +42,11 @@ public struct MeetingTranscriptTimeline: Equatable, Sendable {
     public mutating func receive(_ segment: MeetingTranscriptSegment) throws {
         guard segment.start.isFinite, segment.end.isFinite, segment.start >= 0, segment.end >= segment.start,
               segment.end <= 86_400, segment.text.count <= 12_000 else { throw PuddleError("The speech recognizer returned an invalid passage.") }
-        let text = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Some recognizers emit punctuation for silence. It must not create a
+        // transcript/recovery or prevent a later real passage at the same time.
+        let ignored = CharacterSet.punctuationCharacters.union(.whitespacesAndNewlines).union(.controlCharacters)
+        let text = trimmed.unicodeScalars.contains(where: { !ignored.contains($0) }) ? trimmed : ""
         if let final = segments.first(where: { $0.channel == segment.channel && $0.start == segment.start && $0.isFinal }) {
             guard !segment.isFinal || final.text == text else { throw PuddleError("The recognizer revised a finalized passage. Review the retained transcript.") }
             return

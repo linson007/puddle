@@ -36,6 +36,22 @@ public struct GmailClient: InboxSource, Sendable {
         return try await fetchMessages(query: [URLQueryItem(name: "q", value: String(query.prefix(500))),
                                               URLQueryItem(name: "maxResults", value: String(max(1, min(limit, 10))))])
     }
+    public func thread(_ id: String) async throws -> MailThreadPage {
+        let data = try await get("threads/" + (id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""), query: [URLQueryItem(name: "format", value: "full")])
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let values = object?["messages"] as? [[String: Any]] ?? []
+        let messages = try values.prefix(250).map { try GmailMessageDecoder.decode(JSONSerialization.data(withJSONObject: $0)) }.sorted { $0.date < $1.date }
+        return MailThreadPage(messages: messages, hasMore: values.count > 250)
+    }
+    public func attachment(_ attachment: MailAttachment, messageID: String) async throws -> Data {
+        guard attachment.bytes <= 10 * 1024 * 1024 else { throw PuddleError("Preview attachments up to 10 MB. Open larger files in Gmail.") }
+        let message = messageID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        let id = attachment.id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        let data = try await get("messages/\(message)/attachments/\(id)")
+        struct Body: Decodable { let data: String }
+        guard let decoded = Data(base64URL: try JSONDecoder().decode(Body.self, from: data).data), decoded.count <= 10 * 1024 * 1024 else { throw PuddleError("The attachment is unreadable or exceeds the 10 MB preview limit.") }
+        return decoded
+    }
 
     public func synchronize(cached: [MailMessage], historyID: String?, limit: Int = 50) async throws -> GmailSyncResult {
         struct Profile: Decodable { let emailAddress: String; let historyId: String? }
@@ -127,7 +143,8 @@ public struct GmailClient: InboxSource, Sendable {
         for attempt in 0...1 {
             var request = URLRequest(url: parts.url!)
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            let (data, response) = try await transport.send(request)
+            // Includes base64 attachment envelopes (decoded preview limit: 10 MiB).
+            let (data, response) = try await transport.sendBounded(request, maximumBytes: 16 * 1024 * 1024, until: nil)
             if response.statusCode == 401, attempt == 0 {
                 token = try await session.accessToken(rejected: token)
                 continue
@@ -155,7 +172,7 @@ public enum GmailMessageDecoder {
     }
     private struct Part: Decodable {
         struct Header: Decodable { let name: String; let value: String }
-        struct Body: Decodable { let data: String? }
+        struct Body: Decodable { let data: String?; let attachmentId: String?; let size: Int? }
         let mimeType: String?
         let filename: String?
         let headers: [Header]?
@@ -185,6 +202,12 @@ public enum GmailMessageDecoder {
             let own = (filename ?? "").isEmpty ? [] : [filename!]
             return own + (parts ?? []).flatMap(\.attachments)
         }
+        var attachmentParts: [MailAttachment] {
+            let own: [MailAttachment]
+            if let id = body?.attachmentId, let name = filename, !name.isEmpty { own = [MailAttachment(id: id, name: name, mimeType: mimeType ?? "application/octet-stream", bytes: body?.size ?? 0)] }
+            else { own = [] }
+            return own + (parts ?? []).flatMap(\.attachmentParts)
+        }
     }
 
     public static func decode(_ data: Data) throws -> MailMessage {
@@ -201,7 +224,8 @@ public enum GmailMessageDecoder {
                            sender: header("From"), recipient: header("To"),
                            date: Date(timeIntervalSince1970: (Double(raw.internalDate ?? "") ?? 0) / 1000),
                            snippet: snippet, body: body + (text.count > 100_000 ? "\n[Body shortened for local storage]" : ""),
-                           labels: raw.labelIds ?? [], attachments: raw.payload?.attachments ?? [])
+                           labels: raw.labelIds ?? [], attachments: raw.payload?.attachments ?? [], internetMessageID: header("Message-ID").isEmpty ? nil : header("Message-ID"), attachmentParts: raw.payload?.attachmentParts,
+                           newsletter: NewsletterTarget.from(sender: header("From"), unsubscribe: header("List-Unsubscribe"), post: header("List-Unsubscribe-Post")))
     }
 }
 

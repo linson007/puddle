@@ -5,13 +5,17 @@ import PuddleCore
 
 @MainActor private final class FixtureMeetingCapture: MeetingAudioCapturing {
     var isSupported = true
+    var sourceDescription: String?
     var starts = 0, installs = 0, finishes = 0, cancellations = 0
-    var holdStart = false, holdFinish = false
+    var holdStart = false, holdFinish = false, holdInstall = false
     var cancelStart = false, cancelFinish = false
-    var startGate: CheckedContinuation<Void, Never>?, finishGate: CheckedContinuation<Void, Never>?
+    var startGate: CheckedContinuation<Void, Never>?, finishGate: CheckedContinuation<Void, Never>?, installGate: CheckedContinuation<Void, Never>?
     var segments: [@MainActor (MeetingTranscriptSegment) -> Void] = []
     var failures: [@MainActor (String) -> Void] = []
-    func installLanguage(_ language: String) async throws { installs += 1 }
+    func installLanguage(_ language: String) async throws {
+        installs += 1
+        if holdInstall { await withCheckedContinuation { installGate = $0 } }
+    }
     func start(language: String, source: MeetingAudioSource, onSegment: @escaping @MainActor @Sendable (MeetingTranscriptSegment) -> Void,
                onStatus: @escaping @MainActor @Sendable (String) -> Void, onError: @escaping @MainActor @Sendable (String) -> Void) async throws {
         starts += 1; segments.append(onSegment); failures.append(onError)
@@ -35,6 +39,30 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
     private func wait(_ condition: () -> Bool) async {
         for _ in 0..<200 { if condition() { return }; try? await Task.sleep(for: .milliseconds(2)) }
         XCTFail("Meeting capture fixture did not reach expected state")
+    }
+    func testAppAudioRequiresOneIdentifiedApplicationAndNamesMicrophoneSeparately() throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("App audio requires macOS 26") }
+        XCTAssertThrowsError(try AnalyzerMeetingAudioCapture.selectedApplicationDescription([], includingMicrophone: false))
+        XCTAssertThrowsError(try AnalyzerMeetingAudioCapture.selectedApplicationDescription(["Audio A", "Audio B"], includingMicrophone: false))
+        XCTAssertThrowsError(try AnalyzerMeetingAudioCapture.selectedApplicationDescription(["  "], includingMicrophone: false))
+        XCTAssertEqual(try AnalyzerMeetingAudioCapture.selectedApplicationDescription(["Audio A"], includingMicrophone: false), "Audio A")
+        XCTAssertEqual(try AnalyzerMeetingAudioCapture.selectedApplicationDescription(["Audio A"], includingMicrophone: true), "Audio A + microphone")
+    }
+    func testDisplayedSourceMatchesActiveCaptureAndCannotLeakFromAnEarlierSession() async {
+        let hardware = FixtureMeetingCapture(); hardware.sourceDescription = "Audio A"
+        let controller = MeetingCaptureController(capture: hardware)
+        controller.start(noteID: UUID(), language: "en-US", source: .meetingAudio)
+        await wait { controller.status == .listening }
+        XCTAssertEqual(controller.sourceDescription, "Audio A")
+        controller.stop(); await wait { controller.status == .idle }
+        XCTAssertNil(controller.sourceDescription)
+        hardware.holdStart = true; hardware.sourceDescription = "Audio B"
+        controller.start(noteID: UUID(), language: "en-US", source: .meetingAudio)
+        await wait { hardware.startGate != nil }
+        XCTAssertNil(controller.sourceDescription)
+        controller.cancel(); hardware.startGate?.resume(); hardware.startGate = nil
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(controller.status, .idle); XCTAssertNil(controller.sourceDescription)
     }
     func testImmediateCancellationDoesNotRequestCaptureOrLanguageInstallation() async {
         let hardware = FixtureMeetingCapture()
@@ -98,6 +126,37 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         store.startMeetingTranscription(id, source: .microphone); store.installMeetingSpeechLanguage()
         await Task.yield(); XCTAssertEqual(hardware.starts, 0); XCTAssertEqual(hardware.installs, 0)
     }
+    func testSpeechLanguageInstallationHonorsPausePrivateSessionAndLock() async {
+        let hardware = FixtureMeetingCapture()
+        let store = PuddleStore(cache: CaptureDisk(), meetingAudioCapture: hardware); store.storageAvailable = true
+        store.setExternalConnectionsPaused(true)
+        XCTAssertFalse(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
+        store.setExternalConnectionsPaused(false); store.beginPrivateSession()
+        XCTAssertFalse(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
+        store.endPrivateSession(); store.lockWorkspace()
+        XCTAssertFalse(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
+        await Task.yield(); XCTAssertEqual(hardware.installs, 0)
+        store.unlockWorkspace()
+        XCTAssertTrue(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
+        await wait { hardware.installs == 1 && store.meetingCapture.status == .idle }
+        store.suspendConnectionWork()
+    }
+    func testPauseCancelsLanguageDownloadAndIgnoresLateCompletionWithoutStoppingLocalCapture() async throws {
+        let hardware = FixtureMeetingCapture(); hardware.holdInstall = true
+        let store = PuddleStore(cache: CaptureDisk(), meetingAudioCapture: hardware); store.storageAvailable = true
+        store.installMeetingSpeechLanguage(); await wait { hardware.installGate != nil }
+        let cancellations = hardware.cancellations
+        store.setExternalConnectionsPaused(true)
+        XCTAssertEqual(store.meetingCapture.status, .idle); XCTAssertGreaterThan(hardware.cancellations, cancellations)
+        hardware.installGate?.resume(); hardware.installGate = nil
+        await Task.yield(); await Task.yield()
+        XCTAssertEqual(store.meetingCapture.status, .idle); XCTAssertFalse(store.meetingCapture.message.contains("ready"))
+        let id = try XCTUnwrap(store.createMeetingNote())
+        store.startMeetingTranscription(id, source: .microphone); await wait { store.meetingCapture.status == .listening }
+        store.setExternalConnectionsPaused(true)
+        XCTAssertEqual(store.meetingCapture.status, .listening)
+        store.meetingCapture.cancel(); store.suspendConnectionWork()
+    }
     func testCancelledSystemPickerAndCancelledFinalizationNeverLeaveControlsStuck() async {
         let hardware = FixtureMeetingCapture(); hardware.cancelStart = true
         let controller = MeetingCaptureController(capture: hardware)
@@ -111,6 +170,20 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         controller.stop(); await wait { controller.status == .idle }
         XCTAssertTrue(captured.contains("Retained after cancellation"))
         XCTAssertTrue(controller.errorMessage?.contains("Finalization was cancelled") == true)
+    }
+    func testCheckpointSurvivesRestartUntilReviewedAndSavedAndDeletionRemovesIt() throws {
+        let disk = CaptureDisk(), store = PuddleStore(cache: disk)
+        store.storageAvailable = true
+        let id = try XCTUnwrap(store.createMeetingNote())
+        store.checkpointMeetingCapture(id, text: "[00:02] Microphone\nRecovered words")
+        XCTAssertEqual(disk.state.meetingCaptureRecoveries.count, 1)
+        let restarted = PuddleStore(cache: disk); restarted.state = try disk.load(); restarted.storageAvailable = true
+        restarted.reviewMeetingCapture(id)
+        XCTAssertEqual(restarted.meetingWorkspace.pendingImport?.result.text, "[00:02] Microphone\nRecovered words")
+        XCTAssertTrue(restarted.useImportedTranscript(append: true)); XCTAssertTrue(restarted.saveMeetingNote(id))
+        XCTAssertTrue(disk.state.meetingCaptureRecoveries.isEmpty)
+        restarted.checkpointMeetingCapture(id, text: "Another checkpoint")
+        restarted.deleteMeetingNote(id); XCTAssertTrue(disk.state.meetingCaptureRecoveries.isEmpty)
     }
     func testStoreRequiresExplicitApplyAndSaveAndPreservesExistingTranscript() async throws {
         let hardware = FixtureMeetingCapture()

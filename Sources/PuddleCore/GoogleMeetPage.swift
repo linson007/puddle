@@ -55,10 +55,30 @@ public actor GoogleMeetBrowserSession {
     private let connection: any ChromeCommanding
     private var targetID: String?
     private var sessionID: String?
+    private var opened = false
+    private var pendingTarget: Task<String, Error>?
+    private var cleanup: Task<Bool, Never>?
     public var hasOwnedTarget: Bool { targetID != nil }
     public init(connection: any ChromeCommanding) { self.connection = connection }
     public func open(link: MeetingJoinLink) async throws {
         guard link.provider == .googleMeet else { throw PuddleError("The attendance assistant supports Google Meet links only.") }
+        var parts = URLComponents(url: link.url, resolvingAgainstBaseURL: false)!
+        var query = parts.queryItems ?? []; query.removeAll { $0.name == "hl" }; query.append(URLQueryItem(name: "hl", value: "en")); parts.queryItems = query
+        try await openPage(url: parts.url!)
+    }
+    /// Exercises the actual browser/session commands on a blank page without joining a call.
+    public func checkConnection() async throws -> String {
+        let version = try await command("Browser.getVersion", [:])
+        try await openPage(url: URL(string: "about:blank")!)
+        let evaluation = try await command("Runtime.evaluate", ["expression": "6 * 7", "returnByValue": true, "awaitPromise": true, "userGesture": false], page: true)
+        guard evaluation["exceptionDetails"] == nil, let value = evaluation["result"] as? [String: Any], value["value"] as? Int == 42 else {
+            throw PuddleError("Chrome could not evaluate the blank test page. No meeting was opened.")
+        }
+        return String((version["product"] as? String ?? "Chrome").prefix(100))
+    }
+    private func openPage(url: URL) async throws {
+        guard !opened, cleanup == nil else { throw PuddleError("This Meet browser session has already ended or opened a tab. Start a new session.") }
+        opened = true
         let existing = try await command("Target.getTargets", [:])
         let targets = existing["targetInfos"] as? [[String: Any]] ?? []
         guard !targets.contains(where: { ($0["type"] as? String) == "page" && URL(string: $0["url"] as? String ?? "")?.host == "meet.google.com" }) else {
@@ -67,15 +87,27 @@ public actor GoogleMeetBrowserSession {
         for name in ["microphone", "camera"] {
             _ = try await command("Browser.setPermission", ["permission": ["name": name], "setting": "denied", "origin": "https://meet.google.com"])
         }
-        let target = try await command("Target.createTarget", ["url": "about:blank", "newWindow": true])
-        guard let id = target["targetId"] as? String else { throw PuddleError("Chrome could not create a dedicated Meet tab.") }
+        // Finish identifying a dispatched creation even if attendance is cancelled.
+        // Otherwise cleanup can race the reply and leave a newly created tab behind.
+        try Task.checkCancellation()
+        let connection = connection
+        let creation = Task.detached { () throws -> String in
+            let result = try await connection.command("Target.createTarget", parameters: ChromeJSON.data(["url": "about:blank", "newWindow": true]), sessionID: nil)
+            let target = try ChromeJSON.object(result)
+            guard let id = target["targetId"] as? String, !id.isEmpty else { throw PuddleError("Chrome did not identify the new Meet tab. Check its dedicated window.") }
+            return id
+        }
+        pendingTarget = creation
+        let id = try await creation.value
+        guard cleanup == nil else { throw CancellationError() }
         targetID = id
         let attached = try await command("Target.attachToTarget", ["targetId": id, "flatten": true])
         guard let session = attached["sessionId"] as? String else { throw PuddleError("Chrome could not attach to the dedicated Meet tab.") }
         sessionID = session
-        var parts = URLComponents(url: link.url, resolvingAgainstBaseURL: false)!
-        var query = parts.queryItems ?? []; query.removeAll { $0.name == "hl" }; query.append(URLQueryItem(name: "hl", value: "en")); parts.queryItems = query
-        _ = try await command("Page.navigate", ["url": parts.url!.absoluteString], page: true)
+        let navigation = try await command("Page.navigate", ["url": url.absoluteString], page: true)
+        if let error = navigation["errorText"] as? String, !error.isEmpty {
+            throw PuddleError("Chrome could not open the Meet page: \(String(error.prefix(160))). Check the dedicated browser window.")
+        }
     }
     public func inspect(join: Bool, guestName: String) async throws -> GoogleMeetPageState {
         guard sessionID != nil else { throw PuddleError("Open a Meet session first.") }
@@ -86,20 +118,45 @@ public actor GoogleMeetBrowserSession {
         return try JSONDecoder().decode(GoogleMeetPageState.self, from: Data(value.utf8))
     }
     public func leave() async -> Bool {
-        let id = targetID; targetID = nil; sessionID = nil
+        if let cleanup { return await cleanup.value }
+        let knownID = targetID, creation = pendingTarget
+        sessionID = nil
         let connection = connection
         let cleanup = Task.detached { () -> Bool in
-            var left = id == nil
-            if let id, let parameters = try? ChromeJSON.data(["targetId": id]),
-               let result = try? await connection.command("Target.closeTarget", parameters: parameters, sessionID: nil),
-               let response = try? ChromeJSON.object(result) { left = response["success"] as? Bool == true }
-            await connection.close(); return left
+            let id: String?
+            if let knownID { id = knownID }
+            else if let creation {
+                do { id = try await creation.value }
+                catch { await connection.close(); return false } // A dispatched creation may have succeeded without a reply.
+            } else { await connection.close(); return true }
+            guard let id else { await connection.close(); return false }
+            // closeTarget's deprecated success field is not proof of the current state.
+            // A tab the user already closed can also make closeTarget return an error.
+            if let parameters = try? ChromeJSON.data(["targetId": id]) {
+                _ = try? await connection.command("Target.closeTarget", parameters: parameters, sessionID: nil)
+            }
+            var verified = false
+            for attempt in 0..<5 {
+                do {
+                    let result = try await connection.command("Target.getTargets", parameters: Data("{}".utf8), sessionID: nil)
+                    let response = try ChromeJSON.object(result)
+                    guard let targets = response["targetInfos"] as? [[String: Any]],
+                          targets.allSatisfy({ ($0["targetId"] as? String)?.isEmpty == false }) else { break }
+                    if !targets.contains(where: { $0["targetId"] as? String == id }) { verified = true; break }
+                } catch { break }
+                if attempt < 4 { try? await Task.sleep(for: .milliseconds(100)) }
+            }
+            await connection.close(); return verified
         }
-        return await cleanup.value
+        self.cleanup = cleanup
+        let verified = await cleanup.value
+        if verified { targetID = nil }
+        return verified
     }
     public func release() async { await connection.close() }
     private func command(_ method: String, _ parameters: [String: Any], page: Bool = false) async throws -> [String: Any] {
         try Task.checkCancellation()
+        guard cleanup == nil else { throw CancellationError() }
         return try ChromeJSON.object(await connection.command(method, parameters: ChromeJSON.data(parameters), sessionID: page ? sessionID : nil))
     }
 }

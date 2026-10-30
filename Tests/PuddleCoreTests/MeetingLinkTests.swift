@@ -20,6 +20,26 @@ final class MeetingLinkTests: XCTestCase {
         }
     }
 
+    func testPastedMeetPrefixIsNormalizedBeforeOpeningAndDiscovery() throws {
+        let pasted = "https://meet.google.com/meet/abc-defg-hij"
+        let direct = "https://meet.google.com/abc-defg-hij"
+        let link = try MeetingJoinLink(pasted)
+        XCTAssertEqual(link.provider, .googleMeet)
+        XCTAssertEqual(link.url.absoluteString, direct)
+        let withQuery = try MeetingJoinLink(pasted + "/?authuser=1&hs=122")
+        XCTAssertEqual(withQuery.url.absoluteString, direct + "/?authuser=1&hs=122")
+        XCTAssertEqual(withQuery.url.query, "authuser=1&hs=122")
+        XCTAssertEqual(MeetingJoinLink.discover(in: [pasted, direct]).map(\.url.absoluteString), [direct])
+        for invalid in [
+            "https://meet.google.com.evil.test/meet/abc-defg-hij",
+            "https://evil.test/meet/abc-defg-hij",
+            "https://meet.google.com/meet/abc-defg-hij/extra",
+            "https://meet.google.com/meet/lookup/standup",
+            "http://meet.google.com/meet/abc-defg-hij",
+            "https://user:password@meet.google.com/meet/abc-defg-hij",
+        ] { XCTAssertThrowsError(try MeetingJoinLink(invalid), invalid) }
+    }
+
     func testLookalikesCredentialsNonMeetingPagesAndNonHTTPSAreRejected() {
         for address in [
             "http://meet.google.com/abc-defg-hij", "https://meet.google.com.evil.test/abc-defg-hij",

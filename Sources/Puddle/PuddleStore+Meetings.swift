@@ -10,7 +10,7 @@ extension PuddleStore {
         }
         let note = MeetingNote(title: String((event?.title ?? "Meeting notes").prefix(200)),
             meetingDate: event.flatMap { AssistantDates.calendarDate($0.start) } ?? Date(),
-            calendarEventID: event?.id, joinLink: event?.joinLinks.first)
+            calendarEventID: event?.id, joinLink: event?.joinLinks.first, calendarSeriesID: event?.seriesID)
         do {
             try commit { $0.meetings.insert(note, at: 0) }
             meetingWorkspace.selectedID = note.id; section = .meetings; return note.id
@@ -20,9 +20,11 @@ extension PuddleStore {
     @discardableResult func saveMeetingNote(_ id: UUID) -> Bool {
         guard let original = state.meetings.first(where: { $0.id == id }) else { return false }
         do {
-            let next = try meetingWorkspace.draft(for: original).applying(to: original)
+            var next = try meetingWorkspace.draft(for: original).applying(to: original)
+            if let project = next.projectID, !state.workProjects.contains(where: { $0.id == project }) { next.projectID = nil }
             try commit { snapshot in
                 if let index = snapshot.meetings.firstIndex(where: { $0.id == id }) { snapshot.meetings[index] = next }
+                snapshot.meetingCaptureRecoveries.removeAll { $0.noteID == id && next.transcript.contains($0.text) }
             }
             meetingWorkspace.saved(id); errorMessage = nil; return true
         } catch { fail(error); return false }
@@ -30,7 +32,7 @@ extension PuddleStore {
 
     func deleteMeetingNote(_ id: UUID) {
         do {
-            try commit { $0.meetings.removeAll { $0.id == id } }
+            try commit { $0.meetings.removeAll { $0.id == id }; $0.meetingCaptureRecoveries.removeAll { $0.noteID == id } }
             if meetingWorkspace.summarizingID == id { cancelMeetingSummary() }
             if meetingCapture.noteID == id { meetingCapture.cancel() }
             if meetAttendance.noteID == id { meetAttendance.leave() }
@@ -67,7 +69,13 @@ extension PuddleStore {
         meetingCapture.cancel(); cancelMeetingSummary(); meetingWorkspace.reset()
     }
 
+    func checkMeetBrowser() {
+        guard !demo, storageAvailable, !privateSession, !isLocked, !state.settings.networkDisabled else { return }
+        meetAttendance.checkBrowser()
+    }
+
     func joinGoogleMeet(_ link: MeetingJoinLink, noteID: UUID?, guestName: String) {
+        guard !privateSession, !isLocked, !state.settings.networkDisabled else { return }
         guard !demo, storageAvailable, link.provider == .googleMeet, !meetAttendance.isActive, !meetAttendance.mayStillBeInCall else { return }
         var selected = noteID
         if selected == nil {
@@ -84,18 +92,26 @@ extension PuddleStore {
     }
 
     func startMeetingTranscription(_ id: UUID, source: MeetingAudioSource) {
+        guard !state.meetingCaptureRecoveries.contains(where: { $0.noteID == id }) else {
+            fail(PuddleError("Review and save or discard the recovered transcript before starting another capture.")); return
+        }
         guard !demo, storageAvailable, state.meetings.contains(where: { $0.id == id }),
               !meetingCapture.isActive, meetingWorkspace.pendingImport == nil, !meetingWorkspace.isImporting else { return }
         stopSpeaking(); voiceInput.cancel(); cancelMeetingSummary()
         meetingCapture.start(noteID: id, language: state.settings.speechLanguage, source: source)
     }
 
+    var canInstallMeetingSpeechLanguage: Bool {
+        !demo && !isLocked && !privateSession && !state.settings.networkDisabled && meetingCapture.isSupported && !meetingCapture.isActive
+    }
+
     func installMeetingSpeechLanguage() {
-        guard !demo, !meetingCapture.isActive else { return }
+        guard canInstallMeetingSpeechLanguage else { return }
         meetingCapture.installLanguage(state.settings.speechLanguage)
     }
 
     func exportMeetingNote(_ id: UUID, format: MeetingExportFormat, includeTranscript: Bool, includeJoinLink: Bool) async throws -> Bool {
+        let access = try workspaceAccess()
         guard let note = state.meetings.first(where: { $0.id == id }) else { throw PuddleError("These meeting notes are no longer available.") }
         let draft = meetingWorkspace.draft(for: note)
         let data = try MeetingExport.data(note: note, draft: draft, format: format, includeTranscript: includeTranscript, includeJoinLink: includeJoinLink)
@@ -105,10 +121,10 @@ extension PuddleStore {
         panel.canCreateDirectories = true
         let response = await withCheckedContinuation { continuation in panel.begin { continuation.resume(returning: $0) } }
         guard response == .OK, let url = panel.url else { return false }
+        try checkWorkspaceAccess(access)
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        let writer = Task.detached(priority: .userInitiated) { try MeetingExport.write(data, to: url) }
-        try await withTaskCancellationHandler { try await writer.value } onCancel: { writer.cancel() }
+        try await writeWorkspaceExport(to: url, access: access) { data }
         return true
     }
 
@@ -176,7 +192,7 @@ extension PuddleStore {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
-    @discardableResult func createTaskFromMeeting(noteID: UUID, actionID: UUID, title: String, dueAt: Date?) -> UUID? {
+    @discardableResult func createTaskFromMeeting(noteID: UUID, actionID: UUID, title: String, dueAt: Date?, owner: String = "", workflow: TaskWorkflow = .active) -> UUID? {
         guard let note = state.meetings.first(where: { $0.id == noteID }), let summary = note.summary,
               let action = summary.actions.first(where: { $0.id == actionID }) else { return nil }
         if let existing = taskForMeetingAction(noteID: noteID, action: action) { return existing.id }
@@ -189,6 +205,8 @@ extension PuddleStore {
             fail(PuddleError("Use a task title up to 300 characters and choose a future reminder time, or leave it undated.")); return nil
         }
         var task = AssistantTask(title: title, dueAt: dueAt)
+        var commitment = TaskDraft(task); commitment.owner = owner; commitment.workflow = workflow
+        do { task = try commitment.applying(to: task) } catch { fail(error); return nil }
         task.meetingSource = MeetingTaskSource(meetingID: noteID, actionID: actionID, quote: action.quote)
         guard let noteIndex = state.meetings.firstIndex(where: { $0.id == noteID }),
               let actionIndex = state.meetings[noteIndex].summary?.actions.firstIndex(where: { $0.id == actionID }) else { return nil }

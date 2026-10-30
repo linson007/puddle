@@ -1,5 +1,6 @@
 import AVFoundation
 import CoreMedia
+import PuddleCore
 import Speech
 import XCTest
 @testable import Puddle
@@ -27,7 +28,10 @@ final class MeetingAudioPipelineTests: XCTestCase {
         sink.receive(input, hostSeconds: 103.5); sink.receive(input, hostSeconds: 104); sink.receive(input, hostSeconds: 105)
         XCTAssertEqual(failure.count, 1)
         var times: [Double] = []
-        for await input in sequence { times.append(input.bufferStartTime!.seconds) }
+        for await input in sequence {
+            times.append(input.bufferStartTime!.seconds)
+            XCTAssertEqual(input.buffer.floatChannelData![0][75], 0.75, accuracy: 0.0001)
+        }
         XCTAssertEqual(times, [3.5])
         sink.finish(); sink.receive(input); XCTAssertEqual(failure.count, 1)
     }
@@ -41,7 +45,10 @@ final class MeetingAudioPipelineTests: XCTestCase {
         CMSampleBufferInvalidate(sample)
         sink.finish()
         var times: [Double] = []
-        for await input in sequence { times.append(input.bufferStartTime!.seconds) }
+        for await input in sequence {
+            times.append(input.bufferStartTime!.seconds)
+            XCTAssertEqual(input.buffer.floatChannelData![0][75], 0.75, accuracy: 0.0001)
+        }
         XCTAssertEqual(times, [5.25]); XCTAssertEqual(failure.count, 0)
         XCTAssertThrowsError(try MeetingStreamOutput.consume(sample, into: sink))
     }
@@ -53,12 +60,50 @@ final class MeetingAudioPipelineTests: XCTestCase {
         sink.receive(try pcm(format), hostSeconds: Double.infinity)
         XCTAssertEqual(failure.count, 1)
     }
+    func testScreenAudioResamplingPreservesSignalAfterSampleInvalidation() async throws {
+        guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer requires macOS 26") }
+        let output = try format(), failure = AudioFailures()
+        let (sequence, builder) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(8))
+        let sink = AnalyzerAudioSink(format: output, builder: builder, origin: 100) { failure.append($0) }
+        let sourceFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+        let sample = try sampleBuffer(pcm(sourceFormat), at: 103)
+        try MeetingStreamOutput.consume(sample, into: sink)
+        CMSampleBufferInvalidate(sample); sink.finish()
+        var peak: Float = 0
+        for await input in sequence {
+            XCTAssertGreaterThan(input.buffer.frameLength, 0)
+            for frame in 0..<Int(input.buffer.frameLength) { peak = max(peak, abs(input.buffer.floatChannelData![0][frame])) }
+        }
+        XCTAssertGreaterThan(peak, 0.5); XCTAssertEqual(failure.count, 0)
+    }
+    @MainActor func testInstalledSpeechAnalyzerRecognizesSyntheticFileThroughTheCaptureSink() async throws {
+        guard #available(macOS 26, *), let path = ProcessInfo.processInfo.environment["PUDDLE_LIVE_AUDIO_FILE"] else {
+            throw XCTSkip("Set PUDDLE_LIVE_AUDIO_FILE to the synthetic acceptance phrase on macOS 26+")
+        }
+        let source = try AVAudioFile(forReading: URL(fileURLWithPath: path))
+        guard source.length > 0, source.length < 480_000 else { throw PuddleError("Use a short synthetic audio fixture.") }
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: source.processingFormat, frameCapacity: AVAudioFrameCount(source.length)))
+        try source.read(into: buffer)
+        // Exercise the same offline preflight as live capture, including the
+        // app's asset reservation rather than preparing it only in the test.
+        let transcriber = try await AnalyzerMeetingAudioCapture().installedModule("en-US")
+        var segments: [MeetingTranscriptSegment] = [], failures: [String] = []
+        let track = try await AnalyzerAudioTrack.make(transcriber: transcriber, channel: .meetingAudio, origin: 0,
+            onSegment: { segments.append($0) }, onError: { failures.append($0) })
+        defer { track.cancel() }
+        track.sink.receive(buffer)
+        try await track.finish()
+        XCTAssertTrue(failures.isEmpty, failures.joined(separator: "\n"))
+        let text = segments.map(\.text).joined(separator: " ").lowercased()
+        XCTAssertTrue(text.contains("orange folder"), "Recognized synthetic fixture: \(text)")
+    }
     private func sampleBuffer(_ buffer: AVAudioPCMBuffer, at time: Double) throws -> CMSampleBuffer {
         var description: CMAudioFormatDescription?
         XCTAssertEqual(CMAudioFormatDescriptionCreate(allocator: kCFAllocatorDefault, asbd: buffer.format.streamDescription,
             layoutSize: 0, layout: nil, magicCookieSize: 0, magicCookie: nil, extensions: nil, formatDescriptionOut: &description), noErr)
         var sample: CMSampleBuffer?
-        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 16_000), presentationTimeStamp: CMTime(seconds: time, preferredTimescale: 16_000), decodeTimeStamp: .invalid)
+        let rate = CMTimeScale(buffer.format.sampleRate)
+        var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: rate), presentationTimeStamp: CMTime(seconds: time, preferredTimescale: rate), decodeTimeStamp: .invalid)
         XCTAssertEqual(CMSampleBufferCreate(allocator: kCFAllocatorDefault, dataBuffer: nil, dataReady: false,
             makeDataReadyCallback: nil, refcon: nil, formatDescription: description, sampleCount: Int(buffer.frameLength),
             sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleSizeEntryCount: 0, sampleSizeArray: nil, sampleBufferOut: &sample), noErr)

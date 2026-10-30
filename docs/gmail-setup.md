@@ -5,7 +5,8 @@ need only the Splash model connection.
 
 The app owner provides one Google OAuth **Desktop app** client. Users click
 **Connect Google**, select their account, and approve Gmail and Calendar access
-in their browser. Tokens use macOS Keychain. Service access is read only.
+in their browser. Tokens use macOS Keychain. Initial service access is read only;
+users can separately grant reviewed sends, organization and calendar writes.
 
 ## Create the client
 
@@ -21,6 +22,11 @@ in their browser. Tokens use macOS Keychain. Service access is read only.
    `https://www.googleapis.com/auth/userinfo.profile`,
    `https://www.googleapis.com/auth/gmail.readonly`, and
    `https://www.googleapis.com/auth/calendar.events.readonly`.
+   For optional Actions also declare `https://www.googleapis.com/auth/gmail.send`,
+   `https://www.googleapis.com/auth/gmail.modify`,
+   `https://www.googleapis.com/auth/calendar.events`, and
+   `https://www.googleapis.com/auth/calendar.calendarlist.readonly` for selection
+   of secondary calendars. Google verification/admin policy may apply.
 6. Under Clients, create a **Desktop app** client and download its JSON. Keep the
    file private. Downloaded `client_secret*.json` files are gitignored.
 

@@ -6,6 +6,9 @@ struct GoogleSetupView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var mail = true
     @State private var calendar = true
+    @State private var sendMail = false
+    @State private var organizeMail = false
+    @State private var editCalendar = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 14) {
@@ -25,6 +28,14 @@ struct GoogleSetupView: View {
                         Toggle("Read Calendar events", isOn: $calendar).toggleStyle(.checkbox)
                     }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
                         .background(PuddleStyle.teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                    DisclosureGroup("Optional action permissions") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Toggle("Send reviewed emails", isOn: $sendMail).disabled(!mail)
+                            Toggle("Organize Gmail (archive, read status, labels)", isOn: $organizeMail).disabled(!mail)
+                            Toggle("Create and edit reviewed calendar events", isOn: $editCalendar).disabled(!calendar)
+                            Text("Google’s organize-mail permission also permits sending. Puddle still requires exact-content review for each action.").font(.caption).foregroundStyle(.secondary)
+                        }.padding(.top, 8)
+                    }
                     Text("Google will open in your browser. Choose your account and approve the services you want to connect. Puddle will then load your latest mail and upcoming events.")
                         .font(.callout).foregroundStyle(.secondary)
                     Picker("Sign-in browser", selection: $store.googleSignInBrowser) {
@@ -70,14 +81,17 @@ struct GoogleSetupView: View {
                 } else {
                     Button("Close") { dismiss() }
                     Button("Sign in with Google") {
-                        let scopes = (mail ? [OAuthFlow.scope] : []) + (calendar ? [OAuthFlow.calendarScope] : [])
+                        let scopes = (mail ? [OAuthFlow.scope] + (sendMail ? [OAuthFlow.mailSendScope] : []) + (organizeMail ? [OAuthFlow.mailModifyScope] : []) : []) + (calendar ? [OAuthFlow.calendarScope, OAuthFlow.calendarListScope] + (editCalendar ? [OAuthFlow.calendarWriteScope] : []) : [])
                         store.connect(scopes: scopes)
                     }.buttonStyle(.borderedProminent).disabled(!store.configured || (!mail && !calendar))
                 }
             }
-        }.padding(28).frame(width: 620, height: store.configured ? 430 : 650).tint(PuddleStyle.teal)
+        }.padding(28).frame(width: 620, height: store.configured ? 540 : 700).tint(PuddleStyle.teal)
             .onAppear {
                 if store.connected { mail = store.mailConnected; calendar = store.calendarConnected }
+                sendMail = store.grantedScopes.contains(OAuthFlow.mailSendScope)
+                organizeMail = store.grantedScopes.contains(OAuthFlow.mailModifyScope)
+                editCalendar = store.grantedScopes.contains(OAuthFlow.calendarWriteScope)
             }
     }
     private func step(_ number: String, _ title: String, _ description: String) -> some View {
@@ -95,6 +109,7 @@ struct GoogleSetupView: View {
 struct PuddleSettingsView: View {
     @ObservedObject var store: PuddleStore
     @State private var showingGoogleSetup = false
+    @State private var showingProfiles = false
     @State private var address = ""
     @State private var key = ""
     @State private var interval = 60
@@ -102,8 +117,30 @@ struct PuddleSettingsView: View {
     @State private var summarize = false
     @State private var persona = ""
     var body: some View {
+        Group {
+            if store.isLocked { PrivacyLockView(store: store).frame(width: 680, height: 570) }
+            else if store.privateSession { PrivacySettingsView(store: store).frame(width: 680, height: 570) }
+            else { settings }
+        }
+        #if DEBUG
+        .safeAreaInset(edge: .top) {
+            if UITestWorkspace.enabled {
+                Text("UI test workspace · Synthetic credentials and the encryption key use a local fixture file. Production uses Keychain.")
+                    .font(.caption).foregroundStyle(.orange).padding(10).frame(maxWidth: .infinity)
+            }
+        }
+        #endif
+    }
+    private var settings: some View {
         TabView(selection: $store.settingsTab) {
             Form {
+                Section("Assistant profile") {
+                    LabeledContent("Active", value: store.state.profileLibrary.active.title)
+                    Text(store.state.profileLibrary.active.kind.summary).font(.callout).foregroundStyle(.secondary)
+                    Button("Manage Profiles…") { showingProfiles = true }
+                    Text("Profiles share conversations, memories, tasks, meetings and connections. Each keeps its own work context and guidance.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Your assistant") {
                     Toggle("Automatically learn personal memories", isOn: Binding(
                         get: { store.state.settings.automaticallyLearn }, set: { store.setAutomaticLearning($0) }))
@@ -133,6 +170,8 @@ struct PuddleSettingsView: View {
                     Text("Uses an installed macOS voice. You can also read individual replies aloud from chat.").font(.caption).foregroundStyle(.secondary)
                     if store.speakingMessageID != nil { Button("Stop speaking") { store.stopSpeaking() } }
                 }
+                SystemDictationSettingsView(store: store, controller: store.systemDictation)
+                StartupSettingsView()
                 Section("Local storage") {
                     Button("Retry Loading State") { Task { await store.retryLoadingState() } }.disabled(store.demo)
                     Text("Conversation, memory, tasks, and cached connection data stay in Application Support/Puddle. The cache has owner-only permissions. Credentials use Keychain.")
@@ -142,12 +181,13 @@ struct PuddleSettingsView: View {
 
             Form {
                 Section("Splash on this Mac") {
+                    Button("Guided Local AI Setup…") { store.showLocalSetup = true }
                     Picker("Context budget", selection: Binding(get: { store.state.settings.contextTokens }, set: { store.setContextTokens($0) })) {
                         Text("4K tokens").tag(4096); Text("8K tokens").tag(8192); Text("16K tokens").tag(16384); Text("32K tokens").tag(32768)
                     }
                     TextField("Server address", text: $address).textFieldStyle(.roundedBorder)
                     SecureField("API key (optional)", text: $key).textFieldStyle(.roundedBorder)
-                    Text("Start Splash separately. Puddle uses its local model for conversation and tool decisions; Google sign-in is optional.")
+                    Text("Use guided setup to find, install, start, and verify Splash, or connect an existing local server below.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button("Save and Test Connection") {
@@ -161,7 +201,7 @@ struct PuddleSettingsView: View {
                     if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 }
                 Section("Data boundaries") {
-                    Text("AI requests are restricted to loopback addresses on this Mac. Puddle automatically learns personal facts from your messages. Email and calendar are read-only reference material. Reminders wait for your approval.")
+                    Text("AI requests are restricted to loopback addresses on this Mac. Memory learning follows your Assistant setting. Email and calendar reads supply reference material; optional sends and calendar changes require exact-content review. Reminders wait for your review.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
             }.formStyle(.grouped).tabItem { Label("Local AI", systemImage: "desktopcomputer") }.tag("localAI")
@@ -204,6 +244,11 @@ struct PuddleSettingsView: View {
                 }
             }.formStyle(.grouped).tabItem { Label("Connections", systemImage: "point.3.connected.trianglepath.dotted") }.tag("connections")
 
+            WorkspaceBackupView(store: store)
+                .tabItem { Label("Backups", systemImage: "externaldrive") }.tag("backups")
+            PrivacySettingsView(store: store).tabItem { Label("Privacy", systemImage: "lock.shield") }.tag("privacy")
+            ReleaseSettingsView(store: store).tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
+
             VStack(alignment: .leading, spacing: 16) {
                 Text("Recent activity").font(.title3).fontWeight(.semibold)
                 Text("Tool use, connections, and local actions. Tokens and email bodies are not included.")
@@ -222,6 +267,8 @@ struct PuddleSettingsView: View {
                 summarize = store.state.settings.automaticallySummarize; persona = store.state.assistantInstructions
             }
             .sheet(isPresented: $showingGoogleSetup) { GoogleSetupView(store: store) }
+            .sheet(isPresented: $showingProfiles) { AssistantProfilesView(store: store) }
+            .sheet(isPresented: $store.showLocalSetup) { SplashSetupView(store: store, setup: store.splashSetup) }
             .onChange(of: store.connected) { _, connected in if connected { showingGoogleSetup = false } }
     }
 }

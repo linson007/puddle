@@ -72,4 +72,25 @@ final class ChromeDevToolsTests: XCTestCase {
         _ = try await wait(fresh, count: 1); await waiting.close()
         do { _ = try await task.value; XCTFail("Expected close failure") } catch {}
     }
+    func testProtocolErrorIdentifiesCommandAndCodeWithoutItsParametersAndKeepsConnectionUsable() async throws {
+        let wire = FixtureChromeWire()
+        let subject = ChromeDevTools(wire: wire)
+        let operation = Task { try await subject.command("Runtime.evaluate", parameters: ChromeJSON.data(["expression": "private-source-text"])) }
+        let sent = try await wait(wire, count: 1)
+        await wire.enqueue(try ChromeJSON.data(["id": sent[0]["id"]!, "error": ["code": -32602, "message": "Invalid parameters\nCheck session"]]))
+        do { _ = try await operation.value; XCTFail("Expected protocol error") }
+        catch let error as ChromeProtocolError {
+            XCTAssertEqual(error.method, "Runtime.evaluate"); XCTAssertEqual(error.code, -32602)
+            XCTAssertTrue(error.localizedDescription.contains("Invalid parameters"))
+            XCTAssertFalse(error.localizedDescription.contains("private-source-text"))
+            XCTAssertFalse(error.localizedDescription.contains("\n"))
+            XCTAssertFalse(error.localizedDescription.contains("Update Chrome"))
+        }
+        let next = Task { try await subject.command("Target.getTargets") }
+        let commands = try await wait(wire, count: 2)
+        try await wire.respond(["value": "still connected"], id: commands[1]["id"] as! Int)
+        let value = try await next.value
+        XCTAssertEqual(try ChromeJSON.object(value)["value"] as? String, "still connected")
+        await subject.close()
+    }
 }

@@ -5,7 +5,8 @@ import XCTest
 private actor SummaryTransport: HTTPTransport {
     var texts: [String] = []
     let invalid: Bool
-    init(invalid: Bool = false) { self.invalid = invalid }
+    let repairable: Bool
+    init(invalid: Bool = false, repairable: Bool = false) { self.invalid = invalid; self.repairable = repairable }
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let object: [String: Any]
         if request.url!.path == "/v1/models" { object = ["data": [["id": "fixture", "max_model_len": 4096]]] }
@@ -17,7 +18,10 @@ private actor SummaryTransport: HTTPTransport {
             let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
             XCTAssertEqual(tools.count, 1)
             XCTAssertEqual((tools.first?["function"] as? [String: Any])?["name"] as? String, AgentTool.meetingSummary.rawValue)
-            let arguments: [String: Any] = ["key_points": [invalid ? "Invented conclusion." : text], "decisions": [], "actions": [], "questions": []]
+            var arguments: [String: Any] = ["key_points": [invalid ? "Invented conclusion." : text], "decisions": [], "actions": [], "questions": []]
+            if repairable {
+                arguments = ["key_points": [], "decisions": [], "questions": [], "actions": [["quote": "I will review by Friday.", "owner": texts.count == 1 ? "Alex" : "I", "timing": "Friday"]]]
+            }
             object = ["choices": [["message": ["tool_calls": [["id": "extract", "type": "function", "function": ["name": AgentTool.meetingSummary.rawValue, "arguments": arguments]]]], "finish_reason": "tool_calls"]]]
         }
         return (try JSONSerialization.data(withJSONObject: object), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
@@ -62,6 +66,14 @@ final class MeetingSummaryTests: XCTestCase {
         XCTAssertEqual(summary.keyPoints.map(\.quote), [note.notes, note.transcript])
         XCTAssertTrue(summary.isCurrent(notes: note.notes, transcript: note.transcript))
         let texts = await transport.texts; XCTAssertEqual(texts, [note.notes, note.transcript])
+    }
+    func testInvalidMetadataGetsOneStrictLocalRepairWithoutInventingAnOwner() async throws {
+        let transport = SummaryTransport(repairable: true)
+        let connection = ModelConnection(client: try SplashClient(address: "http://127.0.0.1:8000", transport: transport))
+        var note = MeetingNote(title: "Test"); note.transcript = "Alex: I will review by Friday."
+        let summary = try await LocalMeetingSummarizer(connection: connection).summarize(note: note, contextTokens: 8192) { _, _ in }
+        XCTAssertEqual(summary.actions.first?.owner, "I")
+        let requests = await transport.texts; XCTAssertEqual(requests.count, 2)
     }
     func testUnsupportedModelOutputFailsWholeSummary() async throws {
         let connection = ModelConnection(client: try SplashClient(address: "http://127.0.0.1:8000", transport: SummaryTransport(invalid: true)))

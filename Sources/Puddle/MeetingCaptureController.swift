@@ -11,9 +11,12 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     @Published private(set) var message = ""
     @Published private(set) var errorMessage: String?
     @Published private(set) var startedAt: Date?
+    @Published private(set) var sourceDescription: String?
     var isActive: Bool { status != .idle }
     var isSupported: Bool { capture.isSupported }
     var onCompletion: (@MainActor (UUID, String) -> Void)?
+    var onCheckpoint: (@MainActor (UUID, String) -> Void)?
+    private var lastCheckpoint = Date.distantPast
     private let capture: any MeetingAudioCapturing
     private let maximumSeconds: Double
     private let finishTimeout: Double
@@ -42,14 +45,19 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
         guard !isActive else { return }
         generation = UUID(); let expected = generation
         self.noteID = noteID; status = .preparing; timeline = MeetingTranscriptTimeline()
-        errorMessage = nil; message = "Preparing on-device transcription…"; startedAt = nil
+        errorMessage = nil; message = "Preparing on-device transcription…"; startedAt = nil; sourceDescription = nil
         work = Task { [weak self] in
             guard let self else { return }
             do {
                 try Task.checkCancellation()
                 try await capture.start(language: language, source: source, onSegment: { [weak self] segment in
                     guard let self, self.generation == expected else { return }
-                    do { try self.timeline.receive(segment) }
+                    do {
+                        try self.timeline.receive(segment)
+                        if segment.isFinal || Date().timeIntervalSince(self.lastCheckpoint) >= 5 {
+                            self.lastCheckpoint = Date(); self.onCheckpoint?(noteID, self.timeline.text)
+                        }
+                    }
                     catch { self.stop(notice: error.localizedDescription) }
                 }, onStatus: { [weak self] message in
                     guard let self, self.generation == expected else { return }; self.message = message
@@ -58,6 +66,7 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
                 })
                 try Task.checkCancellation()
                 guard generation == expected, status == .preparing else { return }
+                sourceDescription = capture.sourceDescription
                 status = .listening; startedAt = Date(); message = "Transcribing on this Mac."
                 deadline = Task { [weak self] in
                     do { try await Task.sleep(for: .seconds(self?.maximumSeconds ?? 7200)) } catch { return }
@@ -89,11 +98,11 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     /// Used for note deletion or switching between demo and personal state.
     func cancel() {
         generation = UUID(); work?.cancel(); deadline?.cancel(); capture.cancel()
-        status = .idle; noteID = nil; startedAt = nil; message = ""; errorMessage = nil; timeline = MeetingTranscriptTimeline()
+        status = .idle; noteID = nil; startedAt = nil; sourceDescription = nil; message = ""; errorMessage = nil; timeline = MeetingTranscriptTimeline()
     }
     private func complete(notice: String?) {
         let id = noteID, text = timeline.text
-        generation = UUID(); work?.cancel(); deadline?.cancel(); capture.cancel(); status = .idle; startedAt = nil
+        generation = UUID(); work?.cancel(); deadline?.cancel(); capture.cancel(); status = .idle; startedAt = nil; sourceDescription = nil
         errorMessage = notice ?? (text.isEmpty ? "No speech was detected." : nil)
         message = text.isEmpty ? "Transcription stopped." : "Review the captured text, apply it to the transcript, and save your notes."
         if let id, !text.isEmpty { onCompletion?(id, text) }

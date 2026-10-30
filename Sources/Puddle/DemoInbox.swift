@@ -6,7 +6,7 @@ enum DemoInbox {
         [
             MailMessage(id: "demo-design", subject: "A few thoughts before Friday’s review", sender: "Maya Chen <maya@example.test>",
                         date: Date().addingTimeInterval(-900), snippet: "The updated designs are ready. Could you share your feedback by Thursday?",
-                        body: "Hi there,\n\nThe updated Puddle designs are ready for Friday’s review at 10:00 AM.\n\nCould you share feedback on the inbox layout by Thursday afternoon? I’ve focused on keeping new mail easy to spot and the reading view distraction-free.\n\nThanks,\nMaya", labels: ["INBOX", "UNREAD"]),
+                        body: "Hi there,\n\nThe updated Puddle designs are ready for Friday’s review at 10:00 AM.\n\nCould you share feedback on the inbox layout by Thursday afternoon? I’ve focused on keeping new mail easy to spot and the reading view distraction-free.\n\nThanks,\nMaya", labels: ["INBOX", "UNREAD", "IMPORTANT"]),
             MailMessage(id: "demo-receipt", subject: "Your October workspace receipt", sender: "Studio North <billing@example.test>",
                         date: Date().addingTimeInterval(-7200), snippet: "Payment received. Your receipt is attached for your records.",
                         body: "Your October workspace payment of ₹4,500 was received on October 28.\n\nYour next billing date is November 28. No action is needed.\n\nA receipt is attached for your records.", labels: ["INBOX"], attachments: ["october-receipt.pdf"]),

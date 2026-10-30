@@ -13,10 +13,13 @@ public struct MeetingNote: Codable, Identifiable, Equatable, Sendable {
     public var calendarEventID: String?
     public var joinLink: MeetingJoinLink?
     public var summary: MeetingSummary?
+    public var projectID: UUID?
+    public var calendarSeriesID: String?
 
-    public init(id: UUID = UUID(), title: String, meetingDate: Date = Date(), calendarEventID: String? = nil, joinLink: MeetingJoinLink? = nil) {
+    public init(id: UUID = UUID(), title: String, meetingDate: Date = Date(), calendarEventID: String? = nil, joinLink: MeetingJoinLink? = nil, calendarSeriesID: String? = nil) {
         self.id = id; self.title = title; self.meetingDate = meetingDate; self.calendarEventID = calendarEventID; self.joinLink = joinLink
         createdAt = Date(); updatedAt = createdAt; participants = ""; agenda = ""; notes = ""; transcript = ""
+        self.calendarSeriesID = calendarSeriesID
     }
 }
 
@@ -27,9 +30,11 @@ public struct MeetingDraft: Equatable, Sendable {
     public var agenda: String
     public var notes: String
     public var transcript: String
+    public var projectID: UUID?
     public init(_ note: MeetingNote) {
         title = note.title; meetingDate = note.meetingDate; participants = note.participants
         agenda = note.agenda; notes = note.notes; transcript = note.transcript
+        projectID = note.projectID
     }
 
     public func applying(to original: MeetingNote, now: Date = Date()) throws -> MeetingNote {
@@ -43,6 +48,7 @@ public struct MeetingDraft: Equatable, Sendable {
         var next = original
         next.title = title; next.meetingDate = meetingDate; next.participants = participants
         next.agenda = agenda; next.notes = notes; next.transcript = transcript; next.updatedAt = now
+        next.projectID = projectID
         return next
     }
 }

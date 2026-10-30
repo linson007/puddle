@@ -6,6 +6,7 @@ import Speech
 
 @MainActor protocol MeetingAudioCapturing: AnyObject {
     var isSupported: Bool { get }
+    var sourceDescription: String? { get }
     func installLanguage(_ language: String) async throws
     func start(language: String, source: MeetingAudioSource,
                onSegment: @escaping @MainActor @Sendable (MeetingTranscriptSegment) -> Void,
@@ -15,9 +16,14 @@ import Speech
     func cancel()
 }
 
+extension MeetingAudioCapturing {
+    var sourceDescription: String? { nil }
+}
+
 @MainActor final class SystemMeetingAudioCapture: MeetingAudioCapturing {
     private var implementation: (any MeetingAudioCapturing)?
     var isSupported: Bool { if #available(macOS 26, *) { return SpeechTranscriber.isAvailable }; return false }
+    var sourceDescription: String? { implementation?.sourceDescription }
     private func backend() throws -> any MeetingAudioCapturing {
         guard #available(macOS 26, *) else { throw PuddleError("Live meeting transcription requires macOS 26 or later. You can still import a transcript on this Mac.") }
         if let implementation { return implementation }
@@ -35,6 +41,7 @@ import Speech
 @available(macOS 26, *)
 @MainActor final class AnalyzerMeetingAudioCapture: MeetingAudioCapturing {
     var isSupported: Bool { SpeechTranscriber.isAvailable }
+    private(set) var sourceDescription: String?
     private var engine: AVAudioEngine?
     private var microphone: AnalyzerAudioTrack?
     private var meetingAudio: AnalyzerAudioTrack?
@@ -50,7 +57,19 @@ import Speech
             throw PuddleError("Long-form on-device transcription is unavailable for this Mac or language. Choose another voice language or import a transcript.")
         }
         try Task.checkCancellation()
+        // Reservation claims an already installed shared asset for this app. It
+        // does not download; installation stays behind the explicit control.
+        try await AssetInventory.reserve(locale: locale)
+        try Task.checkCancellation()
         return SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
+    }
+    func installedModule(_ language: String) async throws -> SpeechTranscriber {
+        let transcriber = try await module(language)
+        guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
+            throw PuddleError("Install the selected speech language first. This downloads Apple's on-device model; meeting audio stays on this Mac.")
+        }
+        try Task.checkCancellation()
+        return transcriber
     }
     func installLanguage(_ language: String) async throws {
         try Task.checkCancellation()
@@ -67,10 +86,7 @@ import Speech
                onStatus: @escaping @MainActor @Sendable (String) -> Void, onError: @escaping @MainActor @Sendable (String) -> Void) async throws {
         try Task.checkCancellation(); cancel()
         let expected = generation
-        let transcriber = try await module(language)
-        guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
-            throw PuddleError("Install the selected speech language first. This downloads Apple's on-device model; meeting audio stays on this Mac.")
-        }
+        let transcriber = try await installedModule(language)
         try Task.checkCancellation(); guard generation == expected else { throw CancellationError() }
         if source.usesMicrophone {
             guard Bundle.main.object(forInfoDictionaryKey: "NSMicrophoneUsageDescription") != nil else { throw PuddleError("Run the built Puddle.app for microphone transcription.") }
@@ -113,6 +129,7 @@ import Speech
         }
         sink.startClock(at: CMClockGetTime(CMClockGetHostTimeClock()).seconds)
         do { try engine.start() } catch { cancel(); throw error }
+        sourceDescription = "Microphone"
     }
     func finish() async throws {
         stopMicrophone()
@@ -124,7 +141,7 @@ import Speech
         _ = try await (mic, app); microphone = nil; meetingAudio = nil
     }
     func cancel() {
-        generation = UUID(); stopMicrophone(); microphone?.cancel(); microphone = nil
+        generation = UUID(); sourceDescription = nil; stopMicrophone(); microphone?.cancel(); microphone = nil
         meetingAudio?.cancel(); meetingAudio = nil; picker?.cancel(); picker = nil
         if let stream { Task { try? await stream.stopCapture() } }
         stream = nil; streamOutput = nil
@@ -132,6 +149,14 @@ import Speech
     private func startMeetingStream(filter: SCContentFilter, source: MeetingAudioSource, language: String, transcriber: SpeechTranscriber,
                                     origin: Double, expected: UUID, onSegment: @escaping @MainActor @Sendable (MeetingTranscriptSegment) -> Void,
                                     onError: @escaping @MainActor @Sendable (String) -> Void) async throws {
+        let selectedSource = try Self.selectedApplicationDescription(filter.includedApplications.map {
+            $0.applicationName.isEmpty ? $0.bundleIdentifier : $0.applicationName
+        }, includingMicrophone: source.usesMicrophone)
+        #if DEBUG
+        if UITestWorkspace.enabled {
+            UITestWorkspace.recordAudioDiagnostic("Scope: " + filter.includedApplications.map { "\($0.applicationName):\($0.bundleIdentifier):\($0.processID)" }.joined(separator: "|"))
+        }
+        #endif
         let audio = try await AnalyzerAudioTrack.make(transcriber: transcriber, channel: .meetingAudio, origin: origin, onSegment: onSegment, onError: onError)
         guard !Task.isCancelled, generation == expected else { audio.cancel(); throw CancellationError() }
         meetingAudio = audio
@@ -156,6 +181,13 @@ import Speech
         do { try await stream.startCapture(); try Task.checkCancellation() }
         catch { cancel(); throw error }
         guard generation == expected else { cancel(); throw CancellationError() }
+        sourceDescription = selectedSource
+    }
+    static func selectedApplicationDescription(_ names: [String], includingMicrophone: Bool) throws -> String {
+        guard names.count == 1, let name = names.first?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+            throw PuddleError("Select exactly one meeting application in the macOS sharing picker, then try again.")
+        }
+        return includingMicrophone ? "\(name) + microphone" : name
     }
     private func stopMicrophone() {
         if let engineObserver { NotificationCenter.default.removeObserver(engineObserver); self.engineObserver = nil }

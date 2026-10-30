@@ -6,18 +6,24 @@ import PuddleCore
 private actor AttendanceChrome: ChromeCommanding {
     var stage = GoogleMeetPageState.Stage.waiting
     var calls: [String] = []
+    var navigations: [String] = []
     var closed = 0
+    var targetOpen = false
     let closeSucceeds: Bool
     init(closeSucceeds: Bool = true) { self.closeSucceeds = closeSucceeds }
     func setStage(_ stage: GoogleMeetPageState.Stage) { self.stage = stage }
     func command(_ method: String, parameters: Data, sessionID: String?) async throws -> Data {
         try Task.checkCancellation(); calls.append(method)
         switch method {
-        case "Target.getTargets": return try ChromeJSON.data(["targetInfos": []])
-        case "Target.createTarget": return try ChromeJSON.data(["targetId": "test-meet-tab"])
+        case "Browser.getVersion": return try ChromeJSON.data(["product": "Chrome/fixture"])
+        case "Target.getTargets": return try ChromeJSON.data(["targetInfos": targetOpen ? [["targetId": "test-meet-tab", "type": "page"]] : []])
+        case "Target.createTarget": targetOpen = true; return try ChromeJSON.data(["targetId": "test-meet-tab"])
         case "Target.attachToTarget": return try ChromeJSON.data(["sessionId": "test-session"])
-        case "Target.closeTarget": return try ChromeJSON.data(["success": closeSucceeds])
-        case "Runtime.evaluate": return try ChromeJSON.data(["result": ["value": String(decoding: JSONEncoder().encode(GoogleMeetPageState(stage: stage)), as: UTF8.self)]])
+        case "Target.closeTarget": if closeSucceeds { targetOpen = false }; return try ChromeJSON.data(["success": closeSucceeds])
+        case "Page.navigate": navigations.append(try ChromeJSON.object(parameters)["url"] as? String ?? ""); return Data("{}".utf8)
+        case "Runtime.evaluate":
+            if try ChromeJSON.object(parameters)["expression"] as? String == "6 * 7" { return try ChromeJSON.data(["result": ["value": 42]]) }
+            return try ChromeJSON.data(["result": ["value": String(decoding: JSONEncoder().encode(GoogleMeetPageState(stage: stage)), as: UTF8.self)]])
         default: return Data("{}".utf8)
         }
     }
@@ -99,5 +105,25 @@ private actor AttendanceChrome: ChromeCommanding {
         XCTAssertTrue(args.contains("--remote-debugging-port=0")); XCTAssertTrue(args.contains("--remote-debugging-address=127.0.0.1"))
         XCTAssertTrue(args.contains("--user-data-dir=/tmp/puddle-fixture-profile"))
         XCTAssertFalse(args.contains("--no-sandbox")); XCTAssertFalse(args.contains("--disable-web-security"))
+    }
+    func testBrowserCheckUsesOnlyBlankPageAndVerifiesCleanupWithoutJoining() async throws {
+        let chrome = AttendanceChrome()
+        let subject = MeetAttendanceController(launcher: AttendanceLauncher(chrome))
+        subject.checkBrowser(); await wait { subject.status == .ended }
+        XCTAssertTrue(subject.checkingBrowser); XCTAssertNil(subject.noteID); XCTAssertNil(subject.joinedAt)
+        XCTAssertFalse(subject.mayStillBeInCall); XCTAssertTrue(subject.message.contains("Chrome/fixture"))
+        let navigations = await chrome.navigations; XCTAssertEqual(navigations, ["about:blank"])
+    }
+    func testBrowserCheckRespectsWorkspacePrivacyAndUnavailableStorage() async throws {
+        let launcher = AttendanceLauncher(AttendanceChrome())
+        let store = PuddleStore(meetBrowserLauncher: launcher)
+        store.checkMeetBrowser()
+        store.storageAvailable = true; store.state.settings.networkDisabled = true; store.checkMeetBrowser()
+        store.state.settings.networkDisabled = false; store.privateSession = true; store.checkMeetBrowser()
+        store.privateSession = false; store.isLocked = true; store.checkMeetBrowser()
+        await Task.yield(); XCTAssertEqual(launcher.calls, 0)
+        store.isLocked = false; store.checkMeetBrowser()
+        await wait { store.meetAttendance.status == .ended }
+        XCTAssertEqual(launcher.calls, 1); XCTAssertTrue(store.state.meetings.isEmpty)
     }
 }

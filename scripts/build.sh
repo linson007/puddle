@@ -32,6 +32,7 @@ binary_stage="$app_bundle/Contents/MacOS/.Puddle.$$"
 install -m 755 "$binary_dir/Puddle" "$binary_stage"
 mv -f "$binary_stage" "$app_bundle/Contents/MacOS/Puddle"
 cp "$repo_root/app/Info.plist" "$app_bundle/Contents/Info.plist"
+swift -module-cache-path "$repo_root/.build/module-cache" "$repo_root/scripts/ConfigureBundle.swift" "$app_bundle/Contents/Info.plist"
 if [ -n "$google_client" ]; then
     install -m 600 "$google_client" "$app_bundle/Contents/Resources/GoogleClient.json"
 else
@@ -39,5 +40,9 @@ else
 fi
 swift -module-cache-path "$repo_root/.build/module-cache" "$repo_root/scripts/Icon.swift" \
     "$repo_root/build/Puddle.iconset" "$app_bundle/Contents/Resources/Puddle.icns"
-codesign --force --sign - --identifier app.puddle.mac "$app_bundle"
+if [ "${PUDDLE_SIGNING_IDENTITY:--}" = - ]; then
+    codesign --force --sign - --identifier app.puddle.mac "$app_bundle"
+else
+    codesign --force --options runtime --timestamp --entitlements "$repo_root/app/Puddle.entitlements" --sign "$PUDDLE_SIGNING_IDENTITY" --identifier app.puddle.mac "$app_bundle"
+fi
 printf 'Built %s\n' "$app_bundle"

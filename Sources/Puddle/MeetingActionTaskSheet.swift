@@ -7,11 +7,14 @@ struct MeetingActionTaskSheet: View {
     let action: MeetingAction
     @Environment(\.dismiss) private var dismiss
     @State private var title: String
+    @State private var owner: String
+    @State private var workflow = TaskWorkflow.active
     @State private var dated = false
     @State private var due = Date().addingTimeInterval(3600)
     init(store: PuddleStore, note: MeetingNote, action: MeetingAction) {
         self.store = store; self.note = note; self.action = action
         _title = State(initialValue: String(action.quote.prefix(300)))
+        _owner = State(initialValue: action.owner ?? "")
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -20,6 +23,10 @@ struct MeetingActionTaskSheet: View {
             ScrollView { Text("“\(action.quote)”").textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 150)
             Text("Owner: \(action.owner ?? "Not stated") · Timing in source: \(action.timing ?? "Not stated")").font(.caption).foregroundStyle(.secondary)
             TextField("Task title", text: $title).textFieldStyle(.roundedBorder)
+            TextField("Owner (review before saving)", text: $owner).textFieldStyle(.roundedBorder)
+            Picker("Track as", selection: $workflow) {
+                ForEach(TaskWorkflow.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
             if action.quote.count > 300 { Text("The suggested title was shortened to 300 characters. Edit it before adding.").font(.caption).foregroundStyle(.secondary) }
             Toggle("Set a reminder time", isOn: $dated)
             if dated { DatePicker("Remind me", selection: $due, in: Date()...) }
@@ -27,9 +34,10 @@ struct MeetingActionTaskSheet: View {
             HStack {
                 Spacer(); Button("Cancel") { dismiss() }
                 Button("Add task") {
-                    if store.createTaskFromMeeting(noteID: note.id, actionID: action.id, title: title, dueAt: dated ? due : nil) != nil { dismiss() }
+                    if store.createTaskFromMeeting(noteID: note.id, actionID: action.id, title: title, dueAt: dated ? due : nil, owner: owner, workflow: workflow) != nil { dismiss() }
                 }.buttonStyle(.borderedProminent).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 300)
             }
+            if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
         }.padding(24).frame(width: 480)
     }
 }

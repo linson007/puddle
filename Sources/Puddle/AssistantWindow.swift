@@ -1,14 +1,10 @@
 import SwiftUI
 import PuddleCore
 
-enum PuddleStyle {
-    static let teal = Color(red: 0.12, green: 0.48, blue: 0.44)
-    static let background = Color(nsColor: .windowBackgroundColor)
-    static let panel = Color(nsColor: .controlBackgroundColor)
-}
-
 struct PuddleMark: View {
     var size: CGFloat = 48
+    var activity: String = "Ready"
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.28).fill(PuddleStyle.teal.opacity(0.10))
@@ -21,55 +17,42 @@ struct PuddleMark: View {
             Ellipse().stroke(PuddleStyle.teal.opacity(0.3), lineWidth: 1.3)
                 .frame(width: size * 0.48, height: size * 0.1).offset(y: size * 0.35)
         }.frame(width: size, height: size)
+            .overlay(alignment: .bottomTrailing) {
+                if activity != "Ready" {
+                    Image(systemName: activity == "Listening" ? "mic.fill" : activity == "Speaking" ? "speaker.wave.2.fill" : activity == "Review needed" ? "hand.raised.fill" : "ellipsis")
+                        .font(.system(size: max(10, size * 0.22), weight: .bold)).padding(4)
+                        .background(.background, in: Circle()).foregroundStyle(PuddleStyle.teal)
+                        .symbolEffect(.pulse, options: .repeating, isActive: !reduceMotion && activity == "Thinking")
+                }
+            }
+            .accessibilityElement(children: .ignore).accessibilityLabel("Puddle: \(activity)")
     }
 }
 
-/// The conversation is the main experience; connections supply optional tools.
+/// Daily work and conversation share the same saved local context.
 struct AssistantWindow: View {
     @ObservedObject var store: PuddleStore
     var body: some View {
+        Group { if store.isLocked { PrivacyLockView(store: store) } else { workspace } }
+    }
+    private var workspace: some View {
         NavigationSplitView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 10) {
-                    PuddleMark(size: 38)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Puddle").font(.system(size: 22, weight: .semibold, design: .rounded))
-                        Text("Your personal AI.").font(.caption).foregroundStyle(.secondary)
-                    }
-                }.padding(.horizontal, 18).padding(.top, 22)
-                VStack(spacing: 5) {
-                    ForEach(PuddleStore.Section.allCases, id: \.self) { section in
-                        Button { store.section = section } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: section.icon).frame(width: 18)
-                                Text(section.rawValue).font(.system(size: 13, weight: .medium))
-                                Spacer()
-                                if section == .tasks {
-                                    let count = store.state.tasks.filter { !$0.completed }.count
-                                    if count > 0 { Text(String(count)).font(.caption).foregroundStyle(.secondary) }
-                                }
-                            }.padding(11).contentShape(Rectangle())
-                                .background(store.section == section ? PuddleStyle.teal.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 9))
-                        }.buttonStyle(.plain).foregroundStyle(store.section == section ? PuddleStyle.teal : Color.primary)
-                    }
-                }.padding(.horizontal, 12)
-                Spacer()
-                VStack(alignment: .leading, spacing: 11) {
-                    Label("Private by default", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
-                    HStack(spacing: 6) {
-                        Circle().fill(store.splashModel != nil ? PuddleStyle.teal : Color.secondary).frame(width: 6, height: 6)
-                        Text(store.demo ? "Demo mode" : store.splashModel != nil ? "Splash connected" : "Connect local Splash")
-                            .font(.caption).lineLimit(1)
-                        Spacer()
-                        SettingsLink { Image(systemName: "gearshape") }.buttonStyle(.plain).help("Puddle settings")
-                    }
-                    if store.demo { Button("Exit demo") { store.leaveDemo() }.font(.caption).buttonStyle(.link) }
-                }.padding(18)
-            }.background(PuddleStyle.panel.opacity(0.5))
-                .navigationSplitViewColumnWidth(min: 210, ideal: 225, max: 280)
+            PuddleSidebar(store: store)
+                .navigationSplitViewColumnWidth(min: 210, ideal: 225, max: 250)
         } detail: {
             VStack(spacing: 0) {
+                #if DEBUG
+                if UITestWorkspace.enabled {
+                    Label("UI test workspace · Synthetic providers, real local Splash · No personal credentials", systemImage: "testtube.2")
+                        .font(.caption).padding(10).frame(maxWidth: .infinity).background(.orange.opacity(0.15))
+                }
+                #endif
+                if store.privateSession {
+                    HStack { Label("Private session · Changes stay in memory", systemImage: "eye.slash"); Spacer(); Button("End Session") { store.endPrivateSession() } }
+                        .font(.caption).padding(12).background(.orange.opacity(0.12))
+                }
                 MeetAttendanceBanner(store: store, attendance: store.meetAttendance)
+                BrowserControlBanner(store: store, workspace: store.browserWorkspace)
                 if store.demo {
                     HStack {
                         Label("Demo", systemImage: "flask").fontWeight(.semibold)
@@ -89,10 +72,19 @@ struct AssistantWindow: View {
                 }
                 Group {
                     switch store.section {
+                    case .today: TodayView(store: store)
                     case .chat: ConversationView(store: store, voice: store.voiceInput)
+                    case .developer: DeveloperView(store: store, workspace: store.developerWorkspace)
+                    case .browser: BrowserView(store: store, workspace: store.browserWorkspace)
                     case .history: ConversationHistoryView(store: store)
                     case .meetings: MeetingsView(store: store, workspace: store.meetingWorkspace)
                     case .tasks: TasksView(store: store)
+                    case .calendar: CalendarView(store: store)
+                    case .mail: MailView(store: store)
+                    case .actions: ActionsView(store: store)
+                    case .routines: RoutinesView(store: store)
+                    case .knowledge: KnowledgeView(store: store)
+                    case .portfolio: WorkHubView(store: store)
                     case .memory: MemoryView(store: store)
                     case .connections: ConnectionsView(store: store)
                     }
@@ -111,6 +103,7 @@ struct AssistantWindow: View {
                         .overlay(alignment: .top) { Divider() }
                 }
             }.background(PuddleStyle.background)
+                .navigationTitle(store.section == .chat ? "Puddle" : store.section.rawValue)
         }.tint(PuddleStyle.teal)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
@@ -119,10 +112,25 @@ struct AssistantWindow: View {
                         Button { store.clearChat() } label: { Label("New Conversation", systemImage: "square.and.pencil") }
                             .help("Start a new conversation; keep memory and tasks")
                     }
-                    SettingsLink { Label("Settings", systemImage: "gearshape") }
+                    Button { store.showCommands = true } label: { Label("Search & Commands", systemImage: "magnifyingglass") }
+                        .help("Search your workspace and commands · ⌘K")
+                    Button { store.showAssistantPanel.toggle() } label: { Label("Assistant Panel", systemImage: "sidebar.right") }
+                        .disabled(store.section == .chat)
+                        .help("Show the assistant beside your current workspace")
                 }
             }
             .sheet(isPresented: $store.showSetup) { GoogleSetupView(store: store) }
+            .sheet(isPresented: $store.showLocalSetup) { SplashSetupView(store: store, setup: store.splashSetup) }
+            .sheet(item: $store.editingAction) { ActionEditorView(store: store, initial: $0) }
+            .sheet(isPresented: $store.showCommands) { CommandPaletteView(store: store) }
+            .sheet(isPresented: $store.showQuickCapture) { CommitmentEditor(store: store) }
+            .sheet(item: $store.editingCommitment) { CommitmentEditor(store: store, task: $0) }
+            .sheet(item: $store.editingWorkProject) { WorkProjectEditor(store: store, project: $0) }
+            .sheet(item: $store.editingPerson) { PersonContextEditor(store: store, person: $0) }
+            .sheet(item: $store.editingDecision) { WorkDecisionEditor(store: store, decision: $0) }
+            .inspector(isPresented: Binding(get: { store.showAssistantPanel && store.section != .chat }, set: { store.showAssistantPanel = $0 })) {
+                ConversationView(store: store, voice: store.voiceInput, compact: true).inspectorColumnWidth(min: 340, ideal: 410, max: 600)
+            }
     }
 }
 
@@ -131,29 +139,47 @@ private struct ConversationView: View {
     @ObservedObject var voice: VoiceInputController
     @Environment(\.openSettings) private var openSettings
     @State private var input = ""
+    @State private var visibleMessageLimit = 200
+    var compact = false
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Text("Puddle").font(.system(size: 17, weight: .semibold, design: .rounded))
-                Text("On your Mac").font(.caption).foregroundStyle(.secondary)
+                Label(store.state.profileLibrary.active.title, systemImage: store.state.profileLibrary.active.kind.icon).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if let model = store.splashModel {
                     Label("Local model", systemImage: "desktopcomputer").font(.caption).foregroundStyle(PuddleStyle.teal).help(model)
                 } else if !store.demo {
-                    Button { store.settingsTab = "localAI"; openSettings() } label: { Label("Connect Splash", systemImage: "bolt.horizontal") }.font(.caption)
+                    Button { store.showLocalSetup = true } label: { Label("Set up local AI", systemImage: "bolt.horizontal") }.font(.caption)
                 }
-            }.padding(.horizontal, 30).padding(.vertical, 18)
+            }.padding(.horizontal, compact ? 18 : 30).padding(.vertical, 16)
+                .background(PuddleStyle.panel.opacity(0.6))
+                .overlay(alignment: .bottom) { Rectangle().fill(PuddleStyle.line).frame(height: 1) }
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 24) {
-                        if store.state.chat.isEmpty { welcome }
-                        ForEach(store.state.chat) { line in
+                        if store.state.chat.isEmpty {
+                            if compact { Text("Ask about your work, draft a reply, or prepare an event.").foregroundStyle(.secondary) }
+                            else { welcome }
+                        }
+                        if store.state.chat.count > visibleMessageLimit {
+                            HStack {
+                                Text("Showing the latest \(visibleMessageLimit) of \(store.state.chat.count) messages").font(.caption).foregroundStyle(.secondary)
+                                Button("Load earlier messages") { visibleMessageLimit += 200 }
+                            }
+                        }
+                        ForEach(store.state.chat.suffix(visibleMessageLimit)) { line in
                             HStack(alignment: .top, spacing: 14) {
+                                if line.role == "user" { Spacer(minLength: compact ? 18 : 60) }
                                 if line.role == "assistant" { PuddleMark(size: 30) }
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text(line.role == "user" ? "YOU" : "PUDDLE")
+                                    Text(line.role == "user" ? "YOU" : line.profileName.map { "PUDDLE · \($0)" } ?? "PUDDLE")
                                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                                    Text(.init(line.content)).font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
+                                    Group {
+                                        if line.role == "user" { Text(verbatim: line.content) }
+                                        else { Text(.init(line.content)) }
+                                    }.font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
                                     HStack {
                                         Button("Copy") {
                                             NSPasteboard.general.clearContents(); NSPasteboard.general.setString(line.content, forType: .string)
@@ -168,7 +194,7 @@ private struct ConversationView: View {
                                             Text("\(metrics.totalSeconds, specifier: "%.1f")s total · \(metrics.firstTokenSeconds ?? 0, specifier: "%.1f")s first token · \(metrics.extractionSeconds, specifier: "%.1f")s learning")
                                                 .foregroundStyle(.secondary)
                                         }
-                                    }.font(.caption2).buttonStyle(.link)
+                                    }.font(.caption2).buttonStyle(PuddleTextButtonStyle())
                                     ForEach(line.receipts ?? []) { receipt in
                                         DisclosureGroup("\(AgentTool(rawValue: receipt.tool)?.label ?? receipt.tool) · \(receipt.status)") {
                                             VStack(alignment: .leading, spacing: 4) {
@@ -180,7 +206,8 @@ private struct ConversationView: View {
                                         }.font(.caption)
                                     }
                                 }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(line.role == "user" ? Color.primary.opacity(0.035) : PuddleStyle.teal.opacity(0.045), in: RoundedRectangle(cornerRadius: 14))
+                                    .background(line.role == "user" ? PuddleStyle.inset : PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 14))
+                                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(PuddleStyle.line.opacity(0.7)))
                             }.id(line.id)
                         }
                         if store.isThinking {
@@ -195,12 +222,17 @@ private struct ConversationView: View {
                                     .font(.callout).foregroundStyle(.secondary)
                             }.id("thinking")
                         }
-                    }.frame(maxWidth: 760).padding(30).frame(maxWidth: .infinity)
+                    }.frame(maxWidth: 760).padding(compact ? 18 : 30).frame(maxWidth: .infinity)
                 }
                 .onChange(of: store.state.chat.count) { _, _ in
                     if let id = store.state.chat.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } }
                 }
                 .onChange(of: store.streamingReply) { _, _ in proxy.scrollTo("thinking", anchor: .bottom) }
+                .task(id: store.state.currentConversationID) {
+                    visibleMessageLimit = 200
+                    await Task.yield()
+                    if !Task.isCancelled, let id = store.state.chat.last?.id { proxy.scrollTo(id, anchor: .bottom) }
+                }
             }
             if !store.toolActivities.isEmpty {
                 Text("Tools: " + store.toolActivities.joined(separator: " · "))
@@ -208,7 +240,7 @@ private struct ConversationView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 32).padding(.bottom, 8)
             }
             if !store.isThinking, store.state.chat.contains(where: { $0.role == "user" }) {
-                Button("Retry last message") { store.retryLastQuestion() }.font(.caption).buttonStyle(.link).padding(.bottom, 8)
+                Button("Retry last message") { store.retryLastQuestion() }.font(.caption).buttonStyle(PuddleTextButtonStyle()).padding(.bottom, 8)
             }
             if voice.isActive {
                 VStack(alignment: .leading, spacing: 8) {
@@ -226,7 +258,7 @@ private struct ConversationView: View {
             if let error = voice.errorMessage {
                 HStack {
                     Text(error).font(.caption).foregroundStyle(.orange)
-                    Spacer(); Button("Dismiss") { voice.dismissError() }.buttonStyle(.link)
+                    Spacer(); Button("Dismiss") { voice.dismissError() }.buttonStyle(PuddleTextButtonStyle())
                 }.padding(.horizontal, 30).padding(.bottom, 8)
             }
             HStack(alignment: .bottom, spacing: 12) {
@@ -239,47 +271,60 @@ private struct ConversationView: View {
                     .help(store.demo ? "Voice input requires the live app." : "Dictate on this Mac, then review and send. Command-Shift-M.")
                     .keyboardShortcut("m", modifiers: [.command, .shift])
                 Button(action: send) { Image(systemName: "arrow.up").fontWeight(.semibold).frame(width: 21, height: 21) }
-                    .buttonStyle(.borderedProminent).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isThinking || voice.isActive)
+                    .buttonStyle(PuddlePrimaryButtonStyle()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isThinking || voice.isActive)
                     .accessibilityLabel("Send message")
             }.padding(16).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 16))
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(.quaternary))
-                .padding(.horizontal, 30)
+                .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(PuddleStyle.line))
+                .frame(maxWidth: 820).padding(.horizontal, compact ? 18 : 30)
             Text("Local conversation · Memory you control · Optional connections")
-                .font(.caption2).foregroundStyle(.tertiary).padding(.vertical, 12)
-        }.onChange(of: voice.completedTranscript?.id) { _, _ in
+                .font(.caption2).foregroundStyle(PuddleStyle.muted).padding(.vertical, 12)
+        }.background(PuddleStyle.background).onChange(of: voice.completedTranscript?.id) { _, _ in
             if let draft = voice.completedTranscript { input += (input.isEmpty ? "" : " ") + draft.text }
         }.onDisappear { voice.cancel() }
     }
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 23) {
-            PuddleMark(size: 82)
+            PuddleMark(size: 64)
             VStack(alignment: .leading, spacing: 10) {
                 Text("A little help,\nwith whatever’s next.")
-                    .font(.system(size: 37, weight: .semibold, design: .rounded)).tracking(-0.8)
-                Text("Think out loud, make a plan, or hand me a reminder.\nI’m here on your Mac, with memory that stays with you.")
+                    .font(.system(size: 34, weight: .semibold, design: .rounded)).tracking(-0.8).foregroundStyle(PuddleStyle.ink)
+                Text(store.state.profileLibrary.active.kind.summary + "\nI’m here on your Mac, with memory that stays with you.")
                     .font(.system(size: 15)).foregroundStyle(.secondary).lineSpacing(4)
             }
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                prompt("Think through an idea", icon: "lightbulb", message: "Help me think through a new project idea. Ask me a few useful questions.")
-                prompt("Make a plan", icon: "list.bullet.clipboard", message: "Help me plan my day. Let's start with my priorities.")
+            if !store.demo && store.splashModel == nil {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("A little setup, then we're ready.").font(.callout.weight(.medium))
+                        Text("Connect Splash to start a local conversation.").font(.caption).foregroundStyle(PuddleStyle.muted)
+                    }
+                    Spacer(minLength: 0)
+                    Button("Set up local AI") { store.showLocalSetup = true }.buttonStyle(PuddlePrimaryButtonStyle())
+                }.puddleCard(padding: 16)
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200))], spacing: 12) {
+                ForEach(store.state.profileLibrary.active.kind.starters) { starter in
+                    prompt(starter.title, icon: starter.icon, message: starter.question)
+                }
                 prompt("Remember a preference", icon: "brain", message: "Remember that I prefer short, practical answers.")
                 prompt("Set a reminder", icon: "bell", message: "Remind me to take a break in one minute.")
             }
             HStack(spacing: 10) {
                 Text("Connect mail and calendar whenever you need them.").font(.caption).foregroundStyle(.secondary)
-                Button("Connections") { store.section = .connections }.buttonStyle(.link).font(.caption)
+                Button("Connections") { store.section = .connections }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
             }
-            if !store.demo { Button("Explore the demo") { store.enterDemo() }.buttonStyle(.link).font(.caption) }
-        }.padding(.top, 24).padding(.bottom, 20)
+            if !store.demo { Button("Explore the demo") { store.enterDemo() }.buttonStyle(PuddleTextButtonStyle()).font(.caption) }
+        }.padding(.top, 16).padding(.bottom, 20)
     }
     private func prompt(_ title: String, icon: String, message: String) -> some View {
         Button { store.ask(message) } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon).foregroundStyle(PuddleStyle.teal)
-                Text(title).font(.system(size: 12, weight: .medium))
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(PuddleStyle.ink)
                 Spacer(minLength: 0)
-            }.padding(14).frame(maxWidth: .infinity).background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 11))
-        }.buttonStyle(.plain).disabled(store.isThinking)
+                Image(systemName: "arrow.up.left").font(.caption).foregroundStyle(PuddleStyle.muted)
+            }.padding(14).frame(maxWidth: .infinity).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 11))
+                .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(PuddleStyle.line))
+        }.buttonStyle(.plain).disabled(store.isThinking || (!store.demo && store.splashModel == nil))
     }
     private func send() {
         guard !store.isThinking, !voice.isActive, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -290,11 +335,14 @@ private struct ConversationView: View {
 private struct ConversationHistoryView: View {
     @ObservedObject var store: PuddleStore
     @State private var search = ""
+    @State private var matches: [Conversation] = []
+    @State private var searching = true
     var body: some View {
-        let matches = store.state.matchingConversations(search)
         VStack(alignment: .leading, spacing: 20) {
             Text("Conversation history").font(.system(size: 29, weight: .semibold, design: .rounded))
             TextField("Search conversations", text: $search).textFieldStyle(.roundedBorder)
+            if searching { ProgressView("Searching conversations…").controlSize(.small) }
+            else { Text("\(matches.count) conversations").font(.caption).foregroundStyle(.secondary) }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(matches) { conversation in
@@ -310,96 +358,26 @@ private struct ConversationHistoryView: View {
                                     }
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                             }.buttonStyle(.plain).accessibilityLabel("Open conversation: \(conversation.title)")
-                            Button("Delete") { store.deleteConversation(conversation.id) }.buttonStyle(.link)
+                            Button("Delete") { store.deleteConversation(conversation.id) }.buttonStyle(PuddleTextButtonStyle())
                         }.padding(16).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
             }.overlay {
-                if matches.isEmpty {
+                if matches.isEmpty, !searching {
                     Text(search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                          ? "No conversations yet. Start chatting with Puddle to see them here."
                          : "No conversations match your search.").foregroundStyle(.secondary)
                 }
             }
-        }.padding(30)
-    }
-}
-
-private struct TasksView: View {
-    @ObservedObject var store: PuddleStore
-    @State private var title = ""
-    @State private var dated = false
-    @State private var due = Date().addingTimeInterval(3600)
-    @State private var editing: AssistantTask?
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Tasks & reminders").font(.system(size: 29, weight: .semibold, design: .rounded))
-                Text("Add a task or ask Puddle. Enable notifications in Settings for macOS reminders while Puddle is closed.")
-                    .foregroundStyle(.secondary)
-                VStack(alignment: .leading, spacing: 12) {
-                    TextField("What would you like to do?", text: $title).textFieldStyle(.roundedBorder)
-                    HStack {
-                        Toggle("Remind me", isOn: $dated).toggleStyle(.checkbox)
-                        if dated { DatePicker("When", selection: $due, in: Date()...).labelsHidden() }
-                        Spacer()
-                        Button("Add Task") { store.addTask(title: title, dueAt: dated ? due : nil); title = "" }
-                            .buttonStyle(.borderedProminent).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    }
-                }.padding(18).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 12))
-                ForEach(store.state.tasks) { task in
-                    HStack(alignment: .top, spacing: 12) {
-                        Button { store.toggleTask(task.id) } label: {
-                            Image(systemName: task.completed ? "checkmark.circle.fill" : "circle")
-                                .font(.title3).foregroundStyle(task.completed ? PuddleStyle.teal : .secondary)
-                        }.buttonStyle(.plain).accessibilityLabel(task.completed ? "Mark task incomplete" : "Complete task")
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(task.title).strikethrough(task.completed).foregroundStyle(task.completed ? .secondary : .primary)
-                            if let due = task.dueAt {
-                                Text(due.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                            }
-                            if let source = task.meetingSource {
-                                if let note = store.state.meetings.first(where: { $0.id == source.meetingID }) {
-                                    Button("From meeting: \(note.title)") { store.meetingWorkspace.selectedID = note.id; store.section = .meetings }.buttonStyle(.link).font(.caption)
-                                }
-                                DisclosureGroup("Source quote") { Text(source.quote).font(.caption).textSelection(.enabled) }
-                            }
-                        }
-                        Spacer()
-                        Button("Edit") { editing = task }.buttonStyle(.link)
-                        Menu {
-                            Button("Snooze 10 minutes") { store.snoozeTask(task.id) }
-                            Button("Delete", role: .destructive) { store.deleteTask(task.id) }
-                        } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 22)
-                    }.padding(16).background(Color.primary.opacity(0.03), in: RoundedRectangle(cornerRadius: 11))
-                }
-                if store.state.tasks.isEmpty { Label("No tasks yet. Try “Remind me to…” in chat.", systemImage: "checklist").foregroundStyle(.secondary).padding(.top, 20) }
-            }.frame(maxWidth: 720, alignment: .leading).padding(36).frame(maxWidth: .infinity)
-        }.sheet(item: $editing) { task in TaskEditor(store: store, task: task) }
-    }
-}
-
-private struct TaskEditor: View {
-    @ObservedObject var store: PuddleStore
-    let task: AssistantTask
-    @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var dated = false
-    @State private var due = Date()
-    var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Text("Edit task").font(.title2)
-            TextField("Title", text: $title).textFieldStyle(.roundedBorder)
-            Toggle("Remind me", isOn: $dated)
-            if dated { DatePicker("When", selection: $due, in: Date()...) }
-            HStack {
-                Spacer(); Button("Cancel") { dismiss() }
-                Button("Save") { store.updateTask(task.id, title: title, dueAt: dated ? due : nil); dismiss() }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 300)
-                    .buttonStyle(.borderedProminent)
-            }
-        }.padding(24).frame(width: 430)
-            .onAppear { title = task.title; dated = task.dueAt != nil; due = task.dueAt ?? Date().addingTimeInterval(3600) }
+        }.padding(30).task(id: "\(store.workspaceRevision):\(search)") {
+            searching = true
+            if !search.isEmpty { do { try await Task.sleep(for: .milliseconds(150)) } catch { return } }
+            let snapshot = store.state, query = search
+            let work = Task.detached(priority: .userInitiated) { snapshot.matchingConversations(query) }
+            let found = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+            guard !Task.isCancelled else { return }
+            matches = found; searching = false
+        }
     }
 }
 
@@ -407,9 +385,11 @@ private struct MemoryView: View {
     @ObservedObject var store: PuddleStore
     @State private var title = ""
     @State private var content = ""
+    @State private var search = ""
+    @State private var matches: [MemoryNote] = []
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            LazyVStack(alignment: .leading, spacing: 24) {
                 Text("What Puddle remembers").font(.system(size: 29, weight: .semibold, design: .rounded))
                 Text(store.state.settings.automaticallyLearn
                      ? "Puddle learns useful facts and preferences from your conversations automatically. Review or forget them here."
@@ -426,12 +406,14 @@ private struct MemoryView: View {
                             .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200 || content.count > 4000)
                     }
                 }.padding(18).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 12))
-                ForEach(store.state.memories) { note in
+                TextField("Search memories", text: $search).textFieldStyle(.roundedBorder).accessibilityLabel("Search saved memories")
+                Text("\(matches.count) of \(store.state.memories.count) memories").font(.caption).foregroundStyle(.secondary)
+                ForEach(matches) { note in
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
                             Text(note.title).fontWeight(.semibold)
                             Spacer()
-                            Button("Forget") { store.removeMemory(note.id) }.buttonStyle(.link).font(.caption)
+                            Button("Forget") { store.removeMemory(note.id) }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
                         }
                         Text(note.content).textSelection(.enabled)
                         if let source = note.source {
@@ -442,7 +424,14 @@ private struct MemoryView: View {
                         .background(PuddleStyle.teal.opacity(0.05), in: RoundedRectangle(cornerRadius: 12))
                 }
                 if store.state.memories.isEmpty { Label("Your memories will appear here.", systemImage: "brain").foregroundStyle(.secondary) }
+                else if matches.isEmpty, !search.isEmpty { Text("No matching memories.").foregroundStyle(.secondary) }
             }.frame(maxWidth: 720, alignment: .leading).padding(36).frame(maxWidth: .infinity)
+        }.task(id: "\(store.workspaceRevision):\(search)") {
+            if !search.isEmpty { do { try await Task.sleep(for: .milliseconds(150)) } catch { return } }
+            let snapshot = store.state, query = search
+            let work = Task.detached(priority: .userInitiated) { snapshot.matchingMemories(query) }
+            let found = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
+            if !Task.isCancelled { matches = found }
         }
     }
 }
@@ -466,15 +455,19 @@ private struct ConnectionsView: View {
                         if store.isTestingSplash { ProgressView().controlSize(.small) }
                     }
                 }.connectionCard()
+                WorkConnectionsView(store: store)
+                OutlookConnectionsView(store: store)
+                WorkSourcesView(store: store, workspace: store.workSources)
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Google", systemImage: "point.3.connected.trianglepath.dotted").font(.headline)
                     Text("Optional Gmail search and upcoming Google Calendar events. Puddle reads them when you ask a relevant question.")
                         .font(.callout).foregroundStyle(.secondary)
                     HStack(spacing: 18) {
-                        Label(store.mailConnected ? "Gmail available" : "Gmail not connected", systemImage: "envelope")
+                        Label(store.googleMailConnected ? "Gmail available" : "Gmail not connected", systemImage: "envelope")
                         Label(store.calendarConnected ? "Calendar available" : "Calendar not connected", systemImage: "calendar")
                     }.font(.caption).foregroundStyle(.secondary)
                     if let account = store.state.account { Text(account).font(.caption).foregroundStyle(.secondary) }
+                    GoogleAccountsView(store: store)
                     HStack {
                         Button(store.isSigningIn ? "Connecting Google…" : store.connected ? "Manage Google Permissions…" : "Connect Google") { store.requestGoogleConnection() }
                             .buttonStyle(.borderedProminent)
@@ -486,58 +479,15 @@ private struct ConnectionsView: View {
                         }
                         if store.connected {
                             Button("Refresh") { store.refresh() }.disabled(store.isSyncing)
-                            Button("Disconnect Google") { store.disconnect() }
+                            Button("Disconnect This Google Account") { store.disconnect() }
                         }
                     }
                     if let error = store.errorMessage {
                         Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
                     }
-                    Text("Read-only access. Your conversation, memory, and tasks belong to Puddle and stay when a connection is removed.")
+                    Text("Read access is the default. Optional action permissions require separate consent and exact-content review. Your saved work stays when a connection is removed.")
                         .font(.caption).foregroundStyle(.secondary)
                 }.connectionCard()
-                if store.mailConnected {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Label("Recent mail", systemImage: "envelope").font(.headline)
-                            Spacer()
-                            Button("Ask about my mail") { store.ask("Check my recent email and tell me what needs my attention.") }.disabled(store.isThinking)
-                        }
-                        ForEach(store.state.messages.prefix(5)) { message in
-                            DisclosureGroup {
-                                if let summary = message.summary {
-                                    Text(.init(summary)).font(.callout).textSelection(.enabled).padding(.vertical, 8)
-                                    Divider()
-                                }
-                                Button("Summarize") { store.summarize(message.id) }.disabled(store.isThinking)
-                                Text(message.body).font(.callout).textSelection(.enabled).padding(.vertical, 8)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(message.subject).font(.callout)
-                                    Text(message.sender).font(.caption).foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        if store.state.messages.isEmpty { Text("Ask Puddle to search mail, or refresh this connection.").font(.caption).foregroundStyle(.secondary) }
-                    }.connectionCard()
-                }
-                if store.calendarConnected {
-                    VStack(alignment: .leading, spacing: 14) {
-                        HStack {
-                            Label("Upcoming calendar", systemImage: "calendar").font(.headline)
-                            Spacer()
-                            Button("Ask about my day") { store.ask("Check my calendar and help me plan the rest of my day.") }.disabled(store.isThinking)
-                        }
-                        ForEach(store.state.calendarEvents.prefix(8)) { event in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(event.title).font(.callout)
-                                Text(AssistantDates.parse(event.start)?.formatted(date: .abbreviated, time: .shortened) ?? event.start)
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                        if store.state.calendarEvents.isEmpty { Text("Ask Puddle what is on your calendar, or refresh the connection.").font(.caption).foregroundStyle(.secondary) }
-                        if store.state.calendarHasMore { Text("More events exist in this window. Ask Puddle for a shorter time range.").font(.caption).foregroundStyle(.orange) }
-                    }.connectionCard()
-                }
             }.frame(maxWidth: 760, alignment: .leading).padding(36).frame(maxWidth: .infinity)
         }
     }

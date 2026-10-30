@@ -10,6 +10,7 @@ enum MeetAttendanceStatus: Equatable { case idle, opening, ready, joining, signI
     @Published private(set) var message = ""
     @Published private(set) var joinedAt: Date?
     @Published private(set) var mayStillBeInCall = false
+    @Published private(set) var checkingBrowser = false
     var isActive: Bool { ![.idle, .ended, .failed].contains(status) }
     private let launcher: any MeetBrowserLaunching
     private let pollSeconds: Double
@@ -23,11 +24,39 @@ enum MeetAttendanceStatus: Equatable { case idle, opening, ready, joining, signI
     init(launcher: any MeetBrowserLaunching, pollSeconds: Double = 2, admissionTimeout: Double = 600, maximumCallSeconds: Double = 7200) {
         self.launcher = launcher; self.pollSeconds = pollSeconds; self.admissionTimeout = admissionTimeout; self.maximumCallSeconds = maximumCallSeconds
     }
+    func checkBrowser() {
+        guard !isActive, !mayStillBeInCall else { return }
+        generation = UUID(); let expected = generation
+        checkingBrowser = true
+        status = .opening; noteID = nil; joinedAt = nil; message = "Checking Chrome on a blank page. No meeting will be opened…"
+        work = Task { [weak self] in
+            guard let self else { return }
+            var session: GoogleMeetBrowserSession?
+            do {
+                let connection = try await launcher.connect()
+                guard !Task.isCancelled, generation == expected else { await connection.close(); return }
+                let current = GoogleMeetBrowserSession(connection: connection); session = current; browser = current
+                mayStillBeInCall = true
+                let version = try await current.checkConnection()
+                let closed = await current.leave()
+                guard generation == expected else { return }
+                browser = nil; mayStillBeInCall = !closed; status = closed ? .ended : .failed
+                message = "\(version): browser commands passed. " + (closed ? "The blank test tab was verified closed. No meeting was opened." : "Close the blank test tab manually; cleanup could not be verified. No meeting was opened.")
+            } catch {
+                guard generation == expected else { return }
+                let closed = await session?.leave() ?? true
+                guard generation == expected else { return }
+                browser = nil; mayStillBeInCall = !closed; status = .failed
+                message = error.localizedDescription + (closed ? " No meeting was opened." : " Close the dedicated test tab manually; cleanup could not be verified. No meeting was opened.")
+            }
+        }
+    }
     func join(link: MeetingJoinLink, noteID: UUID?, guestName: String) {
         guard !isActive, !mayStillBeInCall else { return }
         let name = guestName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty, name.count <= 60, link.provider == .googleMeet else { status = .failed; message = "Use a Google Meet link and a guest name up to 60 characters."; return }
         generation = UUID(); let expected = generation
+        checkingBrowser = false
         status = .opening; self.noteID = noteID; joinedAt = nil; message = "Opening Puddle's dedicated Chrome profile…"
         work = Task { [weak self] in
             guard let self else { return }
@@ -94,7 +123,7 @@ enum MeetAttendanceStatus: Equatable { case idle, opening, ready, joining, signI
             guard let self, self.generation == expected else { return }
             self.status = closed ? .ended : .failed
             self.mayStillBeInCall = !closed
-            self.message = closed ? (session == nil ? "Attendance stopped before a call was opened." : "The managed Meet tab was closed.") : "Close the dedicated Meet tab manually; leaving could not be verified."
+            self.message = closed ? (session == nil ? "Attendance stopped before a call was opened." : (self.checkingBrowser ? "The blank test tab was verified closed. No meeting was opened." : "The managed Meet tab was verified closed.")) : (self.checkingBrowser ? "Close the dedicated test tab manually; cleanup could not be verified. No meeting was opened." : "Close the dedicated Meet tab manually; leaving could not be verified.")
             if let noteID = self.noteID { self.onEnded?(noteID) }
         }
     }
@@ -104,6 +133,6 @@ enum MeetAttendanceStatus: Equatable { case idle, opening, ready, joining, signI
     }
     func confirmClosedManually() {
         guard !isActive else { return }
-        mayStillBeInCall = false; status = .idle; message = "Tracking stopped after you confirmed the browser tab is closed."
+        mayStillBeInCall = false; status = .idle; checkingBrowser = false; message = "Tracking stopped after you confirmed the browser tab is closed."
     }
 }

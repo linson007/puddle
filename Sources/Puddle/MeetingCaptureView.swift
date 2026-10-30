@@ -12,6 +12,9 @@ struct MeetingCaptureView: View {
             if capture.isActive, capture.noteID == note.id {
                 Label(capture.status == .listening ? "Audio capture active" : capture.message, systemImage: "waveform.circle.fill")
                     .foregroundStyle(capture.status == .listening ? .red : .secondary)
+                if let selectedSource = capture.sourceDescription {
+                    Text("Source: \(selectedSource)").font(.callout).textSelection(.enabled)
+                }
                 if let start = capture.startedAt {
                     TimelineView(.periodic(from: start, by: 1)) { context in
                         Text("Elapsed \(MeetingTranscriptTimeline.timestamp(context.date.timeIntervalSince(start)))").font(.caption.monospacedDigit())
@@ -28,12 +31,15 @@ struct MeetingCaptureView: View {
                         .disabled(store.demo || !store.storageAvailable || !capture.isSupported || capture.isActive || store.meetingWorkspace.pendingImport != nil || store.meetingWorkspace.isImporting)
                 }
                 HStack {
-                    Button("Install speech language…") { store.installMeetingSpeechLanguage() }.disabled(store.demo || !capture.isSupported || capture.isActive)
+                    Button("Install speech language…") { store.installMeetingSpeechLanguage() }.disabled(!store.canInstallMeetingSpeechLanguage)
                     if capture.status == .installingLanguage {
                         ProgressView().controlSize(.small); Button("Cancel download") { capture.cancel() }
                     }
                 }
                 if !capture.message.isEmpty { Text(capture.message).font(.caption).foregroundStyle(.secondary) }
+                if store.state.settings.networkDisabled {
+                    Text("Resume external connections to download Apple's speech language. Installed languages work offline.").font(.caption).foregroundStyle(.secondary)
+                }
             }
             if let error = capture.errorMessage { Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
             Text("Requires macOS 26+ and an installed speech language (\(store.state.settings.speechLanguage)). Speech stays on this Mac; raw audio is not saved. Tell participants before transcribing. Stop to review, apply the transcript, then Save.")
@@ -41,6 +47,6 @@ struct MeetingCaptureView: View {
             Text("Meeting app audio uses the macOS sharing picker. Select only the meeting app; browser selection can include audio from its other tabs. Channels identify audio sources, not individual speakers. Headphones reduce duplicate speech from the microphone.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(16).background(PuddleStyle.background, in: RoundedRectangle(cornerRadius: 10))
-            .onDisappear { if capture.noteID == note.id { capture.stop() } }
+            .onDisappear { if capture.noteID == note.id && !store.meetingCompanionVisible { capture.stop() } }
     }
 }

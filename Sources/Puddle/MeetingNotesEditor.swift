@@ -6,6 +6,7 @@ struct MeetingNotesEditor: View {
     @ObservedObject var workspace: MeetingWorkspace
     let note: MeetingNote
     @State private var exporting = false
+    @Environment(\.openWindow) private var openWindow
     private func text(_ key: WritableKeyPath<MeetingDraft, String>) -> Binding<String> {
         Binding(get: { workspace.draft(for: note)[keyPath: key] }, set: { value in workspace.edit(note) { $0[keyPath: key] = value } })
     }
@@ -14,6 +15,7 @@ struct MeetingNotesEditor: View {
             HStack {
                 Text("Meeting notes").font(.headline)
                 Spacer()
+                Button("Companion") { store.companionNoteID = note.id; openWindow(id: "meeting-companion") }
                 Button("Export…") { exporting = true }
                 Text(workspace.isDirty(note) ? "Unsaved changes" : "Saved locally").font(.caption).foregroundStyle(.secondary)
                 Button("Save") { store.saveMeetingNote(note.id) }.buttonStyle(.borderedProminent).disabled(!workspace.isDirty(note))
@@ -22,6 +24,17 @@ struct MeetingNotesEditor: View {
             TextField("Meeting title", text: text(\.title)).textFieldStyle(.roundedBorder)
             DatePicker("Meeting date", selection: Binding(get: { workspace.draft(for: note).meetingDate }, set: { date in workspace.edit(note) { $0.meetingDate = date } }))
             TextField("Participants", text: text(\.participants)).textFieldStyle(.roundedBorder)
+            Picker("Project", selection: Binding(get: { workspace.draft(for: note).projectID }, set: { id in workspace.edit(note) { $0.projectID = id } })) {
+                Text("None").tag(Optional<UUID>.none)
+                ForEach(store.state.workProjects) { Text($0.title).tag(Optional($0.id)) }
+            }
+            if let recovery = store.state.meetingCaptureRecoveries.first(where: { $0.noteID == note.id }), !store.meetingCapture.isActive {
+                HStack {
+                    Text("Captured transcript available · \(recovery.updatedAt.formatted())").font(.caption)
+                    Button("Review Recovery") { store.reviewMeetingCapture(note.id) }
+                    Button("Discard Recovery", role: .destructive) { store.discardMeetingCapture(note.id) }
+                }
+            }
             editor("Agenda", text: text(\.agenda), height: 80)
             editor("Your notes", text: text(\.notes), height: 180)
             MeetingCaptureView(store: store, capture: store.meetingCapture, note: note)

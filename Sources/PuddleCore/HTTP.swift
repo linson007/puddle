@@ -14,10 +14,16 @@ public struct RetryingTransport: HTTPTransport {
         try await Task.sleep(for: .seconds($0))
     }) { self.base = base; self.wait = wait }
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        try await retry(request) { try await base.send(request) }
+    }
+    public func sendBounded(_ request: URLRequest, maximumBytes: Int, until: (@Sendable (Data, HTTPURLResponse) -> Bool)?) async throws -> (Data, HTTPURLResponse) {
+        try await retry(request) { try await base.sendBounded(request, maximumBytes: maximumBytes, until: until) }
+    }
+    private func retry(_ request: URLRequest, operation: () async throws -> (Data, HTTPURLResponse)) async throws -> (Data, HTTPURLResponse) {
         // Retry only reads. Token exchanges and model generations are never replayed.
         for attempt in 0..<3 {
             try Task.checkCancellation()
-            let result = try await base.send(request)
+            let result = try await operation()
             guard request.httpMethod == "GET", [429, 500, 502, 503, 504].contains(result.1.statusCode), attempt < 2 else { return result }
             let delay = retryDelay(result.1) ?? pow(2, Double(attempt))
             guard delay <= 30 else { return result } // Let the polling worker honor a longer delay.
@@ -37,10 +43,16 @@ func retryDelay(_ response: HTTPURLResponse) -> TimeInterval? {
 
 public protocol HTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+    func sendBounded(_ request: URLRequest, maximumBytes: Int, until: (@Sendable (Data, HTTPURLResponse) -> Bool)?) async throws -> (Data, HTTPURLResponse)
     func stream(_ request: URLRequest, onLine: @Sendable (String) async throws -> Void) async throws -> HTTPURLResponse
 }
 
 extension HTTPTransport {
+    public func sendBounded(_ request: URLRequest, maximumBytes: Int, until: (@Sendable (Data, HTTPURLResponse) -> Bool)?) async throws -> (Data, HTTPURLResponse) {
+        let result = try await send(request)
+        guard result.0.count <= maximumBytes else { throw PuddleError("The service response exceeded its size limit. Narrow the request.") }
+        return result
+    }
     public func stream(_ request: URLRequest, onLine: @Sendable (String) async throws -> Void) async throws -> HTTPURLResponse {
         let (data, response) = try await send(request)
         try checkHTTP(response, data: data, service: "Splash")
@@ -57,6 +69,9 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     private let session: URLSession
     public init() {
         let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
         configuration.timeoutIntervalForRequest = 60
         configuration.timeoutIntervalForResource = 180
         session = URLSession(configuration: configuration, delegate: RejectRedirects(), delegateQueue: nil)
@@ -67,6 +82,22 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
         let (data, response) = try await session.data(for: request)
         guard let response = response as? HTTPURLResponse else {
             throw PuddleError("The service returned an unreadable response.")
+        }
+        return (data, response)
+    }
+
+    public func sendBounded(_ request: URLRequest, maximumBytes: Int, until: (@Sendable (Data, HTTPURLResponse) -> Bool)?) async throws -> (Data, HTTPURLResponse) {
+        let (bytes, rawResponse) = try await session.bytes(for: request)
+        guard let response = rawResponse as? HTTPURLResponse else { throw PuddleError("The service returned an unreadable response.") }
+        guard response.expectedContentLength <= Int64(maximumBytes) else { bytes.task.cancel(); throw PuddleError("The service response exceeded its size limit. Narrow the request.") }
+        var data = Data()
+        // Cancel the stream after its matching RPC result, even when the SSE connection stays open.
+        defer { bytes.task.cancel() }
+        for try await byte in bytes {
+            try Task.checkCancellation()
+            guard data.count < maximumBytes else { throw PuddleError("The service response exceeded its size limit. Narrow the request.") }
+            data.append(byte)
+            if byte == 10, until?(data, response) == true { break }
         }
         return (data, response)
     }
