@@ -232,9 +232,14 @@ run off the main thread and cancel superseded queries.
 ## Voice chat
 
 Choose the microphone in the composer, or press Command-Shift-M, to dictate a
-message. The app requests microphone and speech recognition permission only
-when you start input. Recognition requires an installed on-device language;
-Puddle refuses a cloud fallback if that language is unavailable.
+message. The app requests microphone permission only when you start input.
+On macOS 26+, supported Macs and languages use SpeechAnalyzer independently of
+Siri and macOS Dictation. Install the selected model from **Settings → Assistant
+→ Voice → Install speech language** (or the meeting transcription controls).
+Installation is an explicit download; recognition then works offline. Older
+Macs and other languages use the on-device legacy recognizer, which also
+requests speech recognition permission and may require enabling **System
+Settings → Keyboard → Dictation**. Puddle refuses a cloud transcription fallback.
 
 While listening, the transcript and a microphone indicator remain visible.
 Choose **Done** to finish, or **Cancel** to discard the capture. Each dictation

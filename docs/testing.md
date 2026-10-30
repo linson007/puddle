@@ -352,8 +352,12 @@ pass or real-account/model/hardware acceptance is claimed for these features.
 
 ## Voice chat
 
-In the built app, click the microphone and approve macOS microphone and speech
-recognition access. Speak, choose Done, and verify the transcript becomes an
+In the built app on macOS 26+, leave Siri and macOS Dictation disabled, install
+the selected supported speech language under Settings → Assistant → Voice,
+then click the microphone and approve macOS microphone access. Older Macs and
+languages without SpeechAnalyzer support also require speech recognition access
+and may require enabling macOS Dictation. Speak multiple passages, choose Done,
+and verify the transcript becomes an
 editable draft without sending. Existing draft text should be preserved. Cancel
 a second capture and confirm no extra draft is added. Try navigating away while
 listening and canceling while permission is pending; capture must stop.
@@ -362,7 +366,13 @@ Select a language without an installed on-device recognizer and confirm a useful
 error rather than cloud transcription. Test Read aloud, Stop reading, automatic
 reply playback, and voice speed. Starting voice input must stop playback so the
 assistant does not transcribe its own spoken reply. Hardware and OS permission
-behavior need interactive verification; automated tests use speech fixtures.
+behavior need interactive verification. Automated tests cover engine selection,
+passage revisions, finalization, retained drafts on errors, and cancellation.
+The optional `SpeechCaptureTests` synthetic-audio test uses the production engine
+selector, installed on-device model, audio converter, and voice controller with
+`PUDDLE_LIVE_AUDIO_FILE` set to a short synthetic phrase containing “orange folder”.
+It replaces the microphone with that file; it does not verify live microphone
+permissions or hardware capture.
 
 ## Optional connections
 

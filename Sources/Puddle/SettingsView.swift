@@ -169,6 +169,7 @@ struct PuddleSettingsView: View {
                     }
                     Text("Uses an installed macOS voice. You can also read individual replies aloud from chat.").font(.caption).foregroundStyle(.secondary)
                     if store.speakingMessageID != nil { Button("Stop speaking") { store.stopSpeaking() } }
+                    SpeechLanguageSettingsView(store: store, capture: store.meetingCapture)
                 }
                 SystemDictationSettingsView(store: store, controller: store.systemDictation)
                 StartupSettingsView()
@@ -270,5 +271,29 @@ struct PuddleSettingsView: View {
             .sheet(isPresented: $showingProfiles) { AssistantProfilesView(store: store) }
             .sheet(isPresented: $store.showLocalSetup) { SplashSetupView(store: store, setup: store.splashSetup) }
             .onChange(of: store.connected) { _, connected in if connected { showingGoogleSetup = false } }
+    }
+}
+
+private struct SpeechLanguageSettingsView: View {
+    @ObservedObject var store: PuddleStore
+    @ObservedObject var capture: MeetingCaptureController
+    var body: some View {
+        if capture.isSupported {
+            HStack {
+                Button("Install speech language…") { store.installMeetingSpeechLanguage() }.disabled(!store.canInstallMeetingSpeechLanguage)
+                if capture.status == .installingLanguage {
+                    ProgressView().controlSize(.small)
+                    Button("Cancel download") { capture.cancel() }
+                }
+            }
+            Text("On macOS 26+, supported languages use on-device transcription independently of Siri and macOS Dictation. Install the selected language once; audio stays on this Mac.").font(.caption).foregroundStyle(.secondary)
+            if capture.status == .installingLanguage || capture.message == "Speech language ready." {
+                Text(capture.message).font(.caption).foregroundStyle(.secondary)
+            }
+            if let error = capture.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
+            if store.state.settings.networkDisabled {
+                Text("Resume external connections to download a speech language. Installed languages work offline.").font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 }

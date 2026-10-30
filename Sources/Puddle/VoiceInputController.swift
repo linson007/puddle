@@ -21,7 +21,7 @@ struct DictationDraft: Identifiable, Equatable {
     private var startTask: Task<Void, Never>?
     private var deadlineTask: Task<Void, Never>?
 
-    init(capture: any SpeechCapturing, maximumSeconds: Double = 50, finishTimeout: Double = 2) {
+    init(capture: any SpeechCapturing, maximumSeconds: Double = 50, finishTimeout: Double = 15) {
         self.capture = capture; self.maximumSeconds = maximumSeconds; self.finishTimeout = finishTimeout
     }
 
@@ -45,7 +45,9 @@ struct DictationDraft: Identifiable, Equatable {
                     else if text.count >= 12_000 { self.finish() }
                 }, onError: { [weak self] message in
                     guard let self, self.generation == expected else { return }
-                    self.complete(notice: "Speech input stopped: \(message). Review any captured text before sending.")
+                    let punctuation = message.hasSuffix(".") ? "" : "."
+                    let review = self.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : " Review any captured text before sending."
+                    self.complete(notice: "Speech input stopped: \(message)\(punctuation)\(review)")
                 })
                 try Task.checkCancellation()
                 guard generation == expected, status == .requestingPermission else { return }

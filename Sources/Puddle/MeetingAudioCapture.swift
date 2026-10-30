@@ -66,7 +66,7 @@ extension MeetingAudioCapturing {
     func installedModule(_ language: String) async throws -> SpeechTranscriber {
         let transcriber = try await module(language)
         guard await AssetInventory.status(forModules: [transcriber]) == .installed else {
-            throw PuddleError("Install the selected speech language first. This downloads Apple's on-device model; meeting audio stays on this Mac.")
+            throw PuddleError("Install the selected speech language in Settings → Voice → Install speech language, then try again. This downloads Apple's on-device model; audio stays on this Mac.")
         }
         try Task.checkCancellation()
         return transcriber

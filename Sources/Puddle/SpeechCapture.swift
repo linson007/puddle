@@ -11,6 +11,103 @@ import Speech
 }
 
 @MainActor final class SystemSpeechCapture: SpeechCapturing {
+    private let analyzer: any SpeechCapturing
+    private let legacy: any SpeechCapturing
+    private let supportsAnalyzer: @MainActor (String) async -> Bool
+    private var active: (any SpeechCapturing)?
+    private var session = UUID()
+
+    init(analyzer: (any SpeechCapturing)? = nil, legacy: (any SpeechCapturing)? = nil,
+         supportsAnalyzer: (@MainActor (String) async -> Bool)? = nil) {
+        self.analyzer = analyzer ?? AnalyzerSpeechCapture()
+        self.legacy = legacy ?? LegacySpeechCapture()
+        self.supportsAnalyzer = supportsAnalyzer ?? Self.hasAnalyzerSupport
+    }
+
+    static func hasAnalyzerSupport(language: String) async -> Bool {
+        guard #available(macOS 26, *), SpeechTranscriber.isAvailable else { return false }
+        return await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: language)) != nil
+    }
+
+    func start(language: String, onText: @escaping @MainActor (String, Bool) -> Void,
+               onError: @escaping @MainActor (String) -> Void) async throws {
+        try Task.checkCancellation(); cancel()
+        let expected = session
+        let useAnalyzer = await supportsAnalyzer(language)
+        try Task.checkCancellation()
+        guard session == expected else { throw CancellationError() }
+        let capture = useAnalyzer ? analyzer : legacy
+        active = capture
+        do {
+            try await capture.start(language: language, onText: { [weak self] text, final in
+                guard self?.session == expected else { return }; onText(text, final)
+            }, onError: { [weak self] message in
+                guard self?.session == expected else { return }; onError(message)
+            })
+        } catch {
+            if session == expected { cancel() }
+            throw error
+        }
+    }
+
+    func finish() { active?.finish() }
+    func cancel() { session = UUID(); active?.cancel(); active = nil }
+}
+
+/// Adapts the local microphone analyzer to a single, editable dictation draft.
+/// A finalized passage is only part of the utterance; completion waits for Done.
+@MainActor final class AnalyzerSpeechCapture: SpeechCapturing {
+    private let capture: any MeetingAudioCapturing
+    private var timeline = MeetingTranscriptTimeline()
+    private var session = UUID()
+    private var finishTask: Task<Void, Never>?
+    private var onText: (@MainActor (String, Bool) -> Void)?
+    private var onError: (@MainActor (String) -> Void)?
+    private var text: String { timeline.segments.map(\.text).joined(separator: " ") }
+
+    init(capture: (any MeetingAudioCapturing)? = nil) { self.capture = capture ?? SystemMeetingAudioCapture() }
+
+    func start(language: String, onText: @escaping @MainActor (String, Bool) -> Void,
+               onError: @escaping @MainActor (String) -> Void) async throws {
+        try Task.checkCancellation(); cancel()
+        self.onText = onText; self.onError = onError
+        let expected = session
+        do {
+            try await capture.start(language: language, source: .microphone, onSegment: { [weak self] segment in
+                guard let self, self.session == expected else { return }
+                do { try self.timeline.receive(segment); self.onText?(self.text, false) }
+                catch { self.onError?(error.localizedDescription) }
+            }, onStatus: { _ in }, onError: { [weak self] message in
+                guard let self, self.session == expected else { return }; self.onError?(message)
+            })
+            try Task.checkCancellation()
+            guard session == expected else { throw CancellationError() }
+        } catch {
+            if session == expected { cancel() }
+            throw error
+        }
+    }
+
+    func finish() {
+        guard onText != nil, finishTask == nil else { return }
+        let expected = session
+        finishTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try Task.checkCancellation(); try await capture.finish(); try Task.checkCancellation()
+                guard session == expected else { return }; onText?(text, true)
+            } catch is CancellationError {}
+            catch { if session == expected { onError?(error.localizedDescription) } }
+        }
+    }
+
+    func cancel() {
+        session = UUID(); finishTask?.cancel(); finishTask = nil; capture.cancel()
+        timeline = MeetingTranscriptTimeline(); onText = nil; onError = nil
+    }
+}
+
+@MainActor final class LegacySpeechCapture: SpeechCapturing {
     private var engine: AVAudioEngine?
     private var recognizer: SFSpeechRecognizer?
     private var request: SFSpeechAudioBufferRecognitionRequest?
@@ -52,7 +149,7 @@ import Speech
         tapInstalled = true
         recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
             let text = result?.bestTranscription.formattedString, isFinal = result?.isFinal ?? false
-            let message = error?.localizedDescription
+            let message = error.map(Self.errorMessage)
             Task { @MainActor in
                 guard let self, self.session == expected else { return }
                 if let text { onText(text, isFinal) }
@@ -72,5 +169,13 @@ import Speech
     private func stopAudio() {
         engine?.stop()
         if tapInstalled { engine?.inputNode.removeTap(onBus: 0); tapInstalled = false }
+    }
+
+    static func errorMessage(for error: Error) -> String {
+        let error = error as NSError
+        if error.domain == "kLSRErrorDomain", error.code == 201 {
+            return "macOS Dictation is disabled for this speech language. Enable Dictation in System Settings → Keyboard → Dictation, then try again."
+        }
+        return error.localizedDescription
     }
 }
