@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose an improvement and explain the problem it solves.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please check existing issues and docs/production-roadmap.md before proposing a feature.
+        Describe the user need and use synthetic examples. Larger changes benefit from discussion before implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe who is affected and the current friction.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the user flow and what a successful result looks like.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives or workarounds
+      description: What have you tried, and where does it fall short?
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Data access and permissions
+      description: If relevant, describe account access, external actions, new dependencies, or storage changes the feature would require.

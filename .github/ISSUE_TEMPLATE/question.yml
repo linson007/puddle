@@ -1,0 +1,30 @@
+name: Setup or usage question
+description: Ask for help after checking the documentation.
+title: "[Question]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with SUPPORT.md and the setup guides linked there. Support is best effort.
+        Keep account data, credentials, private paths, and personal workspace contents out of your report.
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do?
+      description: Describe your goal, where you got stuck, and any relevant error.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include Puddle version/commit and macOS version. Add toolchain, model, provider, or browser-driver details when relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: attempted
+    attributes:
+      label: What have you tried?
+      description: Link the guide or existing issue you followed and describe the result. Use synthetic examples.
+    validations:
+      required: true

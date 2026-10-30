@@ -5,4 +5,8 @@ build/
 client_secret*.json
 credentials.json
 .env
+.env.*
+!.env.example
+.swiftpm/
+*.xcuserdatad/
 *.log

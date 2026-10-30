@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: Swift (${{ matrix.configuration }})
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [debug, release]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          xcrun --sdk macosx --show-sdk-version
+      # Optional live/model/browser/audio/load tests remain disabled. All other
+      # tests use synthetic data and injected transports, without provider secrets.
+      - name: Run fixture tests
+        env:
+          CONFIGURATION: ${{ matrix.configuration }}
+        run: sh scripts/swift.sh test -c "$CONFIGURATION"
+      - name: Build and verify app bundle
+        if: matrix.configuration == 'release'
+        env:
+          PUDDLE_BUILD_CONFIGURATION: release
+        run: |
+          make build
+          plutil -lint build/Puddle.app/Contents/Info.plist
+          codesign --verify --deep --strict build/Puddle.app
+          test ! -e build/Puddle.app/Contents/Resources/GoogleClient.json

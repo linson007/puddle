@@ -1,5 +1,36 @@
 # Verify the Puddle personal assistant
 
+## Contributor checks without accounts or a model
+
+From the repository root, run:
+
+```sh
+make test
+sh scripts/swift.sh test -c release
+make build
+```
+
+The default suite uses synthetic data and injected transports. It needs no
+Splash server, provider credentials, signing identity, or macOS recording grants.
+Some tests are intentionally skipped until their integration is configured:
+
+| Opt-in | What it enables |
+| --- | --- |
+| `PUDDLE_LIVE_SPLASH=1` | Synthetic real-model evaluations against Splash at `http://127.0.0.1:8000` |
+| `PUDDLE_CUA_DRIVER=/absolute/path/to/cua-driver` | Installed-driver MCP handshake/catalog check; `PUDDLE_CUA_LIVE=1` additionally starts a real dedicated browser session |
+| `PUDDLE_LIVE_AUDIO_FILE=/absolute/path/to/synthetic-audio` | On-device speech recognition of a synthetic audio fixture on macOS 26+ |
+| `PUDDLE_LOAD_TESTS=1` | Larger synthetic storage and performance workloads described below |
+
+Features requiring macOS 26 also skip their corresponding tests on older systems.
+Leave live opt-ins unset for ordinary changes. A passing fixture suite covers
+application behavior under those fixtures; it does not establish model quality,
+real provider behavior, permission delivery, or public-release readiness.
+
+The [CI workflow](../.github/workflows/ci.yml) runs the default debug and release
+suites on macOS 26, then builds and verifies an ad hoc release bundle without an
+OAuth client file. For setup and contribution expectations, see
+[CONTRIBUTING.md](../CONTRIBUTING.md).
+
 ## Latest public-release regression
 
 Latest [audio follow-up](live-browser-os-acceptance-2026-10-30.md#follow-up-with-selected-source-diagnostics):

@@ -1,5 +1,8 @@
 # Puddle
 
+[![CI](https://github.com/linson007/puddle/actions/workflows/ci.yml/badge.svg)](https://github.com/linson007/puddle/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 Your personal AI assistant, running locally on your Mac.
 
 Explore the [product website and interactive demo](https://linson007.github.io/puddle/).
@@ -13,6 +16,15 @@ running model; conversations use your local Splash server.
 Puddle is a native SwiftUI app using a local Splash inference server, with guided
 setup and optional managed launch. Open source under [Apache 2.0](LICENSE), with no third-party package
 dependencies.
+
+**Development status:** Puddle is under active development. Public distribution
+is on hold pending the documented [release gates](docs/production-roadmap.md#current-verification-and-release-gates),
+including browser-action safeguards and native/provider acceptance. Source builds
+and the fixture demo are available for development and evaluation.
+
+[Getting started](#build-and-run) · [Contributing](CONTRIBUTING.md) ·
+[Getting help](SUPPORT.md) · [Security policy](SECURITY.md) ·
+[Report a bug](https://github.com/linson007/puddle/issues/new/choose)
 
 See the [complete supported features guide](docs/features.md) for capabilities,
 controls, storage recovery, and current limits.
@@ -31,11 +43,23 @@ returns to Today.
 
 ## Build and run
 
-Requirements: macOS 14 or later and Swift 6 command line tools or Xcode. Splash
+The app's deployment target is **macOS 14 or later**. Building from source requires
+**Xcode 26 or later**, or matching command line tools with Swift 6 and the macOS 26
+SDK, because the source includes newer speech APIs behind runtime availability
+checks. Your build Mac must meet the selected toolchain's requirements. Splash
 retains its own Apple silicon and macOS requirements.
 
-    make build
-    open build/Puddle.app
+```sh
+git clone https://github.com/linson007/puddle.git
+cd puddle
+make build
+open build/Puddle.app
+```
+
+No model, cloud account, OAuth client file, or paid signing identity is needed to
+build, run the fixture demo (`make demo`), or run the default tests (`make test`).
+The build uses ad hoc signing. AI conversations require a separately running
+Splash server; optional connections require their own setup below.
 
 Choose **Set Up Local AI** from Today, chat, or Settings for hardware checks,
 Splash discovery/installation, model selection, managed start/stop and synthetic
@@ -187,6 +211,10 @@ state. It accesses neither your Google account nor your real app cache.
 Explore general chat, automatically save a memory, create a demo reminder,
 and inspect Tasks, Memory, and Connections. Demo replies are not model inference.
 
+This is the quickest way to explore the interface before configuring local AI
+or accounts. See [contributor setup](CONTRIBUTING.md#development-setup) for debug
+builds and focused tests.
+
 ## Data and runtime boundaries
 
 Puddle uses Splash’s HTTP API without importing its internals or modifying its
@@ -226,6 +254,12 @@ Context budgets respect the model's reported capacity and use text token estimat
     make test
     make build
 
+The default suite uses fixtures. Live Splash, installed browser-driver, audio,
+and load evaluations are opt-in and are skipped unless explicitly configured.
+CI runs the default suite in debug and release on macOS 26 and packages an ad hoc
+release app without account credentials. CI does not establish the manual release
+gates or run live provider actions.
+
 Tests cover chat without accounts, tool-call round trips, unavailable tools,
 declined actions, incomplete calls, execution limits, memory/state migration,
 reminders, OAuth/PKCE, incremental Gmail, paginated Calendar, streamed replies,
@@ -255,7 +289,30 @@ for the feature-by-feature record and [release instructions](docs/releases.md).
     Sources/Puddle/          Native app, conversation UI, approvals, workers
     Sources/PuddleCore/      Local agent loop, Splash, memory/tasks, connectors
     Tests/PuddleCoreTests/   Isolated core and integration tests
+    Tests/PuddleAppTests/    App workflow and native integration fixtures
     app/                    App metadata
     scripts/                Build and icon generation
     docs/                   Connection setup and verification
+    website/dist/           Buildless product website and interactive demo
+    .github/                CI, website deployment, and contribution templates
+
+## Contributing and community
+
+Contributions are welcome: clearer docs, reproducible bug reports, accessibility
+feedback, test coverage, and focused fixes all help. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code conventions,
+and useful first contributions. Discuss larger changes in an issue before
+starting implementation, and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Use [GitHub Issues](https://github.com/linson007/puddle/issues/new/choose) for bugs,
+feature requests, and questions. [SUPPORT.md](SUPPORT.md) explains what to include
+and how to keep personal data out of reports. Community support is best effort.
+For suspected vulnerabilities, follow the [security reporting policy](SECURITY.md#report-a-vulnerability).
+
+## License
+
+Puddle is licensed under the [Apache License 2.0](LICENSE). Contributions are
+provided under the same license. Splash, Cua Driver, browsers, models, and other
+optional external tools retain their own licenses and terms; they are not
+included in Puddle's Swift package.
 

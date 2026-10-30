@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible problem with Puddle or its website.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Puddle. Please search existing issues first.
+        Use synthetic examples and remove credentials and personal data from all attachments.
+        For vulnerabilities, use the repository Security tab or ask for a private channel without posting details.
+  - type: input
+    id: version
+    attributes:
+      label: Puddle version or commit
+      placeholder: "Source commit from git rev-parse --short HEAD, app version, or website"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include macOS version and Mac architecture; add Xcode/Swift/SDK for builds or browser for website problems. Include model/runtime/driver versions if relevant.
+      placeholder: "macOS …; Apple silicon or Intel; Xcode …; Swift …"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give the smallest example. Say whether this occurs in demo, fixtures, or a live integration.
+      placeholder: |
+        1. Open …
+        2. Choose …
+        3. Observe …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include any exact error message and a redacted screenshot if useful.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Relevant diagnostics
+      description: Optional minimal, redacted output. Do not upload OAuth files, tokens, workspaces, backups, real messages, or transcripts.
+      render: text
