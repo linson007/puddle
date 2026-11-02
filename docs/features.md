@@ -1,18 +1,16 @@
 # Puddle supported features
 
 Puddle is a native macOS personal assistant using a local
-OpenAI-compatible model server. Today brings together priorities, commitments, follow-ups,
+Splash server. Today brings together priorities, commitments, follow-ups,
 meeting preparation and optional Gmail/Calendar context. Personal memory,
 conversation history and portable workspace backups stay local. Organizing
-work needs no account or model; conversation needs a running compatible local server.
+work needs no account or model; conversation needs only Splash.
 
 ## Requirements and setup
 
 - macOS 14 or later; Swift 6 tools or Xcode to build.
-- A local server providing `/v1/models` and `/v1/chat/completions` with streaming
-  for real model responses, such as Ollama, LM Studio, llama.cpp or Splash.
-  Assistant tools require compatible function calling. Server and model
-  hardware/OS requirements are independent of Puddle.
+- A running Splash server for real model responses. Splash has its own hardware,
+  model, and operating system requirements.
 - A Google account and an app-owner-provisioned Desktop OAuth client only for
   Gmail or Calendar. See [Google setup](gmail-setup.md).
 - Desktop notification permission for reminders outside the app.
@@ -20,18 +18,14 @@ work needs no account or model; conversation needs a running compatible local se
 - Google Chrome for the experimental local Google Meet attendance assistant.
 
 Build with `make build`, then open `build/Puddle.app`. In Settings → Local AI,
-enter the local server address, optional exact Model ID and optional API key, then
-choose **Save and Test Connection**. Leave Model ID blank for the first model
-listed by the server. Root addresses and `/v1` addresses are accepted. Common
-ports are 11434 for Ollama, 1234 for LM Studio, 8080 for llama.cpp and 8000 for Splash.
-See the [connection examples and compatibility contract](../README.md#build-and-run).
+enter the Splash address and optional API key and choose **Save and Test
+Connection**. The default address is `http://127.0.0.1:8000`.
 
 ## Guided setup, privacy and additional workspaces
 
-**Set Up Local AI** connects any supported local server and tests a real answer
-plus a synthetic required tool call. Its optional Splash section checks
-chip/OS/RAM/free disk, discovers or installs Splash, offers two resource presets
-and starts/stops its own process. It never executes personal tools during
+**Set Up Local AI** checks chip/OS/RAM/free disk, discovers or installs Splash,
+offers two resource presets, starts/stops its own process and tests a real answer
+plus a synthetic required tool call. It never executes personal tools during
 setup. Installation/first model download need internet; cached models can start
 with external APIs paused. Existing independently managed servers remain usable.
 
