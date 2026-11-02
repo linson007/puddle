@@ -15,7 +15,7 @@ extension PuddleStore {
         case .searchMail:
             guard mailConnected, !state.settings.networkDisabled else { throw PuddleError("Mail is not available for this routine.") }
             let query = String((arguments["query"] as? String ?? "").prefix(500))
-            return SplashClient.emailContext(try await searchCurrentMail(query))
+            return LocalInferenceClient.emailContext(try await searchCurrentMail(query))
         case .knowledge:
             let query = String((arguments["query"] as? String ?? "").prefix(500))
             return try encoded(LocalKnowledge.search(query, documents: state.knowledgeDocuments))

@@ -11,8 +11,8 @@ This narrows Puddle's scope; it does not fix the external driver's behavior.
 
 Open **More → Browser** to read pages alongside the assistant.
 Puddle connects to the open-source [Cua Driver](https://cua.ai/docs/cua-driver),
-using its persistent local MCP connection. Splash remains the model provider;
-no Cua cloud account or model API key is needed.
+using its persistent local MCP connection. Your chosen local server remains the model provider;
+no Cua cloud account is needed. A model API key is needed only if your server requires one.
 
 ## Setup
 
@@ -27,7 +27,7 @@ no Cua cloud account or model API key is needed.
    saved locally; a browser session is never resumed automatically.
 4. Use **Open Page**, or enter a request in **Ask Puddle**, for example:
    “Open https://en.wikipedia.org/wiki/Ada_Lovelace and summarize the page.”
-   A running Splash model supporting function calls is needed for chat tasks.
+   A running local model supporting function calls is needed for chat tasks.
 
 The integration uses `cua-driver mcp`, with the driver's normal macOS app
 identity. It does not use direct mode, attach to a personal profile, or change
@@ -43,7 +43,7 @@ are not copied. Sign in yourself inside that window if a task needs an account.
   replaces opaque capabilities; older refs/tab IDs must not be reused.
 - Puddle can navigate to HTTP/HTTPS pages and scroll. It returns fresh page
   state after each action. Page text
-  and controls are sent to your local Splash model, rather than screenshots.
+  and controls are sent to your chosen local model, rather than screenshots.
 - Assistant navigation and scrolling wait for **Allow** or **Decline** in chat.
   Reviews show the exact destination or scroll target. Declining sends nothing
   to Cua. Clicking links, typing and submitting forms require manual takeover.
@@ -107,4 +107,4 @@ For interactive acceptance, connect the actual driver with macOS permissions,
 open a disposable page, navigate by URL and scroll. Confirm fresh results and
 visible browser state, manual takeover, decline an action,
 stop during work, restart Puddle and verify no automatic reconnect. Test with
-your supported Splash model; fixture success does not prove live model quality.
+your chosen local model; fixture success does not prove live model quality.

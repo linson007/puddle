@@ -10,7 +10,7 @@ struct TodayView: View {
     @State private var expandedAgenda = false
     @AppStorage("todaySetupDismissed") private var setupDismissed = false
 
-    private var canAsk: Bool { !store.isThinking && (store.demo || store.splashModel != nil) }
+    private var canAsk: Bool { !store.isThinking && (store.demo || store.inferenceModel != nil) }
     private var hasCalendarContext: Bool { store.calendarConnected || !store.state.calendarEvents.isEmpty }
     private var hasMailContext: Bool { store.mailConnected || !store.mailInbox.isEmpty }
 
@@ -21,7 +21,7 @@ struct TodayView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         header(brief)
-                        if (!setupDismissed && !store.state.profile.configured) || (!store.demo && store.splashModel == nil) { setup }
+                        if (!setupDismissed && !store.state.profile.configured) || (!store.demo && store.inferenceModel == nil) { setup }
                         if hasCalendarContext && geometry.size.width >= 760 {
                             HStack(alignment: .top, spacing: 18) {
                                 priorities(brief).frame(maxWidth: .infinity)
@@ -44,7 +44,7 @@ struct TodayView: View {
                                 }
                             }
                         }
-                        if store.demo || store.splashModel != nil { assistantBrief }
+                        if store.demo || store.inferenceModel != nil { assistantBrief }
                         if !brief.overdue.isEmpty { commitments("Needs a follow-up", tasks: brief.overdue, now: timeline.date) }
                         if !brief.dueToday.isEmpty { commitments("Due later today", tasks: brief.dueToday, now: timeline.date) }
                         let dueIDs = Set((brief.overdue + brief.dueToday).map(\.id))
@@ -102,12 +102,12 @@ struct TodayView: View {
                 Image(systemName: "sparkles").foregroundStyle(PuddleStyle.teal).padding(9)
                     .background(PuddleStyle.inset, in: RoundedRectangle(cornerRadius: 9))
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(store.splashModel == nil && !store.demo ? "Meet your local assistant" : "Make Puddle yours").font(.headline)
+                    Text(store.inferenceModel == nil && !store.demo ? "Meet your local assistant" : "Make Puddle yours").font(.headline)
                     Text("Add your context and connect the tools you use, at your own pace.")
                         .font(.caption).foregroundStyle(PuddleStyle.muted)
                 }
                 Spacer(minLength: 0)
-                if store.splashModel != nil || store.demo {
+                if store.inferenceModel != nil || store.demo {
                     Button { setupDismissed = true } label: { Image(systemName: "xmark").frame(width: 24, height: 24) }
                         .buttonStyle(.plain).foregroundStyle(PuddleStyle.muted).accessibilityLabel("Dismiss optional setup")
                 }
@@ -127,7 +127,7 @@ struct TodayView: View {
     @ViewBuilder private var setupActions: some View {
         Button(store.state.profile.configured ? "Manage profiles" : "Choose a profile") { showingProfile = true }
             .buttonStyle(PuddleSecondaryButtonStyle())
-        if store.splashModel == nil && !store.demo {
+        if store.inferenceModel == nil && !store.demo {
             Button { store.showLocalSetup = true } label: { Label("Set up local AI", systemImage: "desktopcomputer") }
                 .buttonStyle(PuddlePrimaryButtonStyle())
         } else {

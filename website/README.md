@@ -31,6 +31,9 @@ Open `http://127.0.0.1:4173`. No dependency installation or build is required.
 - Responsive navigation, installation-command copy control and FAQ disclosures.
 - All app data shown on the website is illustrative. The site does not connect
   to accounts, perform Puddle actions or run a model.
+- Local AI copy presents Splash as a suggestion and supports any compatible local
+  provider. Runtime installation, hardware requirements and model management belong
+  to the chosen provider.
 - Product claims and requirements come from the repository README and feature
   guide. Revisit these when the application changes.
 

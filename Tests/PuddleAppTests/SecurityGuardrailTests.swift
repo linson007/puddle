@@ -28,7 +28,6 @@ private actor GuardrailModel: HTTPTransport {
         requests.append(request)
         let body: [String: Any]
         if request.url?.host != "127.0.0.1" { writes += request.httpMethod == "POST" ? 1 : 0; body = [:] }
-        else if request.url?.path == "/ready" { body = ["status": "ready"] }
         else if request.url?.path == "/v1/models" { body = ["data": [["id": "hostile-fixture", "max_model_len": 32768]]] }
         else {
             let payload = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]

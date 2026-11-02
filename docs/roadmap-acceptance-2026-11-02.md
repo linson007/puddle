@@ -1,5 +1,8 @@
 # Roadmap acceptance, 2 November 2026
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 This pass tests the existing personal-assistant loop with the owner's running
 local model. It fixes observed failures without adding specialist features.
 Public distribution remains gated by the dependencies below.

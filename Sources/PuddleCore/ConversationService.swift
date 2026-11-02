@@ -21,7 +21,7 @@ public struct ConversationService: Sendable {
         if context.memoryLearning, MemoryLearning.shouldLearn(question) {
             let extractionStart = Date()
             let updates: [MemoryUpdate]
-            do { updates = try await MemoryLearner(splash: client).updates(from: question, memories: context.memories, model: model.id) }
+            do { updates = try await MemoryLearner(client: client).updates(from: question, memories: context.memories, model: model.id) }
             catch is CancellationError { throw CancellationError() }
             catch { updates = []; await onActivity("Memory extraction unavailable; continuing conversation") }
             try Task.checkCancellation()
@@ -29,7 +29,7 @@ public struct ConversationService: Sendable {
             extractionSeconds = Date().timeIntervalSince(extractionStart)
         }
         do {
-            let answer = try await LocalAgent(splash: client).respond(question: question, history: history, context: context,
+            let answer = try await LocalAgent(client: client).respond(question: question, history: history, context: context,
                 tools: tools, execute: execute, onActivity: onActivity, model: model.id,
                 contextTokens: min(contextTokens, model.contextTokens ?? contextTokens), onPartial: { text in
                     if !text.isEmpty { await timing.mark() }; await onPartial(text)

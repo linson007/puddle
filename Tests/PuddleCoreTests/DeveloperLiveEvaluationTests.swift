@@ -9,18 +9,17 @@ private actor DeveloperLiveReceipts {
 
 final class DeveloperLiveEvaluationTests: XCTestCase {
     func testLocalModelReadsSyntheticProjectBeforeAnsweringWithSource() async throws {
-        guard ProcessInfo.processInfo.environment["PUDDLE_LIVE_SPLASH"] == "1" else { throw XCTSkip("Optional real local-model evaluation") }
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("puddle-live-project-\(UUID())", isDirectory: true)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
         let label = "puddle-check-" + UUID().uuidString.prefix(8)
         try Data("// Synthetic fixture only\nlet buildLabel = \"\(label)\"\n".utf8).write(to: root.appendingPathComponent("Main.swift"))
         let project = DeveloperProject(name: "Synthetic evaluation", path: root.path), receipts = DeveloperLiveReceipts()
-        let splash = try SplashClient(address: "http://127.0.0.1:8000")
-        let model = try await splash.modelInfo()
+        let client = try LiveInferenceFixture.client()
+        let model = try await client.modelInfo()
         var context = AgentContext(memoryLearning: false); context.profileKind = .developer
         context.profileName = "Developer"; context.developerProjectName = project.name
-        let answer = try await LocalAgent(splash: splash).respond(
+        let answer = try await LocalAgent(client: client).respond(
             question: "Use read_project_file to inspect Main.swift. What is the exact value of buildLabel? Cite Main.swift and its source line. Do not answer without reading the file.",
             history: [], context: context, tools: [.projectRead], execute: { call in
                 let parameters = try call.parameters()

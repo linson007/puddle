@@ -41,7 +41,7 @@ struct AssistantWindow: View {
             VStack(spacing: 0) {
                 #if DEBUG
                 if UITestWorkspace.enabled {
-                    Label("UI test workspace · Synthetic providers, real local Splash · No personal credentials", systemImage: "testtube.2")
+                    Label("UI test workspace · Synthetic providers, real local AI · No personal credentials", systemImage: "testtube.2")
                         .font(.caption).padding(10).frame(maxWidth: .infinity).background(.orange.opacity(0.15))
                 }
                 #endif
@@ -118,7 +118,7 @@ struct AssistantWindow: View {
                 }
             }
             .sheet(isPresented: $store.showSetup) { GoogleSetupView(store: store) }
-            .sheet(isPresented: $store.showLocalSetup) { SplashSetupView(store: store, setup: store.splashSetup) }
+            .sheet(isPresented: $store.showLocalSetup) { LocalAISetupView(store: store, setup: store.localAISetup) }
             .sheet(item: $store.editingAction) { ActionEditorView(store: store, initial: $0) }
             .sheet(isPresented: $store.showCommands) { CommandPaletteView(store: store) }
             .sheet(isPresented: $store.showQuickCapture) { CommitmentEditor(store: store) }
@@ -145,7 +145,7 @@ private struct ConversationView: View {
                 Text("Puddle").font(.system(size: 17, weight: .semibold, design: .rounded))
                 Label(store.state.profileLibrary.active.title, systemImage: store.state.profileLibrary.active.kind.icon).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                if let model = store.splashModel {
+                if let model = store.inferenceModel {
                     Label("Local model", systemImage: "desktopcomputer").font(.caption).foregroundStyle(PuddleStyle.teal).help(model)
                 } else if !store.demo {
                     Button { store.showLocalSetup = true } label: { Label("Set up local AI", systemImage: "bolt.horizontal") }.font(.caption)
@@ -297,11 +297,11 @@ private struct ConversationView: View {
                 Text(store.state.profileLibrary.active.kind.summary + "\nI’m here on your Mac, with memory that stays with you.")
                     .font(.system(size: 15)).foregroundStyle(.secondary).lineSpacing(4)
             }
-            if !store.demo && store.splashModel == nil {
+            if !store.demo && store.inferenceModel == nil {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("A little setup, then we're ready.").font(.callout.weight(.medium))
-                        Text("Connect Splash to start a local conversation.").font(.caption).foregroundStyle(PuddleStyle.muted)
+                        Text("Connect a local AI server to start a conversation.").font(.caption).foregroundStyle(PuddleStyle.muted)
                     }
                     Spacer(minLength: 0)
                     Button("Set up local AI") { store.showLocalSetup = true }.buttonStyle(PuddlePrimaryButtonStyle())
@@ -330,7 +330,7 @@ private struct ConversationView: View {
                 Image(systemName: "arrow.up.left").font(.caption).foregroundStyle(PuddleStyle.muted)
             }.padding(14).frame(maxWidth: .infinity).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 11))
                 .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(PuddleStyle.line))
-        }.buttonStyle(.plain).disabled(store.isThinking || (!store.demo && store.splashModel == nil))
+        }.buttonStyle(.plain).disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
     }
     private func send() {
         guard !store.isThinking, !voice.isActive, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -455,12 +455,12 @@ private struct ConnectionsView: View {
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 14) {
                     Label("Local intelligence", systemImage: "desktopcomputer").font(.headline)
-                    Text(store.splashModel ?? "Connect a running Splash server to start chatting with your local model.")
+                    Text(store.inferenceModel ?? "Connect a running local AI server to start chatting with your model.")
                         .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
                     HStack {
-                        Button("Configure Splash…") { store.settingsTab = "localAI"; openSettings() }
-                        Button("Test Connection") { Task { await store.testSplash() } }.disabled(store.isTestingSplash)
-                        if store.isTestingSplash { ProgressView().controlSize(.small) }
+                        Button("Configure Local AI…") { store.settingsTab = "localAI"; openSettings() }
+                        Button("Test Connection") { Task { await store.testInferenceConnection() } }.disabled(store.isTestingInference)
+                        if store.isTestingInference { ProgressView().controlSize(.small) }
                     }
                 }.connectionCard()
                 WorkConnectionsView(store: store)

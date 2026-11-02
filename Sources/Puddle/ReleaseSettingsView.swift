@@ -29,8 +29,7 @@ struct ReleaseSettingsView: View {
             }
             Section("Local diagnostics") {
                 Button("Prepare Redacted Diagnostics") {
-                    let hardware = store.splashSetup.hardware
-                    diagnostics = "Puddle \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\nChip: \(hardware?.chip ?? "Not inspected")\nMemory: \(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) GB\nWorkspace schema: \(AppSnapshot.currentSchemaVersion)\nLocal AI connected: \(store.splashModel != nil)\nCua connected: \(store.browserWorkspace.isConnected)\nExternal connections paused: \(store.state.settings.networkDisabled)\nNo conversation, document, account, address, token, URL, path, or transcript content is included."
+                    diagnostics = "Puddle \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\nMemory: \(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) GB\nWorkspace schema: \(AppSnapshot.currentSchemaVersion)\nLocal AI connected: \(store.inferenceModel != nil)\nCua connected: \(store.browserWorkspace.isConnected)\nExternal connections paused: \(store.state.settings.networkDisabled)\nNo conversation, document, account, address, token, URL, path, or transcript content is included."
                 }
                 if let diagnostics {
                     Text(diagnostics).font(.caption.monospaced()).textSelection(.enabled)
@@ -38,7 +37,7 @@ struct ReleaseSettingsView: View {
                 }
                 Text("Diagnostics stay here until you choose to copy and share them. Puddle does not upload them.").font(.caption).foregroundStyle(.secondary)
             }
-        }.formStyle(.grouped).onAppear { store.splashSetup.inspect() }
+        }.formStyle(.grouped)
             .onChange(of: updatesBlocked) { _, blocked in if blocked { updates.cancel(message: "Updates are paused while external connections are unavailable.") } }
             .onDisappear { updates.cancel() }
     }

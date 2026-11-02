@@ -55,7 +55,7 @@ extension HTTPTransport {
     }
     public func stream(_ request: URLRequest, onLine: @Sendable (String) async throws -> Void) async throws -> HTTPURLResponse {
         let (data, response) = try await send(request)
-        try checkHTTP(response, data: data, service: "Splash")
+        try checkHTTP(response, data: data, service: "Local AI")
         for line in String(decoding: data, as: UTF8.self).components(separatedBy: .newlines) {
             try Task.checkCancellation(); try await onLine(line)
         }
@@ -108,7 +108,7 @@ public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
         if !(200..<300).contains(response.statusCode) {
             var data = Data()
             for try await byte in bytes { data.append(byte); if data.count >= 65536 { break } }
-            try checkHTTP(response, data: data, service: "Splash")
+            try checkHTTP(response, data: data, service: "Local AI")
         }
         for try await line in bytes.lines {
             try Task.checkCancellation()

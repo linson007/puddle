@@ -27,7 +27,7 @@ struct CommandPaletteView: View {
         }
         command("new", "New conversation", "new conversation", "square.and.pencil") { store.clearChat(); store.section = .chat }
         command("capture", "Capture a commitment", "capture commitment", "plus") { store.showQuickCapture = true }
-        command("setup", "Set up local AI", "local ai setup splash", "desktopcomputer") { store.showLocalSetup = true }
+        command("setup", "Set up local AI", "local ai setup inference ollama lm studio llama client", "desktopcomputer") { store.showLocalSetup = true }
         values += sections.map { section in
             Item(id: "section-" + section.rawValue, title: "Open " + section.rawValue, icon: section.icon, result: nil) { store.section = section }
         }

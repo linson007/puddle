@@ -26,7 +26,6 @@ private actor DeveloperModel: HTTPTransport {
         requests.append(request)
         let body: [String: Any]
         switch request.url!.path {
-        case "/ready": body = ["status": "ready"]
         case "/v1/models": body = ["data": [["id": "fixture", "max_model_len": 32768]]]
         default:
             calls += 1

@@ -139,9 +139,9 @@ final class TranscriptVaultTests: XCTestCase {
         let state = state(); try store.save(state)
         var object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(state)) as! [String: Any]; object["schemaVersion"] = 7
         try replaceRoot(object, folder: folder, secrets: secrets)
-        let loaded = try store.load(); XCTAssertEqual(loaded.chat, state.chat); XCTAssertEqual(loaded.schemaVersion, 8)
+        let loaded = try store.load(); XCTAssertEqual(loaded.chat, state.chat); XCTAssertEqual(loaded.schemaVersion, AppSnapshot.currentSchemaVersion)
         try store.save(loaded)
-        XCTAssertEqual(try index(folder, secrets: secrets).schemaVersion, 8)
+        XCTAssertEqual(try index(folder, secrets: secrets).schemaVersion, AppSnapshot.currentSchemaVersion)
         try replaceRoot(["schemaVersion": 999], folder: folder, secrets: secrets)
         let future = try Data(contentsOf: folder.appendingPathComponent("workspace.vault"))
         XCTAssertThrowsError(try store.load()) { XCTAssertTrue($0 is SnapshotVersionError) }

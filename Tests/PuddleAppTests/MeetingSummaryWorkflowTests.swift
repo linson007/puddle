@@ -15,7 +15,7 @@ private struct SummarySecrets: SecretStore {
 }
 private struct SummaryFixtureHTTP: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let body = request.url!.path == "/ready" ? #"{"status":"ready"}"# : #"{"data":[{"id":"fixture"}]}"#
+        let body = #"{"data":[{"id":"fixture"}]}"#
         return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
     }
 }

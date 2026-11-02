@@ -10,8 +10,7 @@ private actor LearningFixture: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requests.append(request)
         let body: Data
-        if request.url?.path == "/ready" { body = Data(#"{"status":"ready"}"#.utf8) }
-        else if request.url?.path == "/v1/models" { body = Data(#"{"data":[{"id":"test-qwen"}]}"#.utf8) }
+        if request.url?.path == "/v1/models" { body = Data(#"{"data":[{"id":"test-qwen"}]}"#.utf8) }
         else {
             let memories = try calls.map { try $0.parameters() }
             let batch = AgentToolCall(name: AgentTool.learnMemories.rawValue,
@@ -30,7 +29,7 @@ final class MemoryLearningTests: XCTestCase {
     }
 
     private func learner(_ fixture: LearningFixture) throws -> MemoryLearner {
-        MemoryLearner(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        MemoryLearner(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
     }
 
     func testNameIsLearnedAutomaticallyWithoutAModelOrApproval() async throws {
@@ -94,7 +93,7 @@ final class MemoryLearningTests: XCTestCase {
         let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
         XCTAssertEqual(messages.count, 2)
         XCTAssertEqual(messages.last?["content"] as? String, message)
-        XCTAssertEqual(body["parallel_tool_calls"] as? Bool, false)
+        XCTAssertNil(body["parallel_tool_calls"])
         XCTAssertEqual(body["tool_choice"] as? String, "required")
     }
 
@@ -159,17 +158,14 @@ final class MemoryLearningTests: XCTestCase {
     }
 
     func testLiveModelLearnsUnpromptedFactsAndRecallsThemInANewChat() async throws {
-        guard ProcessInfo.processInfo.environment["PUDDLE_LIVE_SPLASH"] == "1" else {
-            throw XCTSkip("Set PUDDLE_LIVE_SPLASH=1 to check automatic learning with the local model.")
-        }
-        let splash = try SplashClient(address: "http://127.0.0.1:8000")
+        let client = try LiveInferenceFixture.client()
         let message = "I work as a data engineer, and I prefer concise replies."
-        let updates = try await MemoryLearner(splash: splash).updates(from: message, memories: [])
+        let updates = try await MemoryLearner(client: client).updates(from: message, memories: [])
         XCTAssertGreaterThanOrEqual(updates.count, 2, "The learner should capture both facts: \(updates)")
         var state = AppSnapshot()
         for update in updates { state.remember(title: update.title, content: update.content) }
         state.startNewConversation()
-        let answer = try await LocalAgent(splash: splash).respond(question: "What do I do for work?", history: [],
+        let answer = try await LocalAgent(client: client).respond(question: "What do I do for work?", history: [],
             context: AgentContext(memories: state.memories), tools: [], execute: { _ in "" })
         XCTAssertTrue(answer.localizedCaseInsensitiveContains("data engineer"), answer)
     }

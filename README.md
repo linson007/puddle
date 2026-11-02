@@ -15,10 +15,10 @@ Unpin it to move it back to More. Actions needing review remain visible when Mor
 Keep your role and objectives in a local work profile, prepare for meetings,
 or open a persistent conversation to think through decisions and plans. Gmail,
 Outlook and Google Calendar are optional. You can organize work without an account or
-running model; conversations use your local Splash server.
+running model; conversations use your preferred local AI server.
 
-Puddle is a native SwiftUI app using a local Splash inference server, with guided
-setup and optional managed launch. Open source under [Apache 2.0](LICENSE), with no third-party package
+Puddle is a native SwiftUI app supporting local inference servers through an
+OpenAI-compatible API. Choose and run your model provider separately. Open source under [Apache 2.0](LICENSE), with no third-party package
 dependencies.
 
 **Development status:** Puddle is under active development. Public distribution
@@ -51,8 +51,8 @@ returns to Today.
 The app's deployment target is **macOS 14 or later**. Building from source requires
 **Xcode 26 or later**, or matching command line tools with Swift 6 and the macOS 26
 SDK, because the source includes newer speech APIs behind runtime availability
-checks. Your build Mac must meet the selected toolchain's requirements. Splash
-retains its own Apple silicon and macOS requirements.
+checks. Your build Mac must meet the selected toolchain's requirements. Your chosen
+inference server has its own hardware, model and operating system requirements.
 
 ```sh
 git clone https://github.com/linson007/puddle.git
@@ -64,21 +64,34 @@ open build/Puddle.app
 No model, cloud account, OAuth client file, or paid signing identity is needed to
 build, run the fixture demo (`make demo`), or run the default tests (`make test`).
 The build uses ad hoc signing. AI conversations require a separately running
-Splash server; optional connections require their own setup below.
+local AI server; optional connections require their own setup below.
 
-Choose **Set Up Local AI** from Today, chat, or Settings for hardware checks,
-Splash discovery/installation, model selection, managed start/stop and synthetic
-chat/tool verification. Installation and initial model download need internet.
-Splash requires a supported Apple silicon Mac and macOS 26.4+; Puddle's local
-workspace works on macOS 14+. The compact preset needs at least 24 GB memory.
-You can also start your existing server separately, for example:
+Choose **Set Up Local AI** from Today, chat, or Settings to connect and verify
+an existing server. In **Settings → Local AI**, enter its address, optional exact
+**Model ID**, and an API key if required, then select **Save and Test Connection**.
+Leave Model ID blank to use the first model listed by the server.
 
-    cd ../splash
-    ./splash serve --model unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M
+| Local server | Common address |
+| --- | --- |
+| [Ollama](https://docs.ollama.com/api/openai-compatibility) | `http://127.0.0.1:11434` |
+| [LM Studio](https://lmstudio.ai/docs/developer/openai-compat) | `http://127.0.0.1:1234` |
+| [llama.cpp](https://github.com/ggml-org/llama.cpp/tree/master/tools/server) | `http://127.0.0.1:8080` |
+| [Splash](https://github.com/incoai/splash) | `http://127.0.0.1:8000` |
 
-In Puddle, choose **Connect Splash**, enter its address (default
-http://127.0.0.1:8000), and select **Save and Test Connection**. An API key is
-needed only if your Splash server requires one. Then start a conversation.
+The address may include `/v1`. Servers must provide `GET /v1/models` and
+`POST /v1/chat/completions`, including streaming for chat. Assistant tools also
+require compatible function calling and a model configured for tools. Guided
+setup tests a synthetic reply and required tool call without accessing your data.
+Configure context capacity and reasoning in your server; Puddle sends portable
+chat parameters without runtime-specific overrides. A loopback server can itself
+forward requests elsewhere, so choose a local model and disable any cloud routing
+in that server.
+
+We suggest [Splash](https://github.com/incoai/splash), but you can use any
+compatible local provider. Puddle does not install runtimes, download models,
+select hardware presets, or start and stop model servers. Follow your chosen
+provider's setup instructions and hardware requirements; Puddle's workspace
+works on macOS 14+.
 
 ## The assistant
 
@@ -222,11 +235,11 @@ builds and focused tests.
 
 ## Data and runtime boundaries
 
-Puddle uses Splash’s HTTP API without importing its internals or modifying its
-repository. AI requests accept only loopback addresses and reject redirects.
+Puddle uses the local server’s OpenAI-compatible HTTP API without importing an
+inference engine or its internals. AI requests accept only loopback addresses and reject redirects.
 Google calls go directly to its HTTPS APIs.
 
-Tokens, OAuth client configuration, and an optional Splash key use macOS
+Tokens, OAuth client configuration, and an optional local AI server key use macOS
 Keychain without iCloud synchronization. Conversation, memories, tasks,
 preferences, and connection cache use AES-GCM encrypted storage under
 `~/Library/Application Support/Puddle/`, with owner-only permissions
@@ -239,7 +252,7 @@ preserves unreadable files. Failed writes roll back unsaved changes.
 Private sessions keep changes only in memory. Optional app lock uses macOS
 authentication; retention controls remove selected old conversation archives.
 External API pause allows loopback inference and stops managed browser/capture
-work. It does not firewall other apps or independently running Splash processes.
+work. It does not firewall other apps or independently running model servers.
 
 External emails and calendar descriptions are untrusted reference data. Email
 HTML becomes plain text without loading remote images. The model cannot execute
@@ -259,14 +272,14 @@ Context budgets respect the model's reported capacity and use text token estimat
     make test
     make build
 
-The default suite uses fixtures. Live Splash, installed browser-driver, audio,
+The default suite uses fixtures. Live inference, installed browser-driver, audio,
 and load evaluations are opt-in and are skipped unless explicitly configured.
 CI runs the default suite in debug and release on macOS 26 and packages an ad hoc
 release app without account credentials. CI does not establish the manual release
 gates or run live provider actions.
 
 `make verify-local` repeats the independent roadmap checks with an already
-running Splash server, configured Cua Driver and installed speech language. It
+running local model server selected with `PUDDLE_LIVE_INFERENCE_ADDRESS`, configured Cua Driver and installed speech language. It
 uses synthetic state, generated-file recognition and disposable browser/disk
 fixtures; it does not grant permissions or use provider accounts. See
 [local verification](docs/testing.md#independent-local-verification) and the
@@ -279,7 +292,7 @@ storage recovery, failed writes, cancellation, and local inference boundaries. T
 HTTP fixtures, not real accounts or model inference.
 [Manual verification](docs/testing.md) covers native UI and live integration.
 The [native Cua acceptance report](docs/cua-end-to-end-2026-10-30.md) records the
-guided Splash walkthrough, tested feature flows, fixes and remaining checks.
+historical guided setup walkthrough, tested feature flows, fixes and remaining checks.
 The [six-month load report](docs/load-testing-2026-10-30.md) records tests with
 108,000 messages, 5,001 memories, native UI checks and a 1,000-save endurance run.
 The [security and guardrail report](docs/security-testing-2026-10-30.md) records
@@ -300,7 +313,7 @@ for the feature-by-feature record and [release instructions](docs/releases.md).
 ## Source layout
 
     Sources/Puddle/          Native app, conversation UI, approvals, workers
-    Sources/PuddleCore/      Local agent loop, Splash, memory/tasks, connectors
+    Sources/PuddleCore/      Local agent loop, inference client, memory/tasks, connectors
     Tests/PuddleCoreTests/   Isolated core and integration tests
     Tests/PuddleAppTests/    App workflow and native integration fixtures
     app/                    App metadata
@@ -325,7 +338,7 @@ For suspected vulnerabilities, follow the [security reporting policy](SECURITY.m
 ## License
 
 Puddle is licensed under the [Apache License 2.0](LICENSE). Contributions are
-provided under the same license. Splash, Cua Driver, browsers, models, and other
+provided under the same license. Model providers, Cua Driver, browsers, models, and other
 optional external tools retain their own licenses and terms; they are not
 included in Puddle's Swift package.
 

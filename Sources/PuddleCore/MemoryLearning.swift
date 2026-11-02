@@ -76,8 +76,8 @@ public enum MemoryLearning {
 /// Memory learning is a separate, bounded pass over the current user message.
 /// Assistant answers, mail, and calendar tool output never enter this pass.
 public struct MemoryLearner: Sendable {
-    public let splash: SplashClient
-    public init(splash: SplashClient) { self.splash = splash }
+    public let client: LocalInferenceClient
+    public init(client: LocalInferenceClient) { self.client = client }
 
     public func updates(from userMessage: String, memories: [MemoryNote], model: String? = nil) async throws -> [MemoryUpdate] {
         guard MemoryLearning.shouldLearn(userMessage) else { return [] }
@@ -111,8 +111,8 @@ public struct MemoryLearner: Sendable {
         If there are no suitable new facts, call learn_memories with an empty memories array.
         """
         let selectedModel: String
-        if let model { selectedModel = model } else { selectedModel = try await splash.model() }
-        let step = try await splash.agentStep(messages: [AgentMessage(role: "system", content: prompt),
+        if let model { selectedModel = model } else { selectedModel = try await client.model() }
+        let step = try await client.agentStep(messages: [AgentMessage(role: "system", content: prompt),
                                                         AgentMessage(role: "user", content: String(userMessage.prefix(12_000)))],
                                               tools: [.learnMemories], model: selectedModel, requireToolCall: true)
         guard step.finishReason != "length" else { throw PuddleError("The memory update was incomplete.") }

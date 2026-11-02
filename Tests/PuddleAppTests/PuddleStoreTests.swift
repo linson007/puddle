@@ -32,7 +32,6 @@ private actor AppTransport: HTTPTransport {
         requests.append(request)
         let body: String
         switch request.url!.path {
-        case "/ready": body = #"{"status":"ready"}"#
         case "/v1/models": body = #"{"data":[{"id":"fixture","max_model_len":8192}]}"#
         default:
             if delay { try? await Task.sleep(for: .milliseconds(100)) }
@@ -49,7 +48,6 @@ private actor ReminderModel: HTTPTransport {
         requests.append(request)
         let body: String
         switch request.url!.path {
-        case "/ready": body = #"{"status":"ready"}"#
         case "/v1/models": body = #"{"data":[{"id":"fixture","max_model_len":8192}]}"#
         default:
             generations += 1
@@ -68,6 +66,25 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testLocalModelSelectionPersistsAndIsUsedByEveryClient() async throws {
+        let (store, disk, _, _) = fixture()
+        await store.start()
+        await store.saveSettings(address: "http://localhost:1234/v1", key: "", interval: 60, automatic: false, summarize: false, modelID: " fixture ")
+        XCTAssertNil(store.errorMessage)
+        XCTAssertEqual(try disk.load().settings.inferenceModelID, "fixture")
+        XCTAssertEqual(try disk.load().settings.inferenceAddress, "http://localhost:1234/v1")
+        XCTAssertEqual(try store.setupClient(address: store.state.settings.inferenceAddress, key: "").modelID, "fixture")
+        let explicit = try store.setupClient(address: "http://localhost:1234", key: "", modelID: "")
+        XCTAssertEqual(explicit.modelID, "")
+        // Connection preference updates must retain the saved model selection.
+        await store.saveSettings(address: "http://localhost:1234/v1", key: "", interval: 120, automatic: false, summarize: false)
+        XCTAssertEqual(try disk.load().settings.inferenceModelID, "fixture")
+        disk.failWrite = true
+        await store.saveSettings(address: "http://localhost:8080", key: "", interval: 60, automatic: false, summarize: false, modelID: "other")
+        XCTAssertEqual(store.state.settings.inferenceModelID, "fixture")
+        XCTAssertEqual(store.state.settings.inferenceAddress, "http://localhost:1234/v1")
+    }
+
     private func waitUntil(_ condition: () -> Bool) async {
         for _ in 0..<200 {
             if condition() { return }

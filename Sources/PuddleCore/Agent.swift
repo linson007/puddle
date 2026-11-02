@@ -175,7 +175,7 @@ public struct AgentToolCall: Codable, Sendable, Equatable {
         public init(from decoder: Decoder) throws {
             let values = try decoder.container(keyedBy: CodingKeys.self)
             name = try values.decode(String.self, forKey: .name)
-            // Splash can return arguments as a JSON object or a JSON string.
+            // Local servers can return arguments as a JSON object or a JSON string.
             if let text = try? values.decode(String.self, forKey: .arguments) { arguments = text }
             else {
                 let object = try values.decode(JSONValue.self, forKey: .arguments)
@@ -339,8 +339,8 @@ public struct AgentContext: Sendable {
 }
 
 public struct LocalAgent: Sendable {
-    public let splash: SplashClient
-    public init(splash: SplashClient) { self.splash = splash }
+    public let client: LocalInferenceClient
+    public init(client: LocalInferenceClient) { self.client = client }
 
     public func respond(question: String, history: [ChatLine], context: AgentContext,
                         tools: [AgentTool],
@@ -349,7 +349,7 @@ public struct LocalAgent: Sendable {
                         contextTokens: Int = 32768,
                         onPartial: (@Sendable (String) async -> Void)? = nil) async throws -> String {
         let selectedModel: String
-        if let model { selectedModel = model } else { selectedModel = try await splash.model() }
+        if let model { selectedModel = model } else { selectedModel = try await client.model() }
         var messages = [AgentMessage(role: "system", content: context.prompt(memoryBudget: min(12_000, max(512, contextTokens / 4))))]
         var historyBudget = 24_000
         var recent: [AgentMessage] = []
@@ -382,7 +382,7 @@ public struct LocalAgent: Sendable {
             }
             if let onPartial { await onPartial("") }
             // Briefing prose/JSON must not reach the UI before source validation.
-            let step = try await splash.agentStep(messages: messages, tools: tools, model: selectedModel,
+            let step = try await client.agentStep(messages: messages, tools: tools, model: selectedModel,
                 maxTokens: outputTokens, onPartial: briefing == nil ? onPartial : nil)
             try Task.checkCancellation()
             if step.calls.isEmpty {

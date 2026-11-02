@@ -91,8 +91,8 @@ final class PuddleStore: ObservableObject {
     @Published var isSyncing = false
     @Published var isRefreshingCalendar = false
     @Published var isThinking = false
-    @Published var isTestingSplash = false
-    @Published var splashModel: String?
+    @Published var isTestingInference = false
+    @Published var inferenceModel: String?
     @Published var demo = false { didSet { if oldValue != demo { workspaceAccessRevision = UUID() } } }
     @Published var apiKey = ""
     @Published var toolActivities: [String] = []
@@ -112,7 +112,7 @@ final class PuddleStore: ObservableObject {
     let meetingWorkspace = MeetingWorkspace()
     let developerWorkspace = DeveloperWorkspace()
     let browserWorkspace: BrowserWorkspace
-    let splashSetup = SplashSetupController()
+    let localAISetup = LocalAISetupController()
     let githubConnector: GitHubConnector
     let atlassianConnector: AtlassianConnector
     let workSources = WorkSourcesWorkspace()
@@ -149,7 +149,7 @@ final class PuddleStore: ObservableObject {
     private var signIn: LoopbackSignIn?
     private var generation = UUID()
     private var aiGeneration = UUID()
-    private var splashRevision = UUID()
+    private var inferenceRevision = UUID()
     private var nextMailCheck = Date.distantPast
     private var mailFailures = 0
 
@@ -240,7 +240,7 @@ final class PuddleStore: ObservableObject {
         systemDictation.configure(state.settings)
         await loadWorkConnections()
         do {
-            apiKey = try secrets.read("splash-key").map { String(decoding: $0, as: UTF8.self) } ?? ""
+            apiKey = try LocalInferenceCredentials.load(from: secrets).map { String(decoding: $0, as: UTF8.self) } ?? ""
         } catch { fail(error) }
         do {
             try await prepareGoogleClient()
@@ -256,7 +256,7 @@ final class PuddleStore: ObservableObject {
         await loadOutlookConnection()
         scheduleReminders()
         startPolling()
-        Task { await testSplash(silent: true) }
+        Task { await testInferenceConnection(silent: true) }
         if mailConnected || calendarConnected { refresh() }
     }
 
@@ -608,7 +608,7 @@ final class PuddleStore: ObservableObject {
 
     func connection() throws -> ModelConnection {
         if let modelConnection { return modelConnection }
-        let connection = ModelConnection(client: try splash()); modelConnection = connection; return connection
+        let connection = ModelConnection(client: try client()); modelConnection = connection; return connection
     }
 
     private func execute(_ call: AgentToolCall, userLine: ChatLine? = nil, turn: UUID? = nil) async throws -> String {
@@ -652,7 +652,7 @@ final class PuddleStore: ObservableObject {
             let messages = try await searchCurrentMail(query)
             try receipt("Read \(messages.count) matching emails", references: messages.map { SourceReference(title: $0.subject, url: $0.sourceURL) })
             record("Assistant searched the selected mail provider.")
-            return SplashClient.emailContext(messages)
+            return LocalInferenceClient.emailContext(messages)
         case .calendar:
             guard let days = parameters["days"] as? Int, (1...14).contains(days) else {
                 throw PuddleError("Calendar days must be between 1 and 14.")
@@ -944,7 +944,7 @@ final class PuddleStore: ObservableObject {
     func summarize(_ id: String) {
         guard !isThinking, let message = mailInbox.first(where: { $0.id == id }) else { return }
         beginAI { [self] in
-            let answer = demo ? DemoInbox.summary(for: message) : try await splash().summarize(message)
+            let answer = demo ? DemoInbox.summary(for: message) : try await client().summarize(message)
             try Task.checkCancellation()
             if state.settings.mailProvider == .outlook, let index = state.outlookMessages.firstIndex(where: { $0.id == id }) {
                 state.outlookMessages[index].summary = answer; persist()
@@ -1001,19 +1001,19 @@ final class PuddleStore: ObservableObject {
         stopSpeaking(); voiceInput.toggle(language: state.settings.speechLanguage)
     }
 
-    func testSplash(silent: Bool = false) async {
-        guard !isTestingSplash else { return }
-        isTestingSplash = true
-        let expected = splashRevision
-        defer { isTestingSplash = false }
+    func testInferenceConnection(silent: Bool = false) async {
+        guard !isTestingInference else { return }
+        isTestingInference = true
+        let expected = inferenceRevision
+        defer { isTestingInference = false }
         do {
             let model = try await connection().model(force: true).id
-            guard expected == splashRevision else { return }
-            splashModel = model; if !silent { errorMessage = nil }
-        } catch { if expected == splashRevision { splashModel = nil; if !silent { fail(error) } } }
+            guard expected == inferenceRevision else { return }
+            inferenceModel = model; if !silent { errorMessage = nil }
+        } catch { if expected == inferenceRevision { inferenceModel = nil; if !silent { fail(error) } } }
     }
-    private func splash() throws -> SplashClient { try SplashClient(address: state.settings.splashAddress, apiKey: apiKey, transport: transport) }
-    func setupClient(address: String, key: String) throws -> SplashClient { try SplashClient(address: address, apiKey: key, transport: transport) }
+    private func client() throws -> LocalInferenceClient { try LocalInferenceClient(address: state.settings.inferenceAddress, apiKey: apiKey, modelID: state.settings.inferenceModelID, transport: transport) }
+    func setupClient(address: String, key: String, modelID: String? = nil) throws -> LocalInferenceClient { try LocalInferenceClient(address: address, apiKey: key, modelID: modelID ?? state.settings.inferenceModelID, transport: transport) }
     func suspendConnectionWork() {
         knowledgeTask?.cancel(); cancelAtlassianSignIn(); workSources.cancel()
         cancelOutlookConnection()
@@ -1022,32 +1022,33 @@ final class PuddleStore: ObservableObject {
         isSyncing = false; isRefreshingCalendar = false
     }
 
-    func saveSettings(address: String, key: String, interval: Int, automatic: Bool, summarize: Bool, testConnection: Bool = false) async {
+    func saveSettings(address: String, key: String, interval: Int, automatic: Bool, summarize: Bool, testConnection: Bool = false, modelID: String? = nil) async {
         guard !privateSession, !isLocked else { fail(PuddleError("End the private session and unlock Puddle before changing connection settings.")); return }
         do {
-            _ = try SplashClient(address: address, apiKey: key)
+            _ = try LocalInferenceClient(address: address, apiKey: key)
             guard demo || storageAvailable else { throw PuddleError("Retry loading saved state before changing connection settings.") }
-            let previousKey = demo ? nil : try secrets.read("splash-key")
+            let previousKey = demo ? nil : try LocalInferenceCredentials.load(from: secrets)
             if !demo {
-                if key.isEmpty { try secrets.delete("splash-key") }
-                else { try secrets.write(Data(key.utf8), key: "splash-key") }
+                if key.isEmpty { try secrets.delete(LocalInferenceCredentials.key) }
+                else { try secrets.write(Data(key.utf8), key: LocalInferenceCredentials.key) }
             }
             do {
                 try commit {
-                    $0.settings.splashAddress = address
+                    $0.settings.inferenceAddress = address
+                    if let modelID { $0.settings.inferenceModelID = modelID.trimmingCharacters(in: .whitespacesAndNewlines) }
                     $0.settings.pollSeconds = max(30, min(3600, interval)); $0.settings.automaticallyCheck = automatic
                     $0.settings.automaticallySummarize = summarize
                 }
             } catch {
                 if !demo {
-                    if let previousKey { try secrets.write(previousKey, key: "splash-key") }
-                    else { try secrets.delete("splash-key") }
+                    if let previousKey { try secrets.write(previousKey, key: LocalInferenceCredentials.key) }
+                    else { try secrets.delete(LocalInferenceCredentials.key) }
                 }
                 throw error
             }
             apiKey = key
-            stopAI(); cancelMeetingSummary(); splashRevision = UUID(); modelConnection = nil; splashModel = nil; startPolling()
-            if testConnection { await testSplash() }
+            stopAI(); cancelMeetingSummary(); inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil; startPolling()
+            if testConnection { await testInferenceConnection() }
         } catch { fail(error) }
     }
 
@@ -1071,7 +1072,7 @@ final class PuddleStore: ObservableObject {
         resetMeetingWorkspace()
         cancelSignIn(); syncTask?.cancel(); pollingTask?.cancel(); stopAI(); generation = UUID()
         isSyncing = false; isRefreshingCalendar = false
-        splashRevision = UUID(); modelConnection = nil; splashModel = nil
+        inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil
         demo = true; connected = false; selectedID = nil; errorMessage = nil; section = .today
         state = AppSnapshot(); state.account = "you@example.test"
         state.merge(DemoInbox.messages)
@@ -1095,15 +1096,15 @@ final class PuddleStore: ObservableObject {
         developerWorkspace.reset()
         resetMeetingWorkspace()
         stopAI(); generation = UUID(); demo = false; section = .chat; selectedID = nil; errorMessage = nil
-        splashRevision = UUID(); modelConnection = nil; splashModel = nil
+        inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil
         guard loadState() else { return }
         Task {
             do {
                 await loadWorkConnections()
-                apiKey = try secrets.read("splash-key").map { String(decoding: $0, as: UTF8.self) } ?? ""
+                apiKey = try LocalInferenceCredentials.load(from: secrets).map { String(decoding: $0, as: UTF8.self) } ?? ""
                 try await prepareGoogleClient()
                 connected = try await google.hasCredentials(); grantedScopes = try await google.grantedScopes()
-                startPolling(); await testSplash(silent: true)
+                startPolling(); await testInferenceConnection(silent: true)
             } catch { fail(error) }
         }
     }
@@ -1114,7 +1115,7 @@ final class PuddleStore: ObservableObject {
             addToolActivity("Read daily brief · Demo")
             _ = try await execute(AgentToolCall(name: AgentTool.briefing.rawValue, arguments: "{}"))
             let brief = ExecutiveBrief(snapshot: state)
-            return "Your sample day has \(brief.priorities.count) chosen priority, \(brief.overdue.count) overdue commitments, and \(brief.agenda.count) calendar events.\n\nStart with the product launch plan, then review the overlapping leadership and product meetings in Today.\n\nThis is a fixture response using sample local data. Connect Splash for a real briefing."
+            return "Your sample day has \(brief.priorities.count) chosen priority, \(brief.overdue.count) overdue commitments, and \(brief.agenda.count) calendar events.\n\nStart with the product launch plan, then review the overlapping leadership and product meetings in Today.\n\nThis is a fixture response using sample local data. Connect a local AI server for a real briefing."
         }
         if lower.contains("remember") {
             addToolActivity("Save a memory · Demo")
@@ -1136,7 +1137,7 @@ final class PuddleStore: ObservableObject {
             addToolActivity("Read calendar · Demo")
             return "Your sample calendar has a project review at the Studio tomorrow. A live conversation would read the connected calendar only when it is relevant."
         }
-        return "I’m Puddle, your local personal assistant. We can think through ideas, draft something, make a plan, or keep track of what matters to you.\n\nFor example, we could turn your current project into three next steps, remember how you like to work, or create a reminder. Email and calendar are optional connections I can use when you need them.\n\nThis is a demo response. Connect Splash in Settings for a real conversation with your local model."
+        return "I’m Puddle, your local personal assistant. We can think through ideas, draft something, make a plan, or keep track of what matters to you.\n\nFor example, we could turn your current project into three next steps, remember how you like to work, or create a reminder. Email and calendar are optional connections I can use when you need them.\n\nThis is a demo response. Connect a local AI server in Settings for a real conversation with your local model."
     }
 
     func clearChat() { stopAI(); state.startNewConversation(); toolActivities = []; persist() }

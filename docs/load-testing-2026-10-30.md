@@ -1,5 +1,8 @@
 # Six-month workspace load testing — 30 October 2026
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 The tested workloads pass after fixing persistence, memory-context and rendering
 bottlenecks. This is a synthetic volume and repeated-save test, with native UI
 verification. It does not represent six months of continuous wall-clock uptime.

@@ -19,7 +19,7 @@ struct PuddleApp: App {
         WindowGroup("Puddle", id: "main") {
             AssistantWindow(store: store)
                 .frame(minWidth: 960, minHeight: 640)
-                .task { lifecycle.attendance = store.meetAttendance; lifecycle.splashSetup = store.splashSetup; lifecycle.systemDictation = store.systemDictation; await store.start() }
+                .task { lifecycle.attendance = store.meetAttendance; lifecycle.systemDictation = store.systemDictation; await store.start() }
                 .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
                     store.refresh()
                 }

@@ -105,7 +105,8 @@ public struct ActivityEvent: Codable, Identifiable, Sendable {
 }
 
 public struct PuddleSettings: Codable, Sendable {
-    public var splashAddress = "http://127.0.0.1:8000"
+    public var inferenceAddress = "http://127.0.0.1:8000"
+    public var inferenceModelID = ""
     public var pollSeconds = 60
     public var automaticallyCheck = true
     public var automaticallySummarize = false
@@ -127,7 +128,7 @@ public struct PuddleSettings: Codable, Sendable {
     public var meetingBufferMinutes = 15
     public init() {}
     enum CodingKeys: String, CodingKey {
-        case splashAddress, pollSeconds, automaticallyCheck, automaticallySummarize, notifications, automaticallyLearn, contextTokens
+        case inferenceAddress, inferenceModelID, pollSeconds, automaticallyCheck, automaticallySummarize, notifications, automaticallyLearn, contextTokens
         case readRepliesAloud, speechLanguage, speechSpeed, networkDisabled, archiveRetentionDays, lockOnBackground
         case systemDictationEnabled, dictationPunctuation, dictationVocabulary
         case mailProvider
@@ -135,7 +136,9 @@ public struct PuddleSettings: Codable, Sendable {
     }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        splashAddress = try values.decodeIfPresent(String.self, forKey: .splashAddress) ?? splashAddress
+        inferenceAddress = try values.decodeIfPresent(String.self, forKey: .inferenceAddress)
+            ?? LegacyInferenceConfiguration.address(from: decoder) ?? inferenceAddress
+        inferenceModelID = try values.decodeIfPresent(String.self, forKey: .inferenceModelID) ?? ""
         pollSeconds = max(30, min(3600, try values.decodeIfPresent(Int.self, forKey: .pollSeconds) ?? pollSeconds))
         automaticallyCheck = try values.decodeIfPresent(Bool.self, forKey: .automaticallyCheck) ?? automaticallyCheck
         automaticallySummarize = try values.decodeIfPresent(Bool.self, forKey: .automaticallySummarize) ?? automaticallySummarize
@@ -159,7 +162,7 @@ public struct PuddleSettings: Codable, Sendable {
 }
 
 public struct AppSnapshot: Codable, Sendable {
-    public static let currentSchemaVersion = 8
+    public static let currentSchemaVersion = 9
     public var schemaVersion = currentSchemaVersion
     public var account: String?
     public var messages: [MailMessage] = []

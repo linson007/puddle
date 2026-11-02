@@ -1,7 +1,7 @@
 # Optional Google mail and calendar connections
 
 Google setup is optional. Puddle’s conversation, memory, and local reminders
-need only the Splash model connection.
+work without a Google connection. AI replies need your chosen local model server.
 
 The app owner provides one Google OAuth **Desktop app** client. Users click
 **Connect Google**, select their account, and approve Gmail and Calendar access

@@ -11,8 +11,7 @@ private actor AgentFixture: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requests.append(request)
         let body: Data
-        if request.url!.path == "/ready" { body = try agentJSON(["status": "ready"]) }
-        else if request.url!.path == "/v1/models" { body = try agentJSON(["data": [["id": "local-qwen"]]]) }
+        if request.url!.path == "/v1/models" { body = try agentJSON(["data": [["id": "local-qwen"]]]) }
         else {
             guard !responses.isEmpty else { throw PuddleError("No fixture response left") }
             body = try agentJSON(responses.removeFirst())
@@ -45,7 +44,7 @@ final class AgentTests: XCTestCase {
         let fixture = AgentFixture([reply("", calls: [call("list_memories", arguments: ["query": "Older proof"])]), reply("The saved value is older-proof.")])
         let memories = [MemoryNote(title: "Older proof", content: "older-proof")]
         let history = (0..<1000).map { ChatLine(role: $0.isMultiple(of: 2) ? "user" : "assistant", content: String(repeating: "Previous discussion. ", count: 100)) }
-        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+        let answer = try await LocalAgent(client: LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
             question: "Recall Older proof", history: history, context: AgentContext(), tools: [.memories],
             execute: { _ in try MemoryContext.encode(query: "Older proof", memories: memories) }, contextTokens: 8192)
         XCTAssertTrue(answer.contains("older-proof"))
@@ -60,7 +59,7 @@ final class AgentTests: XCTestCase {
         let incorrect = "The 14:00 UI test review is coming up in ~3h 17m."
         let fixture = AgentFixture([reply("", calls: [call("read_executive_brief", arguments: [:])]), reply(incorrect)])
         let partials = BriefingPartials()
-        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+        let answer = try await LocalAgent(client: LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
             question: AssistantRoutine().prompt, history: [], context: AgentContext(), tools: [.briefing],
             execute: { _ in BriefingRegressionFixture.context }, onPartial: { await partials.add($0) })
         XCTAssertTrue(answer.contains("Starts in 1h 17m"), answer)
@@ -72,7 +71,7 @@ final class AgentTests: XCTestCase {
     func testBriefingCannotPublishAnInferredDeadlineForAnUndatedTask() async throws {
         let fixture = AgentFixture([reply("", calls: [call("read_executive_brief", arguments: [:])]),
             reply("Alex's release checklist is due today, Friday.")])
-        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+        let answer = try await LocalAgent(client: LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
             question: AssistantRoutine().prompt, history: [], context: AgentContext(), tools: [.briefing],
             execute: { _ in BriefingRegressionFixture.context })
         XCTAssertTrue(answer.contains("No scheduled due date"), answer)
@@ -84,7 +83,7 @@ final class AgentTests: XCTestCase {
             reply("", calls: [call("read_executive_brief", arguments: [:]), call("create_reminder", arguments: [:], id: "action")]),
             reply(#"{"next_steps":[]}"#)])
         let calls = ToolRecorder()
-        let answer = try await LocalAgent(splash: SplashClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
+        let answer = try await LocalAgent(client: LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture)).respond(
             question: "Brief me and add the reminder I requested.", history: [], context: AgentContext(), tools: [.briefing, .remind],
             execute: { call in
                 _ = await calls.record(call)
@@ -100,7 +99,7 @@ final class AgentTests: XCTestCase {
         state.chat = [ChatLine(role: "user", content: "My name is Mira Rao")]
         state.startNewConversation()
         let fixture = AgentFixture([reply("Your name is Mira Rao.")])
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         _ = try await agent.respond(question: "What is my name?", history: state.chat,
             context: AgentContext(memories: state.memories), tools: [.memories], execute: { _ in XCTFail("Saved name is already provided"); return "" })
         let requests = await fixture.requests
@@ -112,13 +111,10 @@ final class AgentTests: XCTestCase {
     }
 
     func testLiveModelRecallsSavedNameInANewChat() async throws {
-        guard ProcessInfo.processInfo.environment["PUDDLE_LIVE_SPLASH"] == "1" else {
-            throw XCTSkip("Set PUDDLE_LIVE_SPLASH=1 to check the running local model.")
-        }
         var state = AppSnapshot()
         state.remember(title: NameMemoryProposal.title, content: "Mira Rao")
         state.startNewConversation()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000"))
+        let agent = LocalAgent(client: try LiveInferenceFixture.client())
         let answer = try await agent.respond(question: "What is my name?", history: state.chat,
             context: AgentContext(memories: state.memories), tools: [.memories],
             execute: { _ in "[{\"title\":\"Your name\",\"content\":\"Mira Rao\"}]" })
@@ -127,7 +123,7 @@ final class AgentTests: XCTestCase {
 
     func testGeneralConversationWorksWithoutAccountsOrEmailContext() async throws {
         let fixture = AgentFixture([reply("Let’s explore your idea.")])
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         let answer = try await agent.respond(question: "Help me brainstorm", history: [], context: AgentContext(), tools: [.memories, .tasks], execute: { _ in XCTFail("No tool needed"); return "" })
         XCTAssertEqual(answer, "Let’s explore your idea.")
         let requests = await fixture.requests
@@ -146,7 +142,7 @@ final class AgentTests: XCTestCase {
             reply("", calls: [call("list_calendar_events", arguments: ["days": 1])], reason: "tool_calls"),
             reply("You have a project review today.")])
         let recorder = ToolRecorder()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         let result = try await agent.respond(question: "What is on today?", history: [],
             context: AgentContext(calendarConnected: true), tools: [.calendar], execute: { await recorder.record($0) })
         XCTAssertEqual(result, "You have a project review today.")
@@ -163,7 +159,7 @@ final class AgentTests: XCTestCase {
     func testUnavailableToolNeverReachesExecutor() async throws {
         let fixture = AgentFixture([reply("", calls: [call("search_mail", arguments: "{\"query\":\"\"}")]), reply("Connect Gmail if you want me to search it.")])
         let recorder = ToolRecorder()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         _ = try await agent.respond(question: "Any mail?", history: [], context: AgentContext(), tools: [.tasks], execute: { await recorder.record($0) })
         let names = await recorder.names
         XCTAssertTrue(names.isEmpty)
@@ -172,7 +168,7 @@ final class AgentTests: XCTestCase {
     func testIncompleteToolCallDoesNotExecute() async throws {
         let fixture = AgentFixture([reply("", calls: [call("remember_fact", arguments: "{}")], reason: "length")])
         let recorder = ToolRecorder()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         do {
             _ = try await agent.respond(question: "Remember this", history: [], context: AgentContext(), tools: [.remember], execute: { await recorder.record($0) })
             XCTFail("Must reject incomplete calls")
@@ -185,7 +181,7 @@ final class AgentTests: XCTestCase {
         let fixture = AgentFixture([
             reply("", calls: [call("create_reminder", arguments: "{\"title\":\"Take a break\",\"due_at\":\"\"}")]),
             reply("Understood, I did not save it.")])
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         let result = try await agent.respond(question: "Remind me to take a break", history: [], context: AgentContext(), tools: [.remind],
             execute: { _ in "The user declined this reminder. Nothing was saved." })
         XCTAssertEqual(result, "Understood, I did not save it.")
@@ -197,7 +193,7 @@ final class AgentTests: XCTestCase {
         let response = reply("", calls: [call("list_tasks", arguments: "{}")])
         let fixture = AgentFixture(Array(repeating: response, count: 6))
         let recorder = ToolRecorder()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         do {
             _ = try await agent.respond(question: "Keep going", history: [], context: AgentContext(), tools: [.tasks], execute: { await recorder.record($0) })
             XCTFail("Must stop")
@@ -210,7 +206,7 @@ final class AgentTests: XCTestCase {
         let fixture = AgentFixture([reply("Hello")])
         let memories = (0..<50).map { MemoryNote(title: "Fact \($0)", content: String(repeating: "m", count: 4000)) }
         let history = (0..<40).map { _ in ChatLine(role: "user", content: String(repeating: "h", count: 10_000)) }
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         _ = try await agent.respond(question: "Hello", history: history, context: AgentContext(memories: memories), tools: [], execute: { _ in "" })
         let requests = await fixture.requests
         XCTAssertLessThan(requests.last!.httpBody!.count, 45_000)

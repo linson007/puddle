@@ -2,9 +2,8 @@ import AppKit
 
 @MainActor final class PuddleLifecycle: NSObject, NSApplicationDelegate {
     weak var attendance: MeetAttendanceController?
-    weak var splashSetup: SplashSetupController?
     weak var systemDictation: SystemDictationController?
-    func applicationWillTerminate(_ notification: Notification) { splashSetup?.stop(); systemDictation?.stop() }
+    func applicationWillTerminate(_ notification: Notification) { systemDictation?.stop() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let attendance, attendance.isActive || attendance.mayStillBeInCall else { return .terminateNow }
         Task { @MainActor in

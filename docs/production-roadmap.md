@@ -21,8 +21,8 @@ workspaces live under More; pending action reviews must remain discoverable.
 
 The next milestone should demonstrate:
 
-- A new user reaches a working local assistant through guided setup without
-  needing a terminal or understanding model-server configuration.
+- A new user can connect a chosen, separately installed local provider through
+  clear address/model/key guidance and verify replies and tool support.
 - Everyday questions and planning requests produce useful, grounded answers
   on advertised hardware, with clear progress and working cancellation.
 - Memories are easy to inspect, correct and forget, and remain useful across
@@ -51,13 +51,13 @@ This narrows Puddle's scope without claiming to fix the external driver.
 | Repeatable pre-model checks | `make verify-premodel`: debug/release fixtures, regular/heavy loads, 1,000-save long-chat endurance, release build and bundle checks. | Run on each advertised hardware/OS family. |
 | Application performance budgets | Save P95 <100 ms; resident growth ≤64 MiB; cold load/search <2 s; prompt preparation <0.5 s; backup encoding <5 s and inspection <2 s. Recorded with host resources in synthetic metrics. | Real-model latency and lower-resource/near-capacity hardware acceptance. |
 | Release fixture isolation | Shared local/CI bundle check rejects fixture arguments and marker-only launch before workspace creation; verifies plist/signature. | Actual Developer ID identity, notarization and clean-Mac acceptance. |
-| Model/hardware coverage | [Acceptance matrix and evidence contract](model-acceptance.md); real workflows passed with the owner's running model on 2 November. Balanced eligibility corrected to ≥36 GiB. | Actual compact/balanced preset runs, lower-resource hardware and first-time-user assessment. |
+| Model/hardware coverage | [Acceptance matrix and evidence contract](model-acceptance.md); real workflows passed with the owner's running model on 2 November. Provider and model hardware requirements are configured outside Puddle. | Cross-provider model runs, lower-resource hardware and first-time-user assessment. |
 
 The following gates need evidence from their actual environments:
 
 | Gate | Required dependency and completion evidence |
 | --- | --- |
-| Installation and recovery | Actual ENOSPC/read-only recovery passed in disposable HFS+/APFS images; a 9,600-message legacy workspace migrated and its pre-upgrade protected backup restored. Clean supported Mac, actual installer, interrupted model download, cached model restart, host-volume/power-loss and signed-app upgrade/rollback remain. |
+| Installation and recovery | Actual ENOSPC/read-only recovery passed in disposable HFS+/APFS images; a 9,600-message legacy workspace migrated and its pre-upgrade protected backup restored. Clean supported Mac, signed-app installation and connection to a separately installed provider, unavailable/restarted model server, host-volume/power-loss and signed-app upgrade/rollback remain. |
 | Optional accounts | Owner OAuth registrations and designated Google/Microsoft/GitHub/Atlassian test accounts; denied/partial grants, revoke/refresh, switching and disconnect. Real writes need separately reviewed exact test content. |
 | Native privacy and devices | File-based on-device recognition passed. Live app-audio A/B selection/isolation remains deferred by the owner on 2 November; source label, denial/revocation, sleep/wake/device loss, dictation target, shipped Keychain/app-lock identity and notification delivery still need acceptance. |
 | Accessibility and usability | Core keyboard capture/search/open/cancel, light/dark minimum-window and long-task/notes checks passed here; 14 declared text/background palette pairs passed 4.5:1. First-time users, VoiceOver, high-contrast/reduced-motion settings and other advertised OS versions need human/environment acceptance. |
@@ -78,7 +78,7 @@ The owner's running `mlx-community/Qwen3.6-35B-A3B-4bit` passed synthetic
 memory learning/recall/correction/forgetting, reviewed reminder creation and
 completion after restart, named-task lookup, cancellation, bounded-context
 retrieval and hostile-source evaluations. This is a separately tested
-configuration; the two advertised setup presets remain pending.
+configuration; compatibility and quality with other providers and models remain pending.
 
 Observed issues were corrected: saved-task requests now explicitly read current
 task IDs, streaming text publishes at a bounded rate without reparsing Markdown,
@@ -98,7 +98,7 @@ skips. Native app-audio acceptance remains deferred by the owner.
 
 These checks are complete on the available M5 Pro/macOS 26.6 host. Re-run the
 automated portion with `make verify-local`; it requires the already running
-Splash server, configured Cua Driver and installed speech language. It creates
+local model server selected with `PUDDLE_LIVE_INFERENCE_ADDRESS`, configured Cua Driver and installed speech language. It creates
 only synthetic test state, a speech file and a disposable browser page. Native
 permission/device and provider checks are excluded.
 
@@ -126,7 +126,7 @@ stays outside this milestone.
 | 4 | Meeting preparation | Implemented | Calendar details, exact-ID/full-title note matches, saved agendas, current extracted decisions/questions, linked open actions, source links and workspace handoff. Available from Today and Meetings. |
 | 5 | Conversational executive brief | Implemented | Read-only tool returns bounded saved priorities, commitments, cached agenda/conflicts and flagged mail with counts and freshness. Work context is reference data. Fixture round-trip tested without Google. |
 | 6 | Portable workspace recovery | Implemented | Passphrase encryption by default, preview/atomic/idempotent merge, current content preserved, work context/routines/errand records, no grants/caches/credentials, no action replay. |
-| 7 | Frictionless local inference setup | Implemented; existing-server native setup verified | Guided checks, discovery/install/model selection, managed start/stop, reply/tool verification and diagnostics. Native connection/probes/save/restart passed with the running server. Clean-Mac install/download and actual preset acceptance remain. |
+| 7 | Local inference provider choice | Implemented; cross-provider live acceptance pending | Provider-neutral server address, optional model ID/API key, synthetic reply/tool verification and diagnostics. Runtime installation, downloads, hardware requirements and server lifecycle belong to the chosen provider. Existing addresses and keys migrate. |
 | 8 | Inbox and communication drafts | Implemented; account acceptance pending | Gmail/Outlook, explicit account switching, VIP reasons, editable compose/reply/forward, reviewed sends/organization, follow-ups, local snooze, newsletter cleanup, bounded threads and attachments. |
 | 9 | Calendar and time protection | Implemented; account acceptance pending | Week/month and secondary calendars, attendees/timezones, preferences/slots/focus proposals, reviewed create/edit/undo with ETags. Google Calendar remains the provider. |
 | 10 | Meeting lifecycle | Implemented; native acceptance pending | Floating companion, source-quoted summaries/actions, checkpoints/recovery, project links, provider-scoped recurring-series links and recurring commitments. Live hardware/permissions/sleep acceptance remains. Browser attendance stays experimental. |
@@ -137,7 +137,7 @@ stays outside this milestone.
 | 15 | Voice and accessibility | Implemented; native acceptance pending | Opt-in system dictation, original-field validation/copy fallback, vocabulary/punctuation, visible/reduced-motion activity. Real devices, VoiceOver/keyboard/contrast acceptance remain. |
 | 16 | Privacy and workspace lifecycle | Implemented | AES-GCM workspace/legacy migration, encrypted portable backups, retention, private sessions, optional macOS lock and external-API pause with documented limits. |
 | 17 | Distribution and operations | Tooling and local bundle checks verified; owner setup pending | Developer ID/notary/stapling script, pinned signed manual update feed, hash checks, redacted diagnostics and migration/rollback guidance. Release-fixture launch guards verified locally and added to CI. Public credentials/hosting and clean-Mac acceptance still required. |
-| 18 | Real-model quality and reliability | Current running-model workflows verified; preset matrix pending | Live memory/tasks/restart/cancellation/grounding/adversarial checks and warm planning samples passed on M5 Pro/48 GiB. Actual preset quality/latency, cold start, lower-resource hardware, sleep/wake and first-time-user acceptance remain required. |
+| 18 | Real-model quality and reliability | Current running-model workflows verified; provider matrix pending | Live memory/tasks/restart/cancellation/grounding/adversarial checks and warm planning samples passed on M5 Pro/48 GiB. Cross-provider model quality/latency, cold start, lower-resource hardware, sleep/wake and first-time-user acceptance remain required. |
 
 Developer-profile work now has a separate [implementation plan](developer-assistant-plan.md):
 explicit project connections, scoped source tools, Git text comparisons and

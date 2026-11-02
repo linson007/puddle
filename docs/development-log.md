@@ -1,5 +1,8 @@
 # Voice and meetings development log
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 Work began on 29 October 2026 at 05:47 UTC, with a five-hour work window ending
 at 10:47 UTC. Features are implemented and tested in sequence. The source before
 this work is saved under `build/checkpoints/` without account credentials.

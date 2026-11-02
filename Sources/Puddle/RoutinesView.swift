@@ -104,13 +104,13 @@ extension PuddleStore {
         routineTask = Task {
             defer { if routineGeneration == expected { routineTask = nil } }
             do {
-                let client = try setupClient(address: state.settings.splashAddress, key: apiKey)
+                let client = try setupClient(address: state.settings.inferenceAddress, key: apiKey)
                 var context = AgentContext(instructions: state.assistantInstructions, memories: state.memories, mailConnected: mailConnected, calendarConnected: calendarConnected, memoryLearning: false)
                 context.mailProvider = state.settings.mailProvider
                 context.externalConnectionsPaused = state.settings.networkDisabled
                 context.profile = state.profile
                 let tools: [AgentTool] = [.briefing, .tasks, .memories, .workContext] + (state.knowledgeDocuments.isEmpty ? [] : [.knowledge]) + (!state.settings.networkDisabled && mailConnected ? [.searchMail] : []) + (!state.settings.networkDisabled && calendarConnected ? [.calendar] : [])
-                let result = try await LocalAgent(splash: client).respond(question: routine.prompt, history: [], context: context, tools: tools,
+                let result = try await LocalAgent(client: client).respond(question: routine.prompt, history: [], context: context, tools: tools,
                     execute: { call in try await self.readRoutineTool(call, now: now) }, contextTokens: state.settings.contextTokens)
                 try Task.checkCancellation(); guard routineGeneration == expected else { return }
                 try commit { next in if let index = next.routineRuns.firstIndex(where: { $0.id == run.id }) {

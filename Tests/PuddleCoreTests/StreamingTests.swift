@@ -10,7 +10,6 @@ private actor StreamFixture: HTTPTransport {
         requests.append(request)
         let body: String
         switch request.url!.path {
-        case "/ready": body = #"{"status":"ready"}"#
         case "/v1/models": body = #"{"data":[{"id":"stream-fixture","max_model_len":8192}]}"#
         default: body = responses.removeFirst()
         }
@@ -46,7 +45,7 @@ final class StreamingTests: XCTestCase {
         data: [DONE]
         """
         let fixture = StreamFixture([tool, text]), recorder = PartialRecorder()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         let result = try await agent.respond(question: "List tasks", history: [], context: AgentContext(), tools: [.tasks],
             execute: { await recorder.execute($0) }, onPartial: { await recorder.partial($0) })
         XCTAssertEqual(result, "Hello world")
@@ -59,7 +58,7 @@ final class StreamingTests: XCTestCase {
     func testInterruptedToolStreamNeverExecutes() async throws {
         let incomplete = #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"create_reminder","arguments":"{}"}}]},"finish_reason":null}]}"#
         let fixture = StreamFixture([incomplete]), recorder = PartialRecorder()
-        let agent = LocalAgent(splash: try SplashClient(address: "http://127.0.0.1:8000", transport: fixture))
+        let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
         do {
             _ = try await agent.respond(question: "Remind me", history: [], context: AgentContext(), tools: [.remind],
                 execute: { await recorder.execute($0) }, onPartial: { _ in })
@@ -70,7 +69,7 @@ final class StreamingTests: XCTestCase {
 
     func testSharedDiscoverySkipsLearningForGeneralChatAndRecordsTiming() async throws {
         let fixture = StreamFixture([text, text]), recorder = PartialRecorder()
-        let client = try SplashClient(address: "http://127.0.0.1:8000", transport: fixture)
+        let client = try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture)
         let service = ConversationService(connection: ModelConnection(client: client))
         for _ in 0..<2 {
             _ = try await service.respond(question: "Explain binary search", history: [], context: AgentContext(), tools: [],

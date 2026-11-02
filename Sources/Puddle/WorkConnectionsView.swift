@@ -168,7 +168,7 @@ struct WorkSourcesView: View {
                 HStack {
                     Button("Open work & recent docs") { query = ""; search() }.disabled(workspace.isSearching || services.isEmpty)
                     Button("Ask for my work brief") { store.ask("Search my connected work sources for open GitHub work, Jira issues assigned to me and recent Confluence documentation. Read relevant items before detailed claims. Summarize priorities, blockers and decisions with source links. State source limits and any errors; do not infer that all GitHub work is assigned to me.") }
-                        .disabled(store.isThinking || (!store.demo && store.splashModel == nil))
+                        .disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
                     Spacer()
                     if workspace.isSearching { ProgressView().controlSize(.small); Button("Stop") { workspace.cancel() } }
                 }
@@ -233,7 +233,7 @@ private struct WorkItemDetailView: View {
                 Spacer()
                 Button("Ask Puddle about this") {
                     store.ask("Read this connected work item before answering: service=\(item.service.rawValue), locator=\(item.locator), view=\(view). Summarize its requirements, current state, risks and next steps. Cite the source and distinguish evidence from assumptions. Mention missing content; do not change anything."); dismiss()
-                }.buttonStyle(.borderedProminent).disabled(store.isThinking || store.splashModel == nil)
+                }.buttonStyle(.borderedProminent).disabled(store.isThinking || store.inferenceModel == nil)
             }
         }.padding(26).frame(width: 720, height: 640)
             .task(id: view) { workspace.read(item, view: view, github: store.githubConnector, atlassian: store.atlassianConnector) }

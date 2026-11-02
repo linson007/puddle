@@ -43,7 +43,7 @@ struct DeveloperView: View {
                             HStack {
                                 Button("Explain this project") { store.ask("Inspect the connected project with the available project tools. Start with its file list and relevant manifests or README, then explain its architecture and entry points. Cite files and lines, distinguish assumptions, and state any inspection limits.") }
                                 Button("Review current changes") { store.ask("Read the connected project's Git status, then inspect relevant changed source and working/staged text diffs. Identify concrete bugs, regressions and missing verification with file/line evidence. State omitted paths and incomplete results. Do not claim tests ran or that files were changed.") }
-                            }.disabled(store.isThinking || (!store.demo && store.splashModel == nil))
+                            }.disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
                         }
                         sessionPanel
                     }.frame(maxWidth: 960, alignment: .leading).padding(30).frame(maxWidth: .infinity)
@@ -229,7 +229,7 @@ private struct DevelopmentSessionEditor: View {
                         if let id = draft.projectID, !store.selectDeveloperProject(id) { return }
                         store.ask(draft.question)
                     }
-                }.disabled(store.isThinking || (!store.demo && store.splashModel == nil))
+                }.disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
                 if draft != session { Button("Discard Draft") { workspace.saved(session.id) } }
                 Spacer()
                 Button("Delete…", role: .destructive, action: onDelete)

@@ -63,7 +63,7 @@ guides and use your own development configuration:
 
 | Integration | Setup |
 | --- | --- |
-| Local AI | [Build and run](README.md#build-and-run), then guided Splash setup |
+| Local AI | [Build and run](README.md#build-and-run), then connect and verify a local OpenAI-compatible server |
 | Gmail and Google Calendar | [Google Desktop OAuth setup](docs/gmail-setup.md) |
 | Outlook | [Microsoft setup](docs/releases.md#outlook) |
 | GitHub, Jira, and Confluence | [Work connectors](docs/work-connectors.md) |

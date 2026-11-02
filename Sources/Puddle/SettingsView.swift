@@ -111,6 +111,7 @@ struct PuddleSettingsView: View {
     @State private var showingGoogleSetup = false
     @State private var showingProfiles = false
     @State private var address = ""
+    @State private var modelID = ""
     @State private var key = ""
     @State private var interval = 60
     @State private var automatic = true
@@ -181,22 +182,23 @@ struct PuddleSettingsView: View {
             }.formStyle(.grouped).tabItem { Label("Assistant", systemImage: "bubble.left.and.bubble.right") }.tag("assistant")
 
             Form {
-                Section("Splash on this Mac") {
+                Section("Local AI server") {
                     Button("Guided Local AI Setup…") { store.showLocalSetup = true }
                     Picker("Context budget", selection: Binding(get: { store.state.settings.contextTokens }, set: { store.setContextTokens($0) })) {
                         Text("4K tokens").tag(4096); Text("8K tokens").tag(8192); Text("16K tokens").tag(16384); Text("32K tokens").tag(32768)
                     }
                     TextField("Server address", text: $address).textFieldStyle(.roundedBorder)
+                    TextField("Model ID (optional)", text: $modelID).textFieldStyle(.roundedBorder)
                     SecureField("API key (optional)", text: $key).textFieldStyle(.roundedBorder)
-                    Text("Use guided setup to find, install, start, and verify Splash, or connect an existing local server below.")
+                    Text("Connect a local server with an OpenAI-compatible API, such as Ollama, LM Studio, llama.cpp or Splash. Leave Model ID blank to use the first model listed by the server. Guided setup can test replies and tool calling.")
                         .font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Button("Save and Test Connection") {
-                            Task { await store.saveSettings(address: address, key: key, interval: interval, automatic: automatic, summarize: summarize, testConnection: true) }
-                        }.disabled(store.isTestingSplash)
-                        if store.isTestingSplash { ProgressView().controlSize(.small) }
+                            Task { await store.saveSettings(address: address, key: key, interval: interval, automatic: automatic, summarize: summarize, testConnection: true, modelID: modelID) }
+                        }.disabled(store.isTestingInference)
+                        if store.isTestingInference { ProgressView().controlSize(.small) }
                     }
-                    if let model = store.splashModel {
+                    if let model = store.inferenceModel {
                         Label("Connected: \(model)", systemImage: "checkmark.circle.fill").foregroundStyle(PuddleStyle.teal).textSelection(.enabled)
                     }
                     if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
@@ -238,7 +240,7 @@ struct PuddleSettingsView: View {
                     }
                     Toggle("Summarize up to 3 new emails per check", isOn: $summarize)
                     Button("Save Connection Preferences") {
-                        Task { await store.saveSettings(address: address, key: key, interval: interval, automatic: automatic, summarize: summarize) }
+                        Task { await store.saveSettings(address: address, key: key, interval: interval, automatic: automatic, summarize: summarize, modelID: modelID) }
                     }
                     Text("Mail checks use the 50 most recent inbox messages. Chat can search Gmail on demand. Calendar tools read up to 50 upcoming primary-calendar events over at most 14 days.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -263,13 +265,13 @@ struct PuddleSettingsView: View {
             }.padding(24).tabItem { Label("Activity", systemImage: "clock.arrow.circlepath") }.tag("activity")
         }.frame(width: 680, height: 570).tint(PuddleStyle.teal)
             .onAppear {
-                address = store.state.settings.splashAddress; key = store.apiKey
+                address = store.state.settings.inferenceAddress; modelID = store.state.settings.inferenceModelID; key = store.apiKey
                 interval = store.state.settings.pollSeconds; automatic = store.state.settings.automaticallyCheck
                 summarize = store.state.settings.automaticallySummarize; persona = store.state.assistantInstructions
             }
             .sheet(isPresented: $showingGoogleSetup) { GoogleSetupView(store: store) }
             .sheet(isPresented: $showingProfiles) { AssistantProfilesView(store: store) }
-            .sheet(isPresented: $store.showLocalSetup) { SplashSetupView(store: store, setup: store.splashSetup) }
+            .sheet(isPresented: $store.showLocalSetup) { LocalAISetupView(store: store, setup: store.localAISetup) }
             .onChange(of: store.connected) { _, connected in if connected { showingGoogleSetup = false } }
     }
 }

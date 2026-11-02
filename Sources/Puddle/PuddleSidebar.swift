@@ -108,8 +108,8 @@ struct PuddleSidebar: View {
                 VStack(alignment: .leading, spacing: 7) {
                     Label("Private by default", systemImage: "lock.shield")
                     HStack(spacing: 6) {
-                        Circle().fill(store.splashModel != nil ? PuddleStyle.teal : Color.secondary).frame(width: 6, height: 6)
-                        Text(store.demo ? "Demo mode" : store.splashModel != nil ? "Splash connected" : "Connect local Splash")
+                        Circle().fill(store.inferenceModel != nil ? PuddleStyle.teal : Color.secondary).frame(width: 6, height: 6)
+                        Text(store.demo ? "Demo mode" : store.inferenceModel != nil ? "Local AI connected" : "Connect local AI")
                             .lineLimit(1)
                     }
                     if store.demo { Button("Exit demo") { store.leaveDemo() }.buttonStyle(PuddleTextButtonStyle()) }

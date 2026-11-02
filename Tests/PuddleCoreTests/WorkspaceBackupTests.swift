@@ -7,7 +7,7 @@ final class WorkspaceBackupTests: XCTestCase {
         var state = AppSnapshot(); state.profile.name = "Mira"
         state.messages = [MailMessage(id: "mail", subject: "PRIVATE MAIL", sender: "Sender", body: "UNEXPORTED MAIL CACHE")]
         state.calendarEvents = [CalendarEvent(id: "private", title: "UNEXPORTED EVENT CACHE", start: "2026-10-29")]
-        state.settings.splashAddress = "http://localhost:9999"; state.account = "EXCLUDED ACCOUNT"
+        state.settings.inferenceAddress = "http://localhost:9999"; state.account = "EXCLUDED ACCOUNT"
         state.remember(title: "Preference", content: "Concise replies")
         state.tasks = [AssistantTask(title: "Review plan")]; state.meetings = [MeetingNote(title: "Leadership")]
         state.chat = [ChatLine(role: "user", content: "Saved work")]

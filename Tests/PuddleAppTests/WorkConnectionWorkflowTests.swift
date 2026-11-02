@@ -43,8 +43,7 @@ private actor WorkAppHTTP: HTTPTransport {
             else { body = ["full_name": "acme/app"] }
         case "mcp.atlassian.com": status = 401; body = ["message": "revoked"]
         default:
-            if path == "/ready" { body = ["status": "ready"] }
-            else if path == "/v1/models" { body = ["data": [["id": "fixture", "max_model_len": 32768]]] }
+            if path == "/v1/models" { body = ["data": [["id": "fixture", "max_model_len": 32768]]] }
             else {
                 generation += 1
                 let tool: String, arguments: [String: String]

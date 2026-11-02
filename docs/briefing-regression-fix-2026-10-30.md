@@ -1,5 +1,8 @@
 # Briefing countdown and undated tasks — verified fix
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 The briefing P1 from [the release regression](release-regression-2026-10-30.md)
 is resolved for newly generated executive briefs. Other public-release gates
 in that report still require acceptance.

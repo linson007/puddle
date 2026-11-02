@@ -98,7 +98,6 @@ private actor MailWorkspaceTransport: HTTPTransport {
         requests.append(request)
         let body: String
         switch request.url!.path {
-        case "/ready": body = #"{"status":"ready"}"#
         case "/v1/models": body = #"{"data":[{"id":"fixture","max_model_len":32768}]}"#
         default: body = #"{"choices":[{"message":{"content":"The sender asks for a review."},"finish_reason":"stop"}]}"#
         }

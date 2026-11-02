@@ -10,7 +10,6 @@ private actor SummaryTransport: HTTPTransport {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let object: [String: Any]
         if request.url!.path == "/v1/models" { object = ["data": [["id": "fixture", "max_model_len": 4096]]] }
-        else if request.url!.path == "/ready" { object = ["status": "ready"] }
         else {
             let body = try XCTUnwrap(try JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
             let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
@@ -60,7 +59,7 @@ final class MeetingSummaryTests: XCTestCase {
     }
     func testSummaryReadsBothSourcesAndDoesNotExposeWritableTools() async throws {
         let transport = SummaryTransport()
-        let connection = ModelConnection(client: try SplashClient(address: "http://127.0.0.1:8000", transport: transport))
+        let connection = ModelConnection(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: transport))
         var note = MeetingNote(title: "Test"); note.notes = "No launch decision yet."; note.transcript = "We need another review."
         let summary = try await LocalMeetingSummarizer(connection: connection).summarize(note: note, contextTokens: 8192) { _, _ in }
         XCTAssertEqual(summary.keyPoints.map(\.quote), [note.notes, note.transcript])
@@ -69,14 +68,14 @@ final class MeetingSummaryTests: XCTestCase {
     }
     func testInvalidMetadataGetsOneStrictLocalRepairWithoutInventingAnOwner() async throws {
         let transport = SummaryTransport(repairable: true)
-        let connection = ModelConnection(client: try SplashClient(address: "http://127.0.0.1:8000", transport: transport))
+        let connection = ModelConnection(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: transport))
         var note = MeetingNote(title: "Test"); note.transcript = "Alex: I will review by Friday."
         let summary = try await LocalMeetingSummarizer(connection: connection).summarize(note: note, contextTokens: 8192) { _, _ in }
         XCTAssertEqual(summary.actions.first?.owner, "I")
         let requests = await transport.texts; XCTAssertEqual(requests.count, 2)
     }
     func testUnsupportedModelOutputFailsWholeSummary() async throws {
-        let connection = ModelConnection(client: try SplashClient(address: "http://127.0.0.1:8000", transport: SummaryTransport(invalid: true)))
+        let connection = ModelConnection(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: SummaryTransport(invalid: true)))
         var note = MeetingNote(title: "Test"); note.transcript = "We did not approve the launch."
         do { _ = try await LocalMeetingSummarizer(connection: connection).summarize(note: note, contextTokens: 8192) { _, _ in }; XCTFail("Expected unsupported quote rejection") }
         catch { XCTAssertTrue(error.localizedDescription.contains("did not match")) }

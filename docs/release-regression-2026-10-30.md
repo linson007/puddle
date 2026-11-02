@@ -1,5 +1,8 @@
 # First public release regression — 30 October 2026
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 **Release decision: HOLD public distribution.** The briefing accuracy finding
 below is now resolved by the [verified follow-up fix](briefing-regression-fix-2026-10-30.md),
 with 408 debug and 406 release tests passing and native verification. The

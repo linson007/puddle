@@ -60,7 +60,7 @@ struct BrowserView: View {
                 }
                 if workspace.isBusy { ProgressView("Working with Cua…").controlSize(.small) }
                 if let error = workspace.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
-                Text("Uses a separate Chrome or Edge profile. Navigation and scrolling requested by the assistant wait for your review in chat. Clicking and typing are unavailable in this release. Page text goes to your local Splash model. Stop Browser ends this session and its dedicated browser; connection permission is not restored after restarting Puddle.")
+                Text("Uses a separate Chrome or Edge profile. Navigation and scrolling requested by the assistant wait for your review in chat. Clicking and typing are unavailable in this release. Page text goes to your local model. Stop Browser ends this session and its dedicated browser; connection permission is not restored after restarting Puddle.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let page = workspace.page {
                     Divider()

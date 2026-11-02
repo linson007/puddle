@@ -19,8 +19,7 @@ private actor TaskChatHTTP: HTTPTransport {
     init(_ id: UUID) { taskID = id }
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let object: [String: Any]
-        if request.url!.path == "/ready" { object = [:] }
-        else if request.url!.path == "/v1/models" { object = ["data": [["id": "fixture"]]] }
+        if request.url!.path == "/v1/models" { object = ["data": [["id": "fixture"]]] }
         else {
             let input = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
             let messages = input["messages"] as! [[String: Any]]

@@ -14,9 +14,10 @@ private final class AcceptanceSecrets: SecretStore, @unchecked Sendable {
 /// Live inference, synthetic workspace, no provider traffic or OS notifications.
 private struct AcceptanceHTTP: HTTPTransport {
     let base = URLSessionTransport()
+    let baseURL: URL
     private func check(_ request: URLRequest) throws {
-        guard request.url?.host == "127.0.0.1", request.url?.port == 8000 else {
-            throw PuddleError("Live acceptance allows only the synthetic local Splash endpoint.")
+        guard request.url?.scheme == baseURL.scheme, request.url?.host == baseURL.host, request.url?.port == baseURL.port else {
+            throw PuddleError("Live acceptance allows only the configured local inference endpoint.")
         }
     }
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -35,20 +36,28 @@ private struct AcceptanceHTTP: HTTPTransport {
 @MainActor final class LiveWorkflowAcceptanceTests: XCTestCase {
     private struct Fixture {
         let directory: URL
+        let baseURL: URL
         let secrets = AcceptanceSecrets()
         init(learning: Bool) throws {
-            guard ProcessInfo.processInfo.environment["PUDDLE_LIVE_SPLASH"] == "1" else {
-                throw XCTSkip("Set PUDDLE_LIVE_SPLASH=1 for synthetic end-to-end app/model acceptance")
+            let environment = ProcessInfo.processInfo.environment
+            guard let address = environment["PUDDLE_LIVE_INFERENCE_ADDRESS"] else {
+                throw XCTSkip("Set PUDDLE_LIVE_INFERENCE_ADDRESS for synthetic end-to-end app/model acceptance")
             }
+            let key = environment["PUDDLE_LIVE_INFERENCE_KEY"] ?? ""
+            let client = try LocalInferenceClient(address: address, apiKey: key)
+            baseURL = client.baseURL
+            if !key.isEmpty { try secrets.write(Data(key.utf8), key: LocalInferenceCredentials.key) }
             directory = FileManager.default.temporaryDirectory.appendingPathComponent("puddle-live-workflow-\(UUID())")
             var state = AppSnapshot()
+            state.settings.inferenceAddress = baseURL.absoluteString
+            state.settings.inferenceModelID = environment["PUDDLE_LIVE_INFERENCE_MODEL"] ?? ""
             state.settings.automaticallyLearn = learning; state.settings.automaticallyCheck = false
             state.settings.notifications = false; state.settings.contextTokens = 8192
             try EncryptedSnapshotStore(directory: directory, secrets: secrets).save(state)
         }
         @MainActor func store() -> PuddleStore {
             PuddleStore(directory: directory, cache: EncryptedSnapshotStore(directory: directory, secrets: secrets),
-                secrets: secrets, transport: AcceptanceHTTP(), reminderScheduler: AcceptanceReminders())
+                secrets: secrets, transport: AcceptanceHTTP(baseURL: baseURL), reminderScheduler: AcceptanceReminders())
         }
     }
     private func wait(_ message: String, until condition: () -> Bool) async throws {
@@ -59,9 +68,9 @@ private struct AcceptanceHTTP: HTTPTransport {
         }
     }
     private func start(_ store: PuddleStore) async throws {
-        await store.start(); await store.testSplash()
-        try await wait("local model connection") { store.splashModel != nil || store.errorMessage != nil }
-        XCTAssertNotNil(store.splashModel, store.errorMessage ?? "No local model")
+        await store.start(); await store.testInferenceConnection()
+        try await wait("local model connection") { store.inferenceModel != nil || store.errorMessage != nil }
+        XCTAssertNotNil(store.inferenceModel, store.errorMessage ?? "No local model")
         XCTAssertFalse(store.mailConnected); XCTAssertFalse(store.calendarConnected)
     }
     private func finish(_ store: PuddleStore) async throws {
@@ -75,7 +84,7 @@ private struct AcceptanceHTTP: HTTPTransport {
         let folder = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         var object = values
-        object["model"] = store.splashModel; object["os"] = ProcessInfo.processInfo.operatingSystemVersionString
+        object["model"] = store.inferenceModel; object["os"] = ProcessInfo.processInfo.operatingSystemVersionString
         object["memory_bytes"] = ProcessInfo.processInfo.physicalMemory; object["context_tokens"] = store.state.settings.contextTokens
         let file = folder.appendingPathComponent(name + ".json")
         try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys]).write(to: file, options: .atomic)

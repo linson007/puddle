@@ -78,7 +78,7 @@ enum UITestWorkspace {
                     state.settings.automaticallyCheck = false; state.settings.automaticallyLearn = false; state.settings.notifications = false
                 }
                 state.profile.configured = !empty
-                if empty { state.settings.splashAddress = "http://127.0.0.1:65534"; state.settings.automaticallyCheck = false }
+                if empty { state.settings.inferenceAddress = "http://127.0.0.1:65534"; state.settings.automaticallyCheck = false }
                 try cache.save(state)
             }
             return PuddleStore(directory: directory, cache: cache, secrets: secrets, transport: UITestHTTP(directory: directory), reminderScheduler: UITestReminderScheduler())

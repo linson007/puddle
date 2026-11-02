@@ -31,7 +31,6 @@ private actor BriefTransport: HTTPTransport {
         requests.append(request)
         let body: String
         switch request.url!.path {
-        case "/ready": body = #"{"status":"ready"}"#
         case "/v1/models": body = #"{"data":[{"id":"fixture","max_model_len":16384}]}"#
         default:
             if delayCompletions { try? await Task.sleep(for: .milliseconds(100)) }

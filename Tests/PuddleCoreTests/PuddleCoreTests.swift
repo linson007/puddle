@@ -330,25 +330,25 @@ private extension AppSnapshot {
     }
 }
 
-final class SplashTests: XCTestCase {
+final class LocalInferenceBoundaryTests: XCTestCase {
     func testOnlyLoopbackAddressesAreAllowed() throws {
         for address in ["http://127.0.0.1:8000", "http://localhost:8000/v1", "http://[::1]:8000"] {
-            XCTAssertNoThrow(try SplashClient(address: address))
+            XCTAssertNoThrow(try LocalInferenceClient(address: address))
         }
         for address in ["https://api.openai.com", "https://example.test", "http://127.0.0.1.example.test", "http://user:password@localhost", "file:///tmp/server", "http://localhost:8000?forward=remote", "http://localhost:8000/unexpected"] {
-            XCTAssertThrowsError(try SplashClient(address: address))
+            XCTAssertThrowsError(try LocalInferenceClient(address: address))
         }
-        XCTAssertEqual(try SplashClient(address: "http://localhost:8000/v1").baseURL.absoluteString, "http://127.0.0.1:8000")
+        XCTAssertEqual(try LocalInferenceClient(address: "http://localhost:8000/v1").baseURL.absoluteString, "http://127.0.0.1:8000")
     }
     func testRequestUsesDiscoveredModelAndNeverIncludesOAuthSecrets() async throws {
         let transport = FixtureTransport { request in
             switch request.url!.path {
-            case "/ready": return (try json(["status": "ready"]), 200)
             case "/v1/models": return (try json(["data": [["id": "local-qwen"]]]), 200)
             case "/v1/chat/completions":
                 let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
                 XCTAssertEqual(body["model"] as? String, "local-qwen")
-                XCTAssertEqual(body["reasoning_effort"] as? String, "none")
+                XCTAssertNil(body["reasoning_effort"])
+                XCTAssertEqual(body["max_tokens"] as? Int, 1200)
                 XCTAssertNil(body["tools"])
                 let text = String(decoding: request.httpBody!, as: UTF8.self)
                 XCTAssertFalse(text.contains("refresh_token"))
@@ -357,46 +357,45 @@ final class SplashTests: XCTestCase {
             default: XCTFail("Unexpected endpoint"); return (Data(), 404)
             }
         }
-        let splash = try SplashClient(address: "http://127.0.0.1:8000", transport: transport)
+        let client = try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: transport)
         let message = try GmailMessageDecoder.decode(mailFixture())
-        let answer = try await splash.summarize(message)
+        let answer = try await client.summarize(message)
         XCTAssertEqual(answer, "Review by Friday.")
     }
     func testUnavailableEngineFailsBeforeSendingEmailBody() async throws {
         let transport = FixtureTransport { _ in (try json(["error": ["message": "Model is loading"]]), 503) }
-        let splash = try SplashClient(address: "http://127.0.0.1:8000", transport: transport)
+        let client = try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: transport)
         do {
-            _ = try await splash.summarize(MailMessage(id: "m", subject: "Private", sender: "Maya", body: "private"))
+            _ = try await client.summarize(MailMessage(id: "m", subject: "Private", sender: "Maya", body: "private"))
             XCTFail("Should fail on readiness")
         } catch { XCTAssertTrue(error.localizedDescription.contains("503")) }
         let requests = await transport.requests
         XCTAssertEqual(requests.count, 1)
         XCTAssertNil(requests.first?.httpBody)
     }
-    func testConnectionFailureExplainsHowToStartSplash() async throws {
+    func testConnectionFailureExplainsHowToStartLocalServer() async throws {
         let transport = FixtureTransport { _ in throw URLError(.cannotConnectToHost) }
-        let splash = try SplashClient(address: "http://127.0.0.1:8000", transport: transport)
-        do { _ = try await splash.model(); XCTFail("Connection should fail") }
+        let client = try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: transport)
+        do { _ = try await client.model(); XCTFail("Connection should fail") }
         catch {
-            XCTAssertTrue(error.localizedDescription.contains("Start Splash separately"))
+            XCTAssertTrue(error.localizedDescription.contains("Start your local server"))
             XCTAssertTrue(error.localizedDescription.contains("127.0.0.1:8000"))
         }
     }
     func testContextIsBoundedAndLabelsTruncatedData() {
         let email = MailMessage(id: "m", subject: "Private", sender: "Maya", body: String(repeating: "x", count: 100_000))
-        let context = SplashClient.emailContext([email])
+        let context = LocalInferenceClient.emailContext([email])
         XCTAssertLessThan(context.count, 21_000)
         XCTAssertTrue(context.contains("Body shortened"))
-        XCTAssertTrue(SplashClient.instructions.contains("untrusted reference"))
+        XCTAssertTrue(LocalInferenceClient.instructions.contains("untrusted reference"))
     }
     func testIncompleteAnswerIsClearlyMarked() async throws {
         let transport = FixtureTransport { request in
-            if request.url!.path == "/ready" { return (Data(), 200) }
             if request.url!.path == "/v1/models" { return (try json(["data": [["id": "local"]]]), 200) }
             return (try json(["choices": [["message": ["content": "Partial answer"], "finish_reason": "length"]]]), 200)
         }
-        let splash = try SplashClient(address: "http://127.0.0.1:8000", transport: transport)
-        let result = try await splash.answer(question: "Brief", emails: [], history: [])
+        let client = try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: transport)
+        let result = try await client.answer(question: "Brief", emails: [], history: [])
         XCTAssertTrue(result.contains("output limit"))
     }
 }
@@ -413,7 +412,6 @@ actor EndToEndFixture: HTTPTransport {
         else if path.hasSuffix("/messages") {
             data = try json(["messages": hasArrival ? [["id": "m2"], ["id": "m1"]] : [["id": "m1"]]])
         } else if path.contains("/messages/") { data = try mailFixture(id: request.url!.lastPathComponent) }
-        else if path == "/ready" { data = try json(["status": "ready"]) }
         else if path == "/v1/models" { data = try json(["data": [["id": "fixture-local-model"]]] ) }
         else if path == "/v1/chat/completions" {
             data = try json(["choices": [["message": ["content": "Maya requests a review by Friday."], "finish_reason": "stop"]]])
@@ -423,7 +421,7 @@ actor EndToEndFixture: HTTPTransport {
 }
 
 final class EndToEndTests: XCTestCase {
-    func testGmailSyncNewArrivalSplashSummaryAndRestart() async throws {
+    func testGmailSyncNewArrivalInferenceSummaryAndRestart() async throws {
         let fixture = EndToEndFixture()
         let (google, _) = try session(transport: fixture)
         let gmail = GmailClient(session: google, transport: fixture)
@@ -434,8 +432,8 @@ final class EndToEndTests: XCTestCase {
         await fixture.addArrival()
         let arrivals = state.merge(try await gmail.inbox())
         XCTAssertEqual(arrivals.map(\.id), ["m2"])
-        let splash = try SplashClient(address: "http://127.0.0.1:8000", transport: fixture)
-        let summary = try await splash.summarize(arrivals[0])
+        let client = try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture)
+        let summary = try await client.summarize(arrivals[0])
         let index = try XCTUnwrap(state.messages.firstIndex { $0.id == "m2" })
         state.messages[index].summary = summary
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

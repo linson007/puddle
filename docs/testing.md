@@ -11,12 +11,12 @@ make build
 ```
 
 The default suite uses synthetic data and injected transports. It needs no
-Splash server, provider credentials, signing identity, or macOS recording grants.
+model server, provider credentials, signing identity, or macOS recording grants.
 Some tests are intentionally skipped until their integration is configured:
 
 | Opt-in | What it enables |
 | --- | --- |
-| `PUDDLE_LIVE_SPLASH=1` | Synthetic real-model evaluations against Splash at `http://127.0.0.1:8000` |
+| `PUDDLE_LIVE_INFERENCE_ADDRESS=http://localhost:1234/v1` | Synthetic reply/tool verification against any supported local server; optionally select `PUDDLE_LIVE_INFERENCE_MODEL` and `PUDDLE_LIVE_INFERENCE_KEY` |
 | `PUDDLE_CUA_DRIVER=/absolute/path/to/cua-driver` | Installed-driver MCP handshake/catalog check; `PUDDLE_CUA_LIVE=1` additionally starts a real dedicated browser session |
 | `PUDDLE_LIVE_AUDIO_FILE=/absolute/path/to/synthetic-audio` | On-device speech recognition of a synthetic audio fixture on macOS 26+ |
 | `PUDDLE_FILESYSTEM_TESTS=1` | Actual ENOSPC/read-only recovery in a disposable 32 MiB HFS+ disk image; never fills the host volume |
@@ -104,13 +104,13 @@ host-volume, power-loss, signed older-app rollback or clean-Mac certification.
 
 ## Independent local verification
 
-With Splash already running on loopback port 8000, Cua Driver already configured
+With your chosen local model server already running, Cua Driver already configured
 and the on-device English speech language installed:
 
 ```sh
-make verify-local
+PUDDLE_LIVE_INFERENCE_ADDRESS=http://localhost:1234/v1 make verify-local
 # Or choose a new evidence directory / installed driver:
-python3 scripts/verify-local.py --output /absolute/new/evidence-directory \
+python3 scripts/verify-local.py --server http://localhost:1234/v1 --output /absolute/new/evidence-directory \
   --driver /Applications/CuaDriver.app/Contents/MacOS/cua-driver
 ```
 
@@ -122,7 +122,7 @@ untracked sources. It removes its browser server in `finally`; disk tests detach
 their own volumes. Existing output directories are rejected and failures retain
 their logs. It clears inherited signing, release configuration and load overrides.
 
-This command does not install models, stop the owner's Splash server, access
+This command does not install models, stop the user's model server, access
 provider accounts, grant permissions, record live audio, change OS preferences,
 publish a release or certify first-time usability. Manual/native checks remain
 in the dated report. The follow-up also adds bundle-pinned update workflow
@@ -149,7 +149,7 @@ gate. The owner subsequently chose reading/navigation/scrolling only for v1;
 click/type dispatch is disabled in [current browser scope](browser-use.md).
 Supervised OS/provider/release acceptance still blocks distribution.
 Original follow-up: **459 debug / 457 release tests passed**, zero failures or skips,
-including live Splash, a real dedicated Cua session/read/navigation and load tests.
+including live local inference, a real dedicated Cua session/read/navigation and load tests.
 Eight cases were added. These counts do not close the failed manual gates.
 
 The [security and AI guardrail pass](security-testing-2026-10-30.md) records
@@ -157,7 +157,7 @@ five findings and their corrections, malicious-model and document tests,
 streaming HTTP limits, quarantine provenance, privacy-interruption regressions
 and the public-release gates that remain open.
 Final security pass: **451 debug / 449 release tests passed**, no failures or
-skips, including live Splash, installed-driver catalog and synthetic load tests.
+skips, including live local inference, installed-driver catalog and synthetic load tests.
 
 The latest [six-month load report](load-testing-2026-10-30.md) records the storage,
 memory/context and UI improvements, three synthetic profiles up to 108,000
@@ -230,7 +230,7 @@ this visual review.
 
 Run make test and make build. Tests use HTTP fixtures and in-memory credentials
 to exercise the core implementations. They do not establish that a real Google
-account or Splash engine is configured.
+account or model server is configured.
 
 The [30 October native Cua report](cua-end-to-end-2026-10-30.md) records the
 completed interactive flows, fixes, rebuild checks and remaining acceptance.
@@ -245,21 +245,21 @@ history and cache reuse, Calendar pagination, and bounded read retries. App-stor
 tests inject persistence, transport, credentials, and reminder scheduling to test
 failed writes, blocked startup, late replies, and task changes without real accounts.
 
-For opt-in real-model evaluations, start Splash at `http://127.0.0.1:8000`, then run:
+For opt-in real-model evaluations, start your chosen local model server, then run:
 
-    PUDDLE_LIVE_SPLASH=1 sh scripts/swift.sh test --filter LiveEvaluationTests
+    PUDDLE_LIVE_INFERENCE_ADDRESS=http://localhost:1234/v1 sh scripts/swift.sh test --filter LiveEvaluationTests
 
 These checks use synthetic facts and tool results. They do not sign into Google,
 save live app state, or schedule real reminders. Model behavior can vary; review
 failed outputs alongside the model version. Existing name and memory recall
-checks can also be run with `PUDDLE_LIVE_SPLASH=1 make test`.
+checks can also be run with `PUDDLE_LIVE_INFERENCE_ADDRESS=http://localhost:1234/v1 make test`.
 
 ## Native app without a Google account
 
 1. Open Puddle. Confirm the main screen is **Today**. Open **Puddle** for the
    conversation and **Message Puddle** composer. Tasks, Memory and Connections
    remain available. No Gmail sign-in is required.
-2. Connect Splash in Settings → Local AI. Ask a general question, or request
+2. Connect your local provider in Settings → Local AI. Ask a general question, or request
    writing/planning help. Confirm a local model reply.
 3. Say “My name is Mira” and “I prefer concise replies.” Confirm there is no
    memory approval dialog and both facts appear in Memory. Say “Don’t remember
@@ -277,8 +277,8 @@ checks can also be run with `PUDDLE_LIVE_SPLASH=1 make test`.
    scheduled notification. Relaunch and verify one chat reminder with no second
    desktop alert. Also test completing, editing, deleting, and snoozing a reminder.
 7. Quit and reopen. Confirm persistence and that archived history remains.
-8. Stop Splash and ask another question. Confirm a useful error and readable
-   conversation history. Restart Splash and retry the message.
+8. Stop your model server and ask another question. Confirm a useful error and readable
+   conversation history. Restart your model server and retry the message.
 9. During a slow reply, choose Stop and New Conversation. Confirm streamed text
    stops and no late reply is inserted into the new chat. Inspect timing fields
    on completed replies using a fixed prompt and model when comparing latency.
@@ -399,7 +399,7 @@ permissions or certify real-site/model behavior.
    Repeating import must not duplicate sessions.
 7. Run the optional synthetic-source model check:
 
-       PUDDLE_LIVE_SPLASH=1 sh scripts/swift.sh test --filter DeveloperLiveEvaluationTests
+       PUDDLE_LIVE_INFERENCE_ADDRESS=http://localhost:1234/v1 sh scripts/swift.sh test --filter DeveloperLiveEvaluationTests
 
    It uses a random value in a temporary source file; no user repository or
    connected account is read. The model must inspect source before answering.
@@ -663,7 +663,7 @@ Run these interactive checks with disposable state/accounts before public releas
 
 | Flow | Acceptance |
 | --- | --- |
-| Guided Splash | No installed executable/Homebrew, unsupported hardware/OS, low disk/RAM, chosen path with spaces, canceled install/download, occupied port, server crash, chat-only model, wrong key, offline cached start, quit/restart without killing an independent server. |
+| Local provider setup | Missing/unreachable server, unsupported API, empty model list, selected model missing, canceled or stale probe, server crash, chat-only model, wrong key, offline connection and saved-connection migration. Runtime installation and process control belong to the provider. |
 | Review actions | Change each field/account after review; decline; grant/revoke scopes; fail disk before dispatch; interrupt after dispatch; inspect provider before resolving uncertainty. For Gmail/Outlook send only an explicitly reviewed test message. Confirm thread headers/Unicode/CC; accepted is not delivered. |
 | Mail | Switch two accounts/providers while search/thread/attachment fetch runs; check cache isolation, revoked access, multi-page threads/partial limits, PDF/text/image and unsupported files. Snooze/bring back/reminder, explicit VIP reason, supported/unsupported newsletter headers and server refusal. |
 | Calendar | DST/timezone/all-day/overnight/overlaps; up to ten calendars, partial results, revoked scope, candidate buffer/work hours; reviewed create/edit then undo; concurrent provider edit must reject stale ETag; attendee notifications visible. |
@@ -675,7 +675,7 @@ Run these interactive checks with disposable state/accounts before public releas
 | Release | Owner-configured signing/notary/feed; clean install and version upgrade/rollback; wrong key/hash/build/OS, interrupted/oversize download. Verify no chat/account/token/path appears in generated diagnostics. |
 
 The [native Cua run](cua-end-to-end-2026-10-30.md) completed the principal local
-flows above with real Splash inference and isolated provider fixtures. The full
+flows above with real local inference and isolated provider fixtures. The full
 matrix describes further variants, not a list of completed results. The user
 deferred live audio and permission-dependent Cua browser checks and restricted
 live providers to read/draft/review. Public signing/hosting, real-account consent

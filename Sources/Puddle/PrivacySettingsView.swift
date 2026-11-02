@@ -98,7 +98,7 @@ extension PuddleStore {
             try commit { $0.settings.networkDisabled = paused }
             networkPolicy.allowExternalConnections(!paused && !isLocked)
             if paused {
-                stopAI(); suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); splashSetup.stop()
+                stopAI(); suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); localAISetup.invalidateVerification()
                 if meetingCapture.status == .installingLanguage { meetingCapture.cancel() }
             }
             else { startPolling() }

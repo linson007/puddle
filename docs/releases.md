@@ -69,7 +69,7 @@ Keep a previous signed installer and passphrase-encrypted workspace export.
 Future schemas are preserved and rejected by incompatible older apps.
 
 Before public distribution, test clean-Mac onboarding without developer tools,
-Splash installation/download/offline restart, OAuth, permissions, capture,
+connection to a separately installed local model provider and offline restart, OAuth, permissions, capture,
 dictation, upgrades, backup and rollback. Test wrong key/hash, interrupted
 downloads, old builds and incompatible OS. Diagnostics are copy-only; no upload.
 Local bundle-pinned feed/signature/hash, interruption, pause, stale-result,

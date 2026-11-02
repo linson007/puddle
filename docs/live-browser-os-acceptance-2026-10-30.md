@@ -1,5 +1,8 @@
 # Live browser and OS acceptance — 30 October 2026
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 **Public release remains blocked.** The retry now verifies microphone recognition,
 review, save and reopen. Selected-app recognition and isolation remain unverified:
 the latest diagnostics identified a different source from the intended test app.

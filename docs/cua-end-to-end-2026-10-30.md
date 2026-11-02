@@ -1,5 +1,8 @@
 # Native Cua acceptance — 30 October 2026
 
+> Historical verification record. Engine-specific installers, presets and process management described here have since been removed. Current Puddle connects to any compatible local provider; see [current setup](../README.md#build-and-run). Results below apply only to the recorded configuration.
+
+
 Puddle was run and operated through Cua on this Mac, beginning with guided
 Splash setup. Subsequent provider mutations used an explicit isolated debug
 workspace and synthetic HTTP responses. Local model calls used the real running

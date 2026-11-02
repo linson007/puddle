@@ -1,16 +1,18 @@
 # Puddle supported features
 
 Puddle is a native macOS personal assistant using a local
-Splash server. Today brings together priorities, commitments, follow-ups,
+OpenAI-compatible model server. Today brings together priorities, commitments, follow-ups,
 meeting preparation and optional Gmail/Calendar context. Personal memory,
 conversation history and portable workspace backups stay local. Organizing
-work needs no account or model; conversation needs only Splash.
+work needs no account or model; conversation needs a running compatible local server.
 
 ## Requirements and setup
 
 - macOS 14 or later; Swift 6 tools or Xcode to build.
-- A running Splash server for real model responses. Splash has its own hardware,
-  model, and operating system requirements.
+- A local server providing `/v1/models` and `/v1/chat/completions` with streaming
+  for real model responses, such as Ollama, LM Studio, llama.cpp or Splash.
+  Assistant tools require compatible function calling. Server and model
+  hardware/OS requirements are independent of Puddle.
 - A Google account and an app-owner-provisioned Desktop OAuth client only for
   Gmail or Calendar. See [Google setup](gmail-setup.md).
 - Desktop notification permission for reminders outside the app.
@@ -18,16 +20,20 @@ work needs no account or model; conversation needs only Splash.
 - Google Chrome for the experimental local Google Meet attendance assistant.
 
 Build with `make build`, then open `build/Puddle.app`. In Settings → Local AI,
-enter the Splash address and optional API key and choose **Save and Test
-Connection**. The default address is `http://127.0.0.1:8000`.
+enter the local server address, optional exact Model ID and optional API key, then
+choose **Save and Test Connection**. Leave Model ID blank for the first model
+listed by the server. Root addresses and `/v1` addresses are accepted. Common
+ports are 11434 for Ollama, 1234 for LM Studio, 8080 for llama.cpp and 8000 for Splash.
+See the [connection examples and compatibility contract](../README.md#build-and-run).
 
 ## Guided setup, privacy and additional workspaces
 
-**Set Up Local AI** checks chip/OS/RAM/free disk, discovers or installs Splash,
-offers two resource presets, starts/stops its own process and tests a real answer
+**Set Up Local AI** connects any supported local server and tests a real answer
 plus a synthetic required tool call. It never executes personal tools during
-setup. Installation/first model download need internet; cached models can start
-with external APIs paused. Existing independently managed servers remain usable.
+setup. We suggest Splash, but any compatible local provider can be used.
+Install and manage your chosen provider and models separately. Puddle has no
+runtime installer, model presets, hardware gates or server process management.
+Existing saved server addresses and API keys migrate to provider-neutral settings.
 
 **Actions** holds editable mail/calendar proposals and exact reviewed writes.
 Dispatch intent must save before a request leaves the app. A lost response is
@@ -235,7 +241,7 @@ limit is labeled; an interrupted tool stream cannot execute pending tools.
 
 Settings → Assistant stores response preferences. Settings → Local AI offers
 4K, 8K, 16K, and 32K context budgets. Puddle also respects the server's reported
-context capacity. Text token counts are estimates; Splash's tokenizer is
+context capacity. Text token counts are estimates; the server's tokenizer is
 authoritative. Older history and large tool results are bounded for inference;
 truncated tool results are labeled. Stored conversation history is retained
 until its archive is deleted.
@@ -559,7 +565,7 @@ re-import and audio-file export are not implemented.
 ### Live meeting transcription
 
 On macOS 26 or later, **Live transcription** uses Apple's on-device
-SpeechAnalyzer for long-form speech. It does not require Splash. Choose a voice
+SpeechAnalyzer for long-form speech. It works independently of your chat model server. Choose a voice
 language in Settings → Assistant. **Install speech language…** explicitly
 downloads Apple's model when necessary; audio is processed on this Mac.
 Unsupported devices or languages show an error; there is no cloud fallback.
@@ -590,7 +596,7 @@ accuracy still require interactive verification on the target Mac.
 ### Local summaries
 
 After saving, choose **Generate summary** to process the notes and transcript
-with the configured local Splash model. Puddle groups exact source quotes into
+with the configured local model. Puddle groups exact source quotes into
 key points, decisions, action items, and open questions. Owners and timing appear
 only when quoted in the action itself; relative dates remain as stated.
 Classification is an AI draft and needs review against the full transcript.
@@ -629,7 +635,7 @@ shared refresh callers cannot return tokens after disconnect. Google reads use
 bounded retries for rate limiting and selected server errors. Automatic mail
 checks back off after failures and honor longer `Retry-After` delays.
 
-OAuth tokens, the Desktop client configuration, and an optional Splash API key
+OAuth tokens, the Desktop client configuration, and an optional local AI server API key
 use macOS Keychain without iCloud synchronization. The build can bundle a Desktop
 client configuration; it never bundles user account tokens.
 
@@ -740,7 +746,7 @@ Native desktop control, arbitrary command execution, continuous voice listening,
 cloud inference and cross-device sync are not implemented. Multiple Google and
 Outlook accounts can be explicitly switched; only the active provider/account
 is used for a mail read or action. Google Meet retains its separate attendance
-controls. Guided Splash setup manages only a process launched by Puddle.
+controls. Puddle connects to independently managed local model servers.
 Local builds default to ad hoc signing. Developer ID/notarization scripts and
 signed-manifest manual updates require owner configuration; see [release setup](releases.md).
 
