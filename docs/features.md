@@ -77,16 +77,27 @@ cached mail. CmdShiftN captures work, CmdShiftL opens a contextual assistant
 panel, and CmdShiftA opens action review. Assistant activity has text labels and
 respects Reduce Motion. See [implementation/acceptance status](improvement-implementation.md).
 
+**Browser** supports page reading, URL navigation and scrolling in an explicitly
+started dedicated session. Assistant navigation/scrolling require review.
+Clicking and typing are deferred and rejected before dispatch; use manual
+takeover for links, forms and sign-in. Historical receipts remain readable.
+See [browser setup and scope](browser-use.md).
+
 ## Today and work context
 
-The sidebar groups **Today** and **Puddle** under Main; **Tasks**, **Calendar**,
-**Mail** and **Meetings** under Work; and **History** and **Memory** under
-Workspace alongside **Browser**. **Developer** appears under Workspace only for Developer profiles.
-Navigation scrolls at shorter window heights.
-**Connections** and **Settings** stay at the bottom. Mail and Calendar remain
-visible when disconnected and offer Google sign-in in their own views.
+The sidebar starts with **Today**, **Puddle**, **Tasks** and **Memory**.
+Expand **More** for Calendar, Mail, Meetings, Actions, Work Context, Browser,
+Routines, Knowledge and History. **Developer** appears there only for Developer
+profiles. Opening one of these destinations through search or another view
+expands More so the current location stays visible. When More is collapsed,
+an **Actions** shortcut appears for drafts or uncertain actions that need review.
+Navigation scrolls at shorter window heights. **Connections** and **Settings**
+stay at the bottom. Mail and Calendar offer sign-in in their own views.
 
 The app opens to **Today**, which works without an account or running model.
+Mail and agenda cards appear after connecting the corresponding service or
+when there is cached content to show. Zero overdue/waiting counters are omitted;
+AI briefing controls appear once a local model is connected (or in the demo).
 Choose a role profile using the sidebar menu. Use **Manage Profiles**, Today →
 **Profiles**, or Settings → Assistant → **Manage Profiles** to edit its optional
 name, role, organization, goals and additional guidance. Saved work context is
@@ -716,10 +727,10 @@ tool calls per turn.
 
 Puddle supports scoped [Cua browser control](browser-use.md) in a separate
 Chrome or Edge session. Page text and current element refs support reading,
-navigation, reviewed clicks, typing and scrolling with the local model.
-Live testing found that the current driver's changed-target and sensitive-field
-protection is insufficient for public browser writes. These remain development
-features behind an open release gate; see the
+reviewed URL navigation and scrolling with the local model. Clicking and typing
+are deferred from this release and rejected before dispatch. Live testing found
+that the current driver's changed-target and sensitive-field protection is
+insufficient for browser writes; see the historical
 [live acceptance report](live-browser-os-acceptance-2026-10-30.md).
 Native desktop control, arbitrary command execution, continuous voice listening,
 cloud inference and cross-device sync are not implemented. Multiple Google and

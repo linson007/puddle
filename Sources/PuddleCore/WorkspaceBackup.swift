@@ -164,7 +164,9 @@ public enum WorkspaceBackup {
         for decision in content.workDecisions { _ = try decision.validated() }
         guard content.assistantInstructions.count <= 4000,
               content.memories.allSatisfy({ !$0.title.isEmpty && $0.title.count <= 200 && $0.content.count <= 4000 }),
-              content.conversations.allSatisfy({ unique($0.lines.map(\.id)) && $0.lines.allSatisfy { ["user", "assistant"].contains($0.role) } }) else {
+              content.conversations.allSatisfy({ unique($0.lines.map(\.id)) && $0.lines.allSatisfy {
+                  ["user", "assistant"].contains($0.role) && ($0.displayText?.count ?? 0) <= 4000
+              } }) else {
             throw PuddleError("The backup has invalid workspace content. Your workspace has not changed.")
         }
         return WorkspaceBackupPreview(createdAt: envelope.createdAt, content: content)

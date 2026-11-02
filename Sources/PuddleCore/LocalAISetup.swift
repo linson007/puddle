@@ -16,7 +16,7 @@ public struct LocalAIHardware: Sendable {
         return chip.contains("Apple") && generations.contains(where: { $0 >= 3 }) &&
             (os.majorVersion > 26 || (os.majorVersion == 26 && os.minorVersion >= 4))
     }
-    public var recommendation: SplashModelPreset { memoryGB >= 32 ? .balanced : .compact }
+    public var recommendation: SplashModelPreset { memoryGB >= SplashModelPreset.balanced.minimumMemoryGB ? .balanced : .compact }
     public func issues(for preset: SplashModelPreset) -> [String] {
         var issues: [String] = []
         if !supportsSplash { issues.append("The current Splash engine requires Apple M3 or newer and macOS 26.4 or later. You can still connect an already running compatible local server.") }
@@ -31,14 +31,14 @@ public struct LocalAIHardware: Sendable {
 public enum SplashModelPreset: String, CaseIterable, Identifiable, Sendable {
     case compact, balanced
     public var id: String { rawValue }
-    public var title: String { self == .compact ? "Compact · 24 GB Macs" : "Balanced · 32 GB+ Macs" }
+    public var title: String { self == .compact ? "Compact · 24 GB Macs" : "Balanced · 36 GB+ Macs" }
     public var model: String {
         self == .compact ? "unsloth/Qwen3.8-27B-GGUF:UD-IQ3_XXS" : "unsloth/Qwen3.8-27B-GGUF:UD-Q4_K_M"
     }
-    public var minimumMemoryGB: Int { self == .compact ? 24 : 32 }
+    public var minimumMemoryGB: Int { self == .compact ? 24 : 36 }
     public var diskBudgetGB: Int { self == .compact ? 20 : 26 }
     public var detail: String {
-        self == .compact ? "Lower memory use. Quality and speed depend on your Mac; verify chat and tools below." : "More headroom for quality. Leaves room for daily work on a 32 GB or larger Mac."
+        self == .compact ? "Lower memory use. Quality and speed depend on your Mac; verify chat and tools below." : "Higher-quality quantization. Splash recommends at least 36 GB of memory; verify chat and tools on this Mac."
     }
     public func arguments(port: Int = 8000, offline: Bool = false) throws -> [String] {
         guard (1024...65535).contains(port) else { throw PuddleError("Choose a local port between 1024 and 65535.") }

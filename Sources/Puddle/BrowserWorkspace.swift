@@ -39,7 +39,8 @@ import PuddleCore
         try await perform { try await self.controller.observe(tabID: tabID, query: query) }
     }
     func act(_ action: CuaBrowserAction) async throws -> CuaBrowserPage {
-        try await perform { try await self.controller.act(action) }
+        try action.checkSupported()
+        return try await perform { try await self.controller.act(action) }
     }
     private func perform(_ work: () async throws -> CuaBrowserPage) async throws -> CuaBrowserPage {
         guard isConnected, !isBusy else { throw PuddleError("Start a browser session and wait for the current operation to finish.") }

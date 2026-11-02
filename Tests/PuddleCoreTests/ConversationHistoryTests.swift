@@ -3,6 +3,23 @@ import XCTest
 @testable import PuddleCore
 
 final class ConversationHistoryTests: XCTestCase {
+    func testConciseBrowserRequestKeepsItsFullContextAcrossArchiveAndBackup() throws {
+        var line = ChatLine(role: "user", content: "Full reference: exact-current-ref and untrusted page context")
+        line.kind = "external-reference"; line.displayText = "Summarize this page"
+        var state = AppSnapshot(); state.chat = [line]
+        state.startNewConversation()
+        XCTAssertEqual(state.conversations.first?.title, "Summarize this page")
+        let preview = try WorkspaceBackup.inspect(WorkspaceBackup.encode(state))
+        let restored = WorkspaceBackup.merging(preview, into: AppSnapshot()).0
+        let saved = try XCTUnwrap(restored.conversations.first?.lines.first)
+        XCTAssertEqual(saved.visibleText, "Summarize this page")
+        XCTAssertEqual(saved.content, line.content); XCTAssertEqual(saved.kind, "external-reference")
+        let old = ChatLine(role: "user", content: "An older conversation")
+        XCTAssertEqual(try JSONDecoder().decode(ChatLine.self, from: JSONEncoder().encode(old)).visibleText, old.content)
+        line.displayText = String(repeating: "x", count: 4001)
+        state.conversations[0].lines = [line]
+        XCTAssertThrowsError(try WorkspaceBackup.inspect(WorkspaceBackup.encode(state)))
+    }
     func testLegacyActiveTranscriptAppearsWithoutBeingArchived() throws {
         let message = ChatLine(role: "user", content: "Plan a weekend trip")
         let object: [String: Any] = ["chat": try JSONSerialization.jsonObject(with: JSONEncoder().encode([message])), "conversations": []]

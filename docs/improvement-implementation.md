@@ -1,5 +1,27 @@
 # Product improvements: implementation and verification
 
+The [2 November live roadmap pass](roadmap-acceptance-2026-11-02.md) verifies the
+owner's running local model with synthetic memory/task/restart/cancellation and
+grounding workflows, installed-browser reads/navigation, file speech recognition
+and bounded real storage-error recovery. It fixes native streaming stalls,
+browser request/progress presentation, saved-task lookup guidance and the
+balanced preset's 36 GiB minimum. Actual advertised preset runs, first-time users,
+live app audio, provider and distribution acceptance remain pending.
+Its independent follow-up fixes keyboard command/result activation, failed-save
+draft retention and cancellable manual updates with installer rechecking. Actual
+APFS full/read-only and large legacy upgrade/backup restore, minimum-content-size
+light/dark/offline task flows, declared palette contrast and `make verify-local`
+passed: **498 debug / 494 release tests**, zero failures or skips, plus heavy and
+1,000-save endurance, release build and bundle checks. Human/device/account and
+public-signing dependencies remain explicit in the roadmap.
+
+The [1 November pre-model verification](testing.md#pre-model-verification) adds
+enforced reading/navigation/scrolling browser scope, repeatable fixture/load/
+release checks, performance budgets and a model/hardware acceptance contract.
+It passed without live-model/provider/audio opt-ins. Browser clicking/typing and
+further developer feature expansion are deferred from the current milestone.
+Earlier dated counts and acceptance reports below retain their original scope.
+
 Implementation followed the requested order, starting with guided Splash setup
 and shared action review. Existing developer/work connectors and the user's Cua
 integration are retained. Fixture success is not public-release acceptance.
@@ -30,7 +52,7 @@ PUDDLE_LIVE_SPLASH=1 PUDDLE_CUA_DRIVER=/absolute/path/to/cua-driver \
   sh scripts/swift.sh test --filter 'LocalAISetupTests.testLiveSetupAgainstRunningSplash|CuaBrowserTests.testInstalledDriverMCPHandshakeAndBrowserCatalog'
 ```
 
-Latest regression after the Meet follow-up: **382 tests, 374 passing, eight
+Earlier regression after the Meet follow-up: **382 tests, 374 passing, eight
 optional skips, zero failures**.
 The live Splash and Cua catalog checks also passed separately. The
 [native Cua acceptance report](cua-end-to-end-2026-10-30.md) records guided setup,

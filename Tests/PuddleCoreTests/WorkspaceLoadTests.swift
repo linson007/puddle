@@ -60,7 +60,17 @@ final class WorkspaceLoadTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("puddle-load-\(UUID())")
         defer { try? FileManager.default.removeItem(at: directory) }
         let secrets = LoadSecrets(), store = EncryptedSnapshotStore(directory: directory, secrets: secrets)
-        var metrics: [String: Any] = ["profile": profile.name, "conversations": profile.conversations, "archived_messages": profile.conversations * profile.lines, "active_messages": profile.activeLines, "memories": state.memories.count, "tasks": state.tasks.count, "meetings": state.meetings.count]
+        var metrics: [String: Any] = ["profile": profile.name, "conversations": profile.conversations, "archived_messages": profile.conversations * profile.lines, "active_messages": profile.activeLines, "memories": state.memories.count, "tasks": state.tasks.count, "meetings": state.meetings.count,
+            "os": ProcessInfo.processInfo.operatingSystemVersionString, "memory_bytes": ProcessInfo.processInfo.physicalMemory, "processors": ProcessInfo.processInfo.processorCount]
+        let saveBudget = Double(environment["PUDDLE_LOAD_SAVE_BUDGET_MS"] ?? "100")
+        guard let saveBudget, saveBudget.isFinite, saveBudget > 0 else {
+            throw PuddleError("PUDDLE_LOAD_SAVE_BUDGET_MS must be a positive finite number.")
+        }
+        let operationBudgets: [String: Double] = ["cold_load_seconds": 2, "history_late_search_seconds": 2,
+            "global_late_search_seconds": 2, "global_miss_search_seconds": 2, "prompt_preparation_seconds": 0.5,
+            "backup_encode_seconds": 5, "backup_inspect_seconds": 2]
+        metrics["operation_budgets_seconds"] = operationBudgets
+        metrics["save_p95_budget_seconds"] = saveBudget / 1000
         func measure<T>(_ name: String, _ work: () throws -> T) rethrows -> T {
             let start = ProcessInfo.processInfo.systemUptime
             let value = try work()
@@ -86,7 +96,7 @@ final class WorkspaceLoadTests: XCTestCase {
         metrics["save_samples_seconds"] = saves; metrics["save_p50_seconds"] = saves.sorted()[saves.count / 2]
         let p95 = saves.sorted()[Int(ceil(Double(saves.count) * 0.95)) - 1]
         metrics["save_p95_seconds"] = p95; metrics["save_max_seconds"] = saves.max(); metrics["resident_samples_bytes"] = rss
-        XCTAssertLessThan(p95, Double(environment["PUDDLE_LOAD_SAVE_BUDGET_MS"] ?? "100")! / 1000)
+        XCTAssertLessThan(p95, saveBudget / 1000)
         XCTAssertLessThanOrEqual(Int64(rss.last!) - Int64(rss[5]), 64 * 1024 * 1024, "Resident growth after warmup exceeded 64 MB")
         let history = measure("history_late_search_seconds") { state.matchingConversations("sixmonth-history-sentinel") }
         XCTAssertEqual(history.count, 1)
@@ -107,6 +117,10 @@ final class WorkspaceLoadTests: XCTestCase {
             let again = WorkspaceBackup.merging(preview, into: merged.0)
             XCTAssertEqual(again.1.conversationsAdded, 0)
         } catch { metrics["backup_error"] = error.localizedDescription; XCTFail("The six-month workspace could not be backed up: \(error)") }
+        for (operation, budget) in operationBudgets {
+            let seconds = try XCTUnwrap(metrics[operation] as? Double, "Missing measurement: \(operation)")
+            XCTAssertLessThan(seconds, budget, "\(operation) exceeded its \(budget)s regression budget on \(profile.name)")
+        }
         metrics["resident_final_bytes"] = residentBytes()
         if let output = environment["PUDDLE_LOAD_OUTPUT_DIRECTORY"] {
             let folder = URL(fileURLWithPath: output, isDirectory: true)

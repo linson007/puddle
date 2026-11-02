@@ -103,9 +103,19 @@ private actor ReminderModel: HTTPTransport {
         store.processReminders()
         XCTAssertNil(store.state.tasks[0].notifiedAt)
         XCTAssertTrue(store.state.chat.isEmpty)
-        store.saveMemory(title: "Name", content: "Mira")
+        XCTAssertFalse(store.saveMemory(title: "Name", content: "Mira"))
         XCTAssertTrue(store.state.memories.isEmpty)
         disk.failWrite = false
+        XCTAssertTrue(store.saveMemory(title: "Name", content: "Mira"))
+        XCTAssertNil(store.errorMessage)
+        disk.failWrite = true
+        XCTAssertFalse(store.saveMemory(title: "Name", content: "Leena"))
+        XCTAssertEqual(store.state.memories.first?.content, "Mira")
+        XCTAssertEqual(try disk.load().memories.first?.content, "Mira")
+        disk.failWrite = false
+        XCTAssertTrue(store.saveMemory(title: "Name", content: "Leena"))
+        XCTAssertEqual(store.state.memories.count, 1)
+        XCTAssertEqual(try disk.load().memories.first?.content, "Leena")
         store.processReminders(); store.processReminders()
         XCTAssertEqual(store.state.chat.count, 1)
         XCTAssertNotNil(try disk.load().tasks[0].notifiedAt)
@@ -122,6 +132,22 @@ private actor ReminderModel: HTTPTransport {
         XCTAssertEqual(store.state.conversations.count, 1)
         XCTAssertTrue(store.streamingReply.isEmpty)
         XCTAssertFalse(store.isThinking)
+    }
+
+    func testFailedChatSubmissionCanBeRetriedWithoutCallingModelOrLosingSavedChat() async throws {
+        let (store, disk, transport, _) = fixture()
+        await store.start()
+        disk.failWrite = true
+        XCTAssertFalse(store.ask("Retain this synthetic draft until it can be saved"))
+        XCTAssertFalse(store.isThinking); XCTAssertTrue(store.state.chat.isEmpty)
+        let requests = await transport.requests
+        XCTAssertFalse(requests.contains { $0.url?.path == "/v1/chat/completions" })
+        disk.failWrite = false
+        XCTAssertTrue(store.ask("Retain this synthetic draft until it can be saved"))
+        await waitUntil { !store.isThinking }
+        XCTAssertEqual(store.state.chat.first?.content, "Retain this synthetic draft until it can be saved")
+        XCTAssertEqual(store.state.chat.count, 2)
+        XCTAssertEqual(try disk.load().chat, store.state.chat)
     }
 
     func testLearningToggleRemovesToolAndTaskEditingPersists() async throws {

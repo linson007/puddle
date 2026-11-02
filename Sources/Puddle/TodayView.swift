@@ -11,6 +11,8 @@ struct TodayView: View {
     @AppStorage("todaySetupDismissed") private var setupDismissed = false
 
     private var canAsk: Bool { !store.isThinking && (store.demo || store.splashModel != nil) }
+    private var hasCalendarContext: Bool { store.calendarConnected || !store.state.calendarEvents.isEmpty }
+    private var hasMailContext: Bool { store.mailConnected || !store.mailInbox.isEmpty }
 
     var body: some View {
         GeometryReader { geometry in
@@ -20,27 +22,35 @@ struct TodayView: View {
                     VStack(alignment: .leading, spacing: 20) {
                         header(brief)
                         if (!setupDismissed && !store.state.profile.configured) || (!store.demo && store.splashModel == nil) { setup }
-                        if geometry.size.width >= 760 {
+                        if hasCalendarContext && geometry.size.width >= 760 {
                             HStack(alignment: .top, spacing: 18) {
                                 priorities(brief).frame(maxWidth: .infinity)
                                 agenda(brief).frame(maxWidth: .infinity)
                             }
                         } else {
                             priorities(brief)
-                            agenda(brief)
+                            if hasCalendarContext { agenda(brief) }
                         }
-                        HStack(spacing: 12) {
-                            metric("Overdue", value: brief.overdue.count, icon: "exclamationmark.circle", attention: !brief.overdue.isEmpty, destination: .tasks)
-                            metric("Waiting on", value: brief.waiting.count, icon: "hourglass", attention: false, destination: .tasks)
-                            metric("On the agenda", value: brief.agenda.count, icon: "calendar", attention: false, destination: .calendar)
+                        if !brief.overdue.isEmpty || !brief.waiting.isEmpty || hasCalendarContext {
+                            HStack(spacing: 12) {
+                                if !brief.overdue.isEmpty {
+                                    metric("Overdue", value: brief.overdue.count, icon: "exclamationmark.circle", attention: true, destination: .tasks)
+                                }
+                                if !brief.waiting.isEmpty {
+                                    metric("Waiting on", value: brief.waiting.count, icon: "hourglass", attention: false, destination: .tasks)
+                                }
+                                if hasCalendarContext {
+                                    metric("On the agenda", value: brief.agenda.count, icon: "calendar", attention: false, destination: .calendar)
+                                }
+                            }
                         }
-                        assistantBrief
+                        if store.demo || store.splashModel != nil { assistantBrief }
                         if !brief.overdue.isEmpty { commitments("Needs a follow-up", tasks: brief.overdue, now: timeline.date) }
                         if !brief.dueToday.isEmpty { commitments("Due later today", tasks: brief.dueToday, now: timeline.date) }
                         let dueIDs = Set((brief.overdue + brief.dueToday).map(\.id))
                         let waiting = brief.waiting.filter { !dueIDs.contains($0.id) }
                         if !waiting.isEmpty { commitments("Waiting on others", tasks: waiting, now: timeline.date) }
-                        flaggedMail(brief)
+                        if hasMailContext { flaggedMail(brief) }
                         HStack(alignment: .top) {
                             Label("Saved work & cached connections · \(TimeZone.current.identifier)", systemImage: "internaldrive")
                                 .font(.caption).foregroundStyle(PuddleStyle.muted)

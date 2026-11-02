@@ -55,6 +55,9 @@ public struct ChatLine: Codable, Identifiable, Equatable, Sendable {
     public var metrics: TurnMetrics?
     public var kind: String?
     public var profileName: String?
+    /// A concise user request; full source context stays in content for inference/retry.
+    public var displayText: String?
+    public var visibleText: String { role == "user" ? displayText ?? content : content }
     public init(role: String, content: String) { self.role = role; self.content = content }
 }
 
@@ -88,7 +91,7 @@ public struct Conversation: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID()
     public var createdAt = Date()
     public var lines: [ChatLine]
-    public var title: String { String(lines.first(where: { $0.role == "user" })?.content.prefix(80) ?? "Conversation") }
+    public var title: String { String(lines.first(where: { $0.role == "user" })?.visibleText.prefix(80) ?? "Conversation") }
     public init(id: UUID = UUID(), createdAt: Date = Date(), lines: [ChatLine]) {
         self.id = id; self.createdAt = createdAt; self.lines = lines
     }

@@ -27,6 +27,8 @@ private actor BrowserRPCFixture: CuaRPCTransport {
     var bindingRefusals = 0
     var bindingCount = 0
     var versionedBindings = false, secondTab = false
+    var readOnlyCatalog = false
+    func useReadOnlyCatalog() { readOnlyCatalog = true }
     func changeTabs() { secondTab = true }
     func useVersionedBindings() { versionedBindings = true }
     func configure(refused: Bool = false, missingTools: Bool = false, delayedRead: Bool = false, bindingRefusals: Int = 0) {
@@ -40,7 +42,7 @@ private actor BrowserRPCFixture: CuaRPCTransport {
         if method == "initialize" { return .object(["protocolVersion": .string("2025-06-18")]) }
         if notification { return .null }
         if method == "tools/list" {
-            let names = missingTools ? ["list_apps"] : ["start_session", "end_session", "list_windows", "browser_prepare", "get_browser_state", "browser_navigate", "browser_click", "browser_type", "browser_pointer"]
+            let names = missingTools ? ["list_apps"] : ["start_session", "end_session", "list_windows", "browser_prepare", "get_browser_state", "browser_navigate", "browser_pointer"] + (readOnlyCatalog ? [] : ["browser_click", "browser_type"])
             return .object(["tools": .array(names.map { .object(["name": .string($0)]) })])
         }
         let name = parameters["name"]?.string ?? ""
@@ -81,6 +83,23 @@ private actor BrowserRPCFixture: CuaRPCTransport {
 final class CuaBrowserTests: XCTestCase {
     private let executable = URL(fileURLWithPath: "/fixture/cua-driver")
 
+    func testDeferredClickAndTypeNeverDispatchEvenWithValidRefs() async throws {
+        for action in [CuaBrowserAction.click("s1:click"), .click("renamed-target"),
+                       .type(ref: "s1:type", text: "synthetic-password", replace: true),
+                       .type(ref: "s1:type", text: "123456", replace: false)] {
+            let rpc = BrowserRPCFixture(), browser = CuaBrowser(factory: { _ in rpc })
+            _ = try await browser.connect(executable: executable)
+            do { _ = try await browser.act(action); XCTFail("Deferred browser action was dispatched") }
+            catch { XCTAssertTrue(error.localizedDescription.contains("unavailable in this release"), error.localizedDescription) }
+            let rejectedCount = await rpc.actionCount
+            XCTAssertEqual(rejectedCount, 0)
+            _ = try await browser.act(.navigate("https://example.test/"))
+            let allowedCount = await rpc.actionCount
+            XCTAssertEqual(allowedCount, 1)
+            await browser.disconnect()
+        }
+    }
+
     func testDedicatedSessionUsesOneConnectionAndOnlyScopedBrowserCalls() async throws {
         let rpc = BrowserRPCFixture(), browser = CuaBrowser(factory: { _ in rpc })
         let page = try await browser.connect(executable: executable)
@@ -106,14 +125,15 @@ final class CuaBrowserTests: XCTestCase {
     func testActionsRequireFreshRefsAndReturnObservedState() async throws {
         let rpc = BrowserRPCFixture(), browser = CuaBrowser(factory: { _ in rpc })
         _ = try await browser.connect(executable: executable)
-        let result = try await browser.act(.click("s1:click"))
+        let result = try await browser.act(.scroll(ref: "s1:scroll", delta: 200))
         XCTAssertTrue(result.text.contains("unverifiable")); XCTAssertTrue(result.text.contains("Fixture browser page 2"))
-        do { _ = try await browser.act(.click("s1:click")); XCTFail("Stale ref accepted") } catch {}
-        do { _ = try await browser.act(.type(ref: "s2:click", text: "wrong action", replace: true)); XCTFail("Wrong action accepted") } catch {}
-        _ = try await browser.act(.type(ref: "s2:type", text: "  keep spaces\n", replace: true))
-        let args = await rpc.calls.last { $0.1["name"]?.string == "browser_type" }?.1["arguments"]
-        XCTAssertEqual(args?["text"]?.string, "  keep spaces\n")
-        XCTAssertEqual(args?["replace"]?.bool, true)
+        do { _ = try await browser.act(.scroll(ref: "s1:scroll", delta: 200)); XCTFail("Stale ref accepted") } catch {}
+        do { _ = try await browser.act(.scroll(ref: "s2:click", delta: 200)); XCTFail("Wrong action accepted") } catch {}
+        _ = try await browser.act(.scroll(ref: "s2:scroll", delta: -200))
+        let args = await rpc.calls.last { $0.1["name"]?.string == "browser_pointer" }?.1["arguments"]
+        XCTAssertEqual(args?["action"]?.string, "scroll")
+        XCTAssertEqual(args?["delta_y"]?.number, -200)
+        XCTAssertEqual(args?["input_route"]?.string, "dom_event")
         let count = await rpc.actionCount; XCTAssertEqual(count, 2)
     }
 
@@ -121,7 +141,7 @@ final class CuaBrowserTests: XCTestCase {
         let rpc = BrowserRPCFixture(), browser = CuaBrowser(factory: { _ in rpc })
         _ = try await browser.connect(executable: executable)
         _ = try await browser.observe(tabID: "owned-tab", query: "Fixture")
-        _ = try await browser.act(.click("s2:click"))
+        _ = try await browser.act(.scroll(ref: "s2:scroll", delta: 200))
         let bindings = await rpc.calls.filter { $0.1["name"]?.string == "get_browser_state" && $0.1["arguments"]?["pid"] != nil }
         XCTAssertEqual(bindings.count, 1, "Native rebinding remints opaque tab IDs; keep the original capability for scoped reads/actions")
         await browser.disconnect()
@@ -178,6 +198,18 @@ final class CuaBrowserTests: XCTestCase {
             let closed = await rpc.closed; XCTAssertTrue(closed)
             let count = await rpc.actionCount; XCTAssertEqual(count, 0)
         }
+    }
+
+    func testConnectionDoesNotRequireDeferredDriverCapabilities() async throws {
+        let rpc = BrowserRPCFixture(); await rpc.useReadOnlyCatalog()
+        let browser = CuaBrowser(factory: { _ in rpc })
+        _ = try await browser.connect(executable: executable)
+        _ = try await browser.observe(tabID: "", query: "Fixture")
+        _ = try await browser.act(.navigate("https://example.test/"))
+        _ = try await browser.act(.scroll(ref: "s3:scroll", delta: 200))
+        let tools = await rpc.calls.compactMap { $0.1["name"]?.string }
+        XCTAssertFalse(tools.contains("browser_click")); XCTAssertFalse(tools.contains("browser_type"))
+        await browser.disconnect()
     }
 
     func testDisconnectRejectsLateSnapshot() async throws {
@@ -239,7 +271,7 @@ final class CuaBrowserTests: XCTestCase {
         _ = try await transport.rpc("notifications/initialized", parameters: .object([:]), notification: true)
         let catalog = try await transport.rpc("tools/list", parameters: .object([:]))
         let names = Set(catalog["tools"]?.array?.compactMap { $0["name"]?.string } ?? [])
-        XCTAssertTrue(Set(["browser_prepare", "get_browser_state", "browser_click", "browser_type"]).isSubset(of: names))
+        XCTAssertTrue(Set(["browser_prepare", "get_browser_state", "browser_navigate", "browser_pointer"]).isSubset(of: names))
         await transport.close()
         if ProcessInfo.processInfo.environment["PUDDLE_CUA_LIVE"] == "1" {
             let trace = LiveBrowserRPCTrace(executable: URL(fileURLWithPath: path))

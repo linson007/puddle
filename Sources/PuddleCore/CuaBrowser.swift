@@ -31,6 +31,16 @@ public enum CuaBrowserAction: Sendable {
     case click(String)
     case type(ref: String, text: String, replace: Bool)
     case scroll(ref: String, delta: Int)
+
+    /// Keep legacy action values recognizable without allowing driver writes.
+    /// This restriction has no preference or environment-variable override.
+    public func checkSupported() throws {
+        switch self {
+        case .click, .type:
+            throw PuddleError("Browser clicking and typing are unavailable in this release. Read or open a page, scroll, or take over in the browser.")
+        case .navigate, .scroll: break
+        }
+    }
 }
 
 public protocol CuaBrowserControlling: Sendable {
@@ -53,7 +63,7 @@ public actor CuaBrowser: CuaBrowserControlling {
     private var tabs: [ConnectorJSON] = []
     private var refs: [String: Set<String>] = [:]
     private var generation = UUID()
-    private static let requiredTools: Set<String> = ["start_session", "end_session", "list_windows", "browser_prepare", "get_browser_state", "browser_navigate", "browser_click", "browser_type", "browser_pointer"]
+    private static let requiredTools: Set<String> = ["start_session", "end_session", "list_windows", "browser_prepare", "get_browser_state", "browser_navigate", "browser_pointer"]
 
     public init(factory: @escaping @Sendable (URL) -> any CuaRPCTransport = { CuaStdioTransport(executable: $0) }) {
         self.factory = factory
@@ -170,6 +180,7 @@ public actor CuaBrowser: CuaBrowserControlling {
     }
 
     public func act(_ action: CuaBrowserAction) async throws -> CuaBrowserPage {
+        try action.checkSupported()
         let expected = generation
         guard !targetID.isEmpty, !tabID.isEmpty else { throw PuddleError("Start a dedicated browser session first.") }
         var args: [String: ConnectorJSON] = ["target_id": .string(targetID), "tab_id": .string(tabID)]
@@ -178,14 +189,9 @@ public actor CuaBrowser: CuaBrowserControlling {
         case .navigate(let url):
             _ = try Self.navigationURL(url)
             tool = "browser_navigate"; args["url"] = .string(url)
-        case .click(let ref):
-            try require(ref, action: "click")
-            tool = "browser_click"; args["ref"] = .string(ref); args["input_route"] = .string("dom_event")
-        case .type(let ref, let text, let replace):
-            try require(ref, action: "type")
-            guard text.count <= 4000 else { throw PuddleError("Type at most 4,000 characters at once.") }
-            tool = "browser_type"; args["ref"] = .string(ref); args["text"] = .string(text)
-            args["replace"] = .bool(replace); args["mode"] = .string("insert_text")
+        case .click, .type:
+            // checkSupported rejects these before binding or any driver call.
+            throw PuddleError("Browser clicking and typing are unavailable in this release.")
         case .scroll(let ref, let delta):
             guard refs[ref]?.contains("scroll") == true || refs[ref]?.contains("pointer") == true,
                   delta != 0, (-2000...2000).contains(delta) else { throw PuddleError("Use a current scrollable ref and a nonzero scroll of at most 2,000 pixels.") }
@@ -223,9 +229,6 @@ public actor CuaBrowser: CuaBrowserControlling {
         return url
     }
 
-    private func require(_ ref: String, action: String) throws {
-        guard refs[ref]?.contains(action) == true else { throw PuddleError("Read the browser page again and use a current element ref supporting \(action).") }
-    }
     private func check(_ expected: UUID) throws {
         try Task.checkCancellation()
         guard generation == expected else { throw CancellationError() }

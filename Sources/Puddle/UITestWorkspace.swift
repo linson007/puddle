@@ -42,7 +42,7 @@ enum UITestWorkspace {
         do { arguments = try launchArguments(suppliedArguments, bundledWorkspace: bundledWorkspace) }
         catch { fatalError(error.localizedDescription) }
         guard let index = arguments.firstIndex(of: "--ui-test-workspace"), arguments.indices.contains(index + 1) else { fatalError("Supply a disposable UI test directory.") }
-        if arguments.contains("--ui-test-dark-appearance") {
+        if arguments.contains("--ui-test-dark-appearance") || Bundle.main.object(forInfoDictionaryKey: "PuddleUITestDarkAppearance") as? Bool == true {
             NSApplication.shared.appearance = NSAppearance(named: .darkAqua)
         }
         let directory = URL(fileURLWithPath: arguments[index + 1], isDirectory: true).standardizedFileURL

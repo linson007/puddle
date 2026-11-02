@@ -7,13 +7,16 @@ struct BrowserView: View {
     @State private var driverPath = BrowserWorkspace.defaultDriverPath
     @State private var address = "https://example.com"
     @State private var task = ""
+    @State private var startingErrand = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 Text("Browser").font(.system(size: 29, weight: .semibold, design: .rounded))
-                Text("Let Puddle read pages and use a browser alongside you, powered by Cua.")
+                Text("Read and summarize pages with Puddle in a separate browser, powered by Cua.")
                     .foregroundStyle(.secondary)
+                Text("Puddle can open addresses and scroll. Take over in the browser to click links, fill forms or sign in.")
+                    .font(.callout).foregroundStyle(.secondary)
                 if store.demo {
                     Label("Browser control is available in the live app. Demo never opens or controls a real browser.", systemImage: "flask")
                 } else if store.state.settings.networkDisabled || store.privateSession {
@@ -31,11 +34,12 @@ struct BrowserView: View {
                         Button("Read Page") { Task { _ = try? await workspace.observe() } }.disabled(workspace.isBusy || store.isThinking)
                     }
                     HStack {
-                        TextField("Ask Puddle to do something in this browser", text: $task).textFieldStyle(.roundedBorder).onSubmit(ask)
+                        TextField("Ask Puddle to read or summarize a page", text: $task).textFieldStyle(.roundedBorder).onSubmit(ask)
+                            .disabled(startingErrand)
                         Button("Start Errand", action: ask).buttonStyle(.borderedProminent)
-                            .disabled(task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isThinking || workspace.isBusy)
+                            .disabled(task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || startingErrand || store.isThinking || workspace.isBusy)
                     }
-                    Text("Try: “Open Wikipedia, search for Ada Lovelace, and summarize the page.” Puddle reads page text and controls; it does not interpret screenshots.")
+                    Text("Try: “Open https://en.wikipedia.org/wiki/Ada_Lovelace and summarize the page.” Puddle reads page text; it does not interpret screenshots.")
                         .font(.caption).foregroundStyle(.secondary)
                 } else {
                     VStack(alignment: .leading, spacing: 12) {
@@ -56,7 +60,7 @@ struct BrowserView: View {
                 }
                 if workspace.isBusy { ProgressView("Working with Cua…").controlSize(.small) }
                 if let error = workspace.error { Text(error).foregroundStyle(.orange).textSelection(.enabled) }
-                Text("Uses a separate Chrome or Edge profile. Navigation, clicks and typing requested by the assistant wait for your review in chat. Page text goes to your local Splash model. Stop Browser ends this session and its dedicated browser; connection permission is not restored after restarting Puddle.")
+                Text("Uses a separate Chrome or Edge profile. Navigation and scrolling requested by the assistant wait for your review in chat. Clicking and typing are unavailable in this release. Page text goes to your local Splash model. Stop Browser ends this session and its dedicated browser; connection permission is not restored after restarting Puddle.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let page = workspace.page {
                     Divider()
@@ -75,8 +79,12 @@ struct BrowserView: View {
         Task { _ = try? await workspace.act(.navigate(address.trimmingCharacters(in: .whitespacesAndNewlines))) }
     }
     private func ask() {
-        guard !store.isThinking, !workspace.isBusy, !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        let question = task; task = ""; Task { await store.startBrowserErrand(question) }
+        guard !startingErrand, !store.isThinking, !workspace.isBusy, !task.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let question = task; startingErrand = true
+        Task {
+            defer { startingErrand = false }
+            if await store.startBrowserErrand(question), task == question { task = "" }
+        }
     }
     private func chooseDriver() {
         let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = false

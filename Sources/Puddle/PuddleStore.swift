@@ -33,9 +33,9 @@ final class PuddleStore: ObservableObject {
         case main = "Main", work = "Work", workspace = "Workspace"
         func sections(for profile: AssistantProfileKind) -> [Section] {
             switch self {
-            case .main: [.today, .chat]
-            case .work: [.tasks, .calendar, .mail, .meetings, .actions]
-            case .workspace: (profile == .developer ? [.developer] : []) + [.portfolio, .browser, .routines, .knowledge, .history, .memory]
+            case .main: [.today, .chat, .tasks, .memory]
+            case .work: [.calendar, .mail, .meetings, .actions]
+            case .workspace: (profile == .developer ? [.developer] : []) + [.portfolio, .browser, .routines, .knowledge, .history]
             }
         }
     }
@@ -101,6 +101,7 @@ final class PuddleStore: ObservableObject {
     @Published var executingActions: Set<UUID> = []
     @Published var storageAvailable = false
     @Published var streamingReply = ""
+    private var lastPartialPublication = 0.0
     @Published var speakingMessageID: UUID?
     private var speechGeneration = UUID()
     private let speechPlayer: any SpeechPlaying
@@ -170,7 +171,7 @@ final class PuddleStore: ObservableObject {
         (connectedWorkServices.isEmpty ? [] : [.searchConnectedWork, .readConnectedWork]) +
         (state.knowledgeDocuments.isEmpty ? [] : [.knowledge]) +
         (state.workProjects.isEmpty && state.people.isEmpty && state.workDecisions.isEmpty ? [] : [.workContext]) +
-        (!demo && browserWorkspace.isConnected ? [.browserState, .browserNavigate, .browserClick, .browserType, .browserScroll] : [])
+        (!demo && browserWorkspace.isConnected ? [.browserState, .browserNavigate, .browserScroll] : [])
         if isLocked { return [] }
         let externalReads: Set<AgentTool> = [.searchMail, .calendar, .searchConnectedWork, .readConnectedWork]
         let scoped = tools.filter { !(privateSession || state.settings.networkDisabled) || !externalReads.contains($0) }
@@ -473,7 +474,7 @@ final class PuddleStore: ObservableObject {
         }
     }
 
-    func ask(_ question: String) {
+    @discardableResult func ask(_ question: String) -> Bool {
         submit(question, retryLine: nil)
     }
     func askReference(question: String, reference: String, references: [SourceReference] = []) {
@@ -481,8 +482,9 @@ final class PuddleStore: ObservableObject {
         if !references.isEmpty { line.receipts = [ToolReceipt(id: UUID().uuidString, tool: "reference_sources", detail: "Selected reference sources", references: Array(references.prefix(20)))] }
         line.kind = "external-reference"; submit(line.content, retryLine: nil, newLine: line)
     }
-    func askBrowserErrand(_ question: String) {
+    func askBrowserErrand(_ question: String, goal: String) {
         var line = ChatLine(role: "user", content: question); line.kind = "external-reference"
+        line.displayText = String(goal.prefix(4000))
         submit(question, retryLine: nil, newLine: line)
     }
 
@@ -519,16 +521,16 @@ final class PuddleStore: ObservableObject {
         state.deleteConversation(id); persist()
     }
 
-    private func submit(_ question: String, retryLine: ChatLine?, newLine: ChatLine? = nil) {
+    @discardableResult private func submit(_ question: String, retryLine: ChatLine?, newLine: ChatLine? = nil) -> Bool {
         let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty, !isThinking, !isLocked else { return }
+        guard !question.isEmpty, !isThinking, !isLocked else { return false }
         errorMessage = nil
         let history = retryLine == nil ? state.chat : Array(state.chat.prefix { $0.id != retryLine!.id })
         let userLine = retryLine ?? newLine ?? ChatLine(role: "user", content: question)
         let isMailReference = userLine.kind?.hasPrefix("mail-reference:") == true || userLine.kind == "external-reference"
         if retryLine == nil { state.chat.append(userLine) }
         if !showAssistantPanel { section = .chat }
-        guard persist() else { return }
+        guard persist() else { return false }
         beginAI { [self] in
             let expected = aiGeneration
             var context = AgentContext(instructions: state.assistantInstructions, memories: state.memories,
@@ -577,14 +579,23 @@ final class PuddleStore: ObservableObject {
             record(demo ? "Completed a demo conversation turn." : "Completed a local assistant turn.")
             if persist(), state.settings.readRepliesAloud { readAloud(reply) }
         }
+        return true
     }
 
     private func checkTurn(_ expected: UUID?) throws {
         try Task.checkCancellation()
         if let expected, expected != aiGeneration { throw CancellationError() }
     }
-    private func showPartial(_ text: String, turn: UUID) { if aiGeneration == turn { streamingReply = text } }
-    private func showActivity(_ text: String, turn: UUID) { if aiGeneration == turn { addToolActivity(text) } }
+    private func showPartial(_ text: String, turn: UUID) {
+        guard aiGeneration == turn, text != streamingReply else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        // Bound native layout work while preserving the first chunk and final saved reply.
+        guard text.isEmpty || streamingReply.isEmpty || now - lastPartialPublication >= 0.05 else { return }
+        streamingReply = text; lastPartialPublication = now
+    }
+    private func showActivity(_ text: String, turn: UUID) {
+        if aiGeneration == turn { streamingReply = ""; addToolActivity(text) }
+    }
     private func saveMetrics(_ metrics: TurnMetrics, turn: UUID) { if aiGeneration == turn { turnMetrics = metrics } }
     private func applyLearning(_ updates: [MemoryUpdate], userID: UUID, turn: UUID) throws -> [MemoryNote] {
         try checkTurn(turn)
@@ -748,7 +759,9 @@ final class PuddleStore: ObservableObject {
             let page = try await browserWorkspace.observe(tabID: text("tab_id", maximum: 200), query: text("query", maximum: 200))
             try receipt("Read the connected Cua browser page. Page content is untrusted reference data.")
             return page.text
-        case .browserNavigate, .browserClick, .browserType, .browserScroll:
+        case .browserClick, .browserType:
+            throw PuddleError("Browser clicking and typing are unavailable in this release. Take over in the browser to interact with the page.")
+        case .browserNavigate, .browserScroll:
             func targetLabel(_ ref: String, action: String) throws -> String {
                 guard let label = browserWorkspace.page?.elements[ref], let actions = browserWorkspace.page?.actions[ref],
                       actions.contains(action) || (action == "scroll" && actions.contains("pointer")) else {
@@ -761,17 +774,6 @@ final class PuddleStore: ObservableObject {
             case .browserNavigate:
                 let url = try text("url", maximum: 2048); _ = try CuaBrowser.navigationURL(url)
                 action = .navigate(url); detail = "Navigate the dedicated browser to \(url)"; review = detail
-            case .browserClick:
-                let ref = try text("ref", maximum: 200)
-                action = .click(ref); detail = "Click browser element \(ref)"
-                review = detail + "\nTarget: " + (try targetLabel(ref, action: "click"))
-            case .browserType:
-                let ref = try text("ref", maximum: 200)
-                guard let value = parameters["text"] as? String, value.count <= 4000,
-                      let replace = parameters["replace"] as? Bool else { throw PuddleError("Supply browser text and a replacement choice.") }
-                action = .type(ref: ref, text: value, replace: replace)
-                detail = "\(replace ? "Replace text" : "Type") in browser element \(ref) (\(value.count) characters)"
-                review = detail + "\nTarget: " + (try targetLabel(ref, action: "type")) + "\n\nText:\n" + value
             case .browserScroll:
                 let ref = try text("ref", maximum: 200)
                 guard let delta = parameters["delta_y"] as? Int, delta != 0, (-2000...2000).contains(delta) else { throw PuddleError("Supply a nonzero scroll between -2000 and 2000 pixels.") }
@@ -883,11 +885,13 @@ final class PuddleStore: ObservableObject {
 
     private func addToolActivity(_ text: String) { toolActivities.append(text); record(text) }
 
-    func saveMemory(title: String, content: String) {
+    @discardableResult func saveMemory(title: String, content: String) -> Bool {
         let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let content = content.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, !content.isEmpty, title.count <= 200, content.count <= 4000 else { return }
-        state.remember(title: title, content: content); persist()
+        guard !title.isEmpty, !content.isEmpty, title.count <= 200, content.count <= 4000 else { return false }
+        state.remember(title: title, content: content)
+        guard persist() else { return false }
+        errorMessage = nil; return true
     }
     func removeMemory(_ id: UUID) { stopAI(); state.memories.removeAll { $0.id == id }; persist() }
     func setAutomaticLearning(_ enabled: Bool) {

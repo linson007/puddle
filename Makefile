@@ -1,4 +1,4 @@
-.PHONY: build run demo test
+.PHONY: build run demo test verify-premodel verify-local
 
 build:
 	sh scripts/build.sh
@@ -11,3 +11,9 @@ demo: build
 
 test:
 	sh scripts/swift.sh test
+
+verify-premodel:
+	sh scripts/verify-premodel.sh
+
+verify-local:
+	python3 scripts/verify-local.py

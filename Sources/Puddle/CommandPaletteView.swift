@@ -6,51 +6,90 @@ struct CommandPaletteView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var matches: [WorkspaceSearchResult] = []
+    @State private var selectedIndex = 0
     @FocusState private var focused: Bool
+    private struct Item: Identifiable {
+        let id: String
+        let title: String
+        let icon: String?
+        let result: WorkspaceSearchResult?
+        let action: () -> Void
+    }
     private var sections: [PuddleStore.Section] {
         PuddleStore.Section.allCases.filter { ($0 != .developer || store.state.profileLibrary.active.kind == .developer) && (query.isEmpty || $0.rawValue.localizedCaseInsensitiveContains(query)) }
+    }
+    private var items: [Item] {
+        var values: [Item] = []
+        func command(_ id: String, _ title: String, _ terms: String, _ icon: String, _ action: @escaping () -> Void) {
+            if query.isEmpty || terms.contains(query.lowercased()) {
+                values.append(Item(id: id, title: title, icon: icon, result: nil, action: action))
+            }
+        }
+        command("new", "New conversation", "new conversation", "square.and.pencil") { store.clearChat(); store.section = .chat }
+        command("capture", "Capture a commitment", "capture commitment", "plus") { store.showQuickCapture = true }
+        command("setup", "Set up local AI", "local ai setup splash", "desktopcomputer") { store.showLocalSetup = true }
+        values += sections.map { section in
+            Item(id: "section-" + section.rawValue, title: "Open " + section.rawValue, icon: section.icon, result: nil) { store.section = section }
+        }
+        values += matches.map { result in
+            Item(id: "result-" + result.id, title: result.title, icon: nil, result: result) { store.openSearchResult(result) }
+        }
+        return values
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             TextField("Search work or type a command…", text: $query).textFieldStyle(.roundedBorder).focused($focused)
                 .accessibilityLabel("Search commands and saved workspace")
+                .onSubmit { if items.indices.contains(selectedIndex) { activate(items[selectedIndex]) } }
+                .onKeyPress(.downArrow) { moveSelection(1); return .handled }
+                .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
             Text("⌘K commands & search · ⌘⇧N quick capture · ⌘⇧L assistant panel").font(.caption).foregroundStyle(.secondary)
-            ScrollView {
+            Text("↑↓ to select · Return to open · Esc to close").font(.caption).foregroundStyle(.secondary)
+            ScrollViewReader { proxy in ScrollView {
                 VStack(alignment: .leading, spacing: 8) {
-                    if query.isEmpty || "new conversation".contains(query.lowercased()) { command("New conversation", icon: "square.and.pencil") { store.clearChat(); store.section = .chat } }
-                    if query.isEmpty || "capture commitment".contains(query.lowercased()) { command("Capture a commitment", icon: "plus") { store.showQuickCapture = true } }
-                    if query.isEmpty || "local ai setup splash".contains(query.lowercased()) { command("Set up local AI", icon: "desktopcomputer") { store.showLocalSetup = true } }
-                    ForEach(sections, id: \.self) { section in command("Open \(section.rawValue)", icon: section.icon) { store.section = section } }
-                    if !matches.isEmpty { Divider(); Text("Saved workspace · cached mail/calendar only").font(.caption).foregroundStyle(.secondary) }
-                    ForEach(matches) { result in
-                        Button {
-                            dismiss()
-                            // Present the destination after this sheet has closed.
-                            Task { @MainActor in await Task.yield(); store.openSearchResult(result) }
-                        } label: {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        if item.result?.id == matches.first?.id, item.result != nil {
+                            Divider(); Text("Saved workspace · cached mail/calendar only").font(.caption).foregroundStyle(.secondary)
+                        }
+                        Button { activate(item) } label: {
+                            if let result = item.result {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(result.title).font(.callout.bold()).lineLimit(2)
                                 Text(result.kind.rawValue.capitalized + " · " + result.preview).font(.caption).foregroundStyle(.secondary).lineLimit(2)
                             }.padding(10).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            } else {
+                                Label(item.title, systemImage: item.icon ?? "arrow.right").padding(9).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            }
                         }.buttonStyle(.plain)
+                            .background(selectedIndex == index ? PuddleStyle.inset : .clear, in: RoundedRectangle(cornerRadius: 8))
+                            .accessibilityAddTraits(selectedIndex == index ? .isSelected : [])
+                            .id(item.id)
                     }
-                    if !query.isEmpty, sections.isEmpty, matches.isEmpty { Text("No matches. Mail and calendar search here covers the local cache.").foregroundStyle(.secondary).padding() }
+                    if !query.isEmpty, items.isEmpty { Text("No matches. Mail and calendar search here covers the local cache.").foregroundStyle(.secondary).padding() }
                 }
-            }
+            }.onChange(of: selectedIndex) { _, index in if items.indices.contains(index) { proxy.scrollTo(items[index].id) } } }
             HStack { Spacer(); Button("Close") { dismiss() }.keyboardShortcut(.cancelAction) }
         }.padding(20).frame(width: 650, height: 540).onAppear { focused = true }
+            .onChange(of: query) { _, _ in selectedIndex = 0; matches = [] }
             .task(id: query) {
                 do { try await Task.sleep(for: .milliseconds(150)) } catch { return }
                 let snapshot = store.state, query = query
                 let work = Task.detached(priority: .userInitiated) { WorkspaceSearch.search(query, in: snapshot) }
                 let found = await withTaskCancellationHandler { await work.value } onCancel: { work.cancel() }
-                if !Task.isCancelled { matches = found }
+                if !Task.isCancelled {
+                    matches = found
+                    selectedIndex = min(selectedIndex, max(0, items.count - 1))
+                }
             }
     }
-    private func command(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button { dismiss(); Task { @MainActor in await Task.yield(); action() } } label: {
-            Label(title, systemImage: icon).padding(9).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(.plain)
+    private func moveSelection(_ offset: Int) {
+        guard !items.isEmpty else { return }
+        selectedIndex = max(0, min(items.count - 1, selectedIndex + offset))
+    }
+    private func activate(_ item: Item) {
+        dismiss()
+        // Present the destination after this sheet has closed.
+        Task { @MainActor in await Task.yield(); item.action() }
     }
 }
 

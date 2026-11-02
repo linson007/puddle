@@ -19,6 +19,7 @@ Some tests are intentionally skipped until their integration is configured:
 | `PUDDLE_LIVE_SPLASH=1` | Synthetic real-model evaluations against Splash at `http://127.0.0.1:8000` |
 | `PUDDLE_CUA_DRIVER=/absolute/path/to/cua-driver` | Installed-driver MCP handshake/catalog check; `PUDDLE_CUA_LIVE=1` additionally starts a real dedicated browser session |
 | `PUDDLE_LIVE_AUDIO_FILE=/absolute/path/to/synthetic-audio` | On-device speech recognition of a synthetic audio fixture on macOS 26+ |
+| `PUDDLE_FILESYSTEM_TESTS=1` | Actual ENOSPC/read-only recovery in a disposable 32 MiB HFS+ disk image; never fills the host volume |
 | `PUDDLE_LOAD_TESTS=1` | Larger synthetic storage and performance workloads described below |
 
 Features requiring macOS 26 also skip their corresponding tests on older systems.
@@ -31,7 +32,104 @@ suites on macOS 26, then builds and verifies an ad hoc release bundle without an
 OAuth client file. For setup and contribution expectations, see
 [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Latest public-release regression
+## Pre-model verification
+
+```sh
+make verify-premodel
+# Or choose a new evidence directory:
+sh scripts/verify-premodel.sh /absolute/new/evidence-directory
+```
+
+The command clears live-model/driver/audio/filesystem opt-ins, runs full debug/release
+fixtures with regular load enabled, then heavy archives and a 1,000-save
+long-chat endurance profile. It builds the release app, verifies its plist and
+signature, and checks refusal of fixture arguments and a marker-only fixture
+copy before workspace creation. Only the disposable copy is re-signed for that
+marker test; the actual bundle is unchanged. CI shares the bundle check.
+
+Evidence includes logs, load metrics, source checksums, base commit and working diff.
+Existing results are preserved; a failed command stops the run and retains its
+log. Optional live-model/driver/audio skips remain visible in test results.
+
+Synthetic budgets: save P95 <100 ms, resident growth after warmup ≤64 MiB, cold
+load/history/global search <2 s, prompt preparation <0.5 s, backup encoding <5 s
+and inspection <2 s. Metrics record budgets and host resources. These are app
+regression budgets, not model-speed or cross-Mac claims. The runner uses default
+budgets; standalone load commands still permit the documented save override.
+Native sleep/device/host-volume and clean-Mac acceptance remain separate. See the
+[model/hardware contract](model-acceptance.md) and
+[roadmap dependencies](production-roadmap.md#work-before-live-model-acceptance).
+
+Verified on 1 November 2026: debug executed **479 tests** (465 passed, 14 optional
+skips); release executed **475 tests** (461 passed, 14 optional skips), zero
+failures. Regular/heavy load and the 1,000-save long-chat run passed all budgets.
+Release bundling, plist/strict signature, both fixture-refusal paths and whitespace
+checks passed. Synthetic driver regressions reject click/type before dispatch;
+reads, reviewed navigation/scroll, cancellation and historical receipts remain
+covered. No live model, provider or audio opt-in was enabled.
+
+Native isolated checks passed for the simple first-run screen, keyboard task
+capture/Return save, memory creation and same-title correction without a duplicate,
+task/memory persistence after quit/relaunch, task completion/Completed view and
+the browser's restricted-scope explanation. This is not first-time-user,
+VoiceOver, clean-Mac, production Keychain or notification-delivery acceptance.
+
+## Live roadmap verification, 2 November 2026
+
+See the [dated acceptance report](roadmap-acceptance-2026-11-02.md) for the
+running-model configuration, final debug/release results, fixes and limits.
+The initial live-enabled suites passed **488 debug / 484 release tests**. The
+independent follow-up passed **498 debug / 494 release tests**, zero failures or
+skips; actual preset/hardware and public-release gates remain open.
+`LiveWorkflowAcceptanceTests` uses a synthetic encrypted workspace, a loopback-only
+transport and a notification scheduler that asserts notifications stay disabled.
+It does not contact connected accounts. Set `PUDDLE_ACCEPTANCE_OUTPUT_DIRECTORY`
+to retain prompts/replies and warm timing samples, using a separate directory per
+build. The [model acceptance contract](model-acceptance.md) gives the command and
+the initial latency budgets.
+
+For bounded actual storage-error drills:
+
+```sh
+PUDDLE_FILESYSTEM_TESTS=1 sh scripts/swift.sh test --filter FilesystemRecoveryAcceptanceTests
+```
+
+The tests mount only their own disposable 32 MiB HFS+ / 128 MiB APFS images,
+reach ENOSPC inside them, check failed saves preserve the committed encrypted
+workspace, and verify reopen/save/backup recovery. Read-only remounts reject
+mutations while remaining readable. A 9,600-message legacy upgrade and protected
+pre-upgrade backup restore also run on APFS. Tests detach/remove their fixtures;
+failed detach preserves the bounded image for inspection. This is not
+host-volume, power-loss, signed older-app rollback or clean-Mac certification.
+
+## Independent local verification
+
+With Splash already running on loopback port 8000, Cua Driver already configured
+and the on-device English speech language installed:
+
+```sh
+make verify-local
+# Or choose a new evidence directory / installed driver:
+python3 scripts/verify-local.py --output /absolute/new/evidence-directory \
+  --driver /Applications/CuaDriver.app/Contents/MacOS/cua-driver
+```
+
+The runner generates a synthetic speech file without playback, starts an owned
+loopback browser page, and runs full live-enabled debug/release, regular/heavy/
+1,000-save storage workloads, release build and bundle checks. It captures
+per-build workflow reports, runtime identity, source hashes and a patch including
+untracked sources. It removes its browser server in `finally`; disk tests detach
+their own volumes. Existing output directories are rejected and failures retain
+their logs. It clears inherited signing, release configuration and load overrides.
+
+This command does not install models, stop the owner's Splash server, access
+provider accounts, grant permissions, record live audio, change OS preferences,
+publish a release or certify first-time usability. Manual/native checks remain
+in the dated report. The follow-up also adds bundle-pinned update workflow
+regressions for pause/cancellation, bad signatures/hashes, changed installers,
+old builds and retry, plus failed-memory/chat/browser-goal save regressions.
+
+## Earlier public-release regressions
 
 Latest [audio follow-up](live-browser-os-acceptance-2026-10-30.md#follow-up-with-selected-source-diagnostics):
 **466 debug / 462 release tests passed**, zero failures or skips. The supervised
@@ -47,8 +145,9 @@ The [live browser/OS follow-up](live-browser-os-acceptance-2026-10-30.md) record
 browser startup/capability, tab inventory, review, native chat-layout and
 speech-download pause corrections. Live browser reads/navigation and normal
 reviewed input passed; changed-target/password-field checks failed the release
-gate. Public distribution remains blocked pending the browser scope decision
-and the remaining supervised OS/provider/release acceptance.
+gate. The owner subsequently chose reading/navigation/scrolling only for v1;
+click/type dispatch is disabled in [current browser scope](browser-use.md).
+Supervised OS/provider/release acceptance still blocks distribution.
 Original follow-up: **459 debug / 457 release tests passed**, zero failures or skips,
 including live Splash, a real dedicated Cua session/read/navigation and load tests.
 Eight cases were added. These counts do not close the failed manual gates.
@@ -190,11 +289,13 @@ reminder approvals and local state updates use the app’s real logic.
 
 ## Mail, Calendar and grouped navigation
 
-1. Check Main (Today, Puddle), Work (Tasks, Calendar, Mail, Meetings), Workspace
-   (History, Memory, plus Developer for Developer profiles), and pinned Connections/Settings. Resize to
+1. Check Today, Puddle, Tasks and Memory, collapsed More, and pinned
+   Connections/Settings. Expand More for optional workspaces; Developer appears
+   only for Developer profiles. Opening a hidden page through commands expands
+   More; pending reviews remain visible when collapsed. Resize to
    960 × 640 and scroll navigation; all destinations should remain reachable.
-2. Open Mail/Calendar without Google, and with only the other service granted.
-   Each remains visible and offers sign-in or Manage Google Permissions.
+2. Open Mail/Calendar through More without Google, and with only the other service
+   granted. Each offers sign-in or Manage Google Permissions.
    Cancel sign-in and retry. Check that a failed refresh retains cached content.
 3. In demo, search Mail by body, sender or attachment name; combine search with
    Unread/Important filters and clear it. Select by mouse and keyboard. Check
@@ -259,9 +360,10 @@ VoiceOver variants above still need acceptance.
 ## Cua browser control
 
 Follow [Cua browser setup](browser-use.md) for driver installation and macOS
-permissions. Browser is available under Workspace for every role. Start a
+permissions. Browser is available under More for every role. Start a
 session explicitly, inspect a disposable public page, and ask the local model
-to navigate, click, fill a non-sensitive field and scroll. Review the exact
+to navigate by URL and scroll. Click/type requests must stay unavailable; take
+over manually for links and forms. Review the exact
 destination/target/text in chat before allowing a change. Decline, retry after
 an attempted action, switch profiles while awaiting approval, and stop during
 an active operation. Check both browser state and Puddle's receipts. Restart

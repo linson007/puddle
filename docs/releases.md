@@ -60,6 +60,11 @@ key needs a separately trusted application update.
 Settings → Updates & Diagnostics verifies the pinned signature, newer build,
 OS compatibility and SHA256 before offering Open Installer. Downloads cap128MB;
 installation is manual. There is no background updater/automatic rollback.
+Check/download work can be cancelled and ends when the Updates view is dismissed
+or external connections become unavailable. A failed check clears an earlier
+offer; downloads are also gated while locked or paused. The checksum is checked
+again immediately before opening an installer. Failed/cancelled downloads do not
+produce an offered installer, and a changed file requires another download.
 Keep a previous signed installer and passphrase-encrypted workspace export.
 Future schemas are preserved and rejected by incompatible older apps.
 
@@ -67,3 +72,8 @@ Before public distribution, test clean-Mac onboarding without developer tools,
 Splash installation/download/offline restart, OAuth, permissions, capture,
 dictation, upgrades, backup and rollback. Test wrong key/hash, interrupted
 downloads, old builds and incompatible OS. Diagnostics are copy-only; no upload.
+Local bundle-pinned feed/signature/hash, interruption, pause, stale-result,
+changed-installer and retry workflows run in `ReleaseUpdateWorkflowTests` with
+synthetic metadata and a disposable download folder. `make verify-local` covers
+these alongside the live local checks; actual HTTPS hosting, Developer ID,
+notarization and clean-Mac install/upgrade remain owner-environment gates.

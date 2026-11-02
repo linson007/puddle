@@ -8,6 +8,9 @@ Your personal AI assistant, running locally on your Mac.
 Explore the [product website and interactive demo](https://linson007.github.io/puddle/).
 
 Puddle opens to **Today**: your priorities, commitments, follow-ups and agenda.
+The sidebar keeps **Today**, **Puddle**, **Tasks** and **Memory** within reach.
+Expand **More** for optional workspaces such as mail, calendar and meetings;
+actions needing review remain visible when More is collapsed.
 Keep your role and objectives in a local work profile, prepare for meetings,
 or open a persistent conversation to think through decisions and plans. Gmail,
 Outlook and Google Calendar are optional. You can organize work without an account or
@@ -19,7 +22,8 @@ dependencies.
 
 **Development status:** Puddle is under active development. Public distribution
 is on hold pending the documented [release gates](docs/production-roadmap.md#current-verification-and-release-gates),
-including browser-action safeguards and native/provider acceptance. Source builds
+including native/provider and distribution acceptance. Browser clicking and
+typing are deferred from the first-release scope. Source builds
 and the fixture demo are available for development and evaluation.
 
 [Getting started](#build-and-run) · [Contributing](CONTRIBUTING.md) ·
@@ -119,7 +123,7 @@ needed only if your Splash server requires one. Then start a conversation.
 - **Routines:** scheduled read-only briefs/reviews with persisted execution history,
   missed/interrupted-run handling, pause and optional launch at login.
 - **Browser:** use Cua Driver to open a separate Chrome or Edge window and let
-  your local assistant read pages, navigate, click, type and scroll. Start a
+  your local assistant read pages, navigate by URL and scroll. Click and type manually. Start a
   session explicitly; assistant actions wait for your review in chat. See
   [Cua browser setup](docs/browser-use.md). Errands retain goals/progress across
   turns; Continue inspects fresh state and completion requires observed evidence.
@@ -190,7 +194,7 @@ general conversation does not automatically load your inbox or calendar.
 | Prepare email/event | Save a local editable proposal; sending/booking requires separate exact-content review |
 | Read work context/documents | Bounded user-maintained project/people/decision context or cited indexed passages |
 | Read browser | Read page text and current element refs from an explicitly started Cua browser |
-| Use browser | Review navigation, clicks, typing and scrolling in a dedicated browser session |
+| Use browser | Review URL navigation and scrolling in a dedicated browser session; clicking and typing are deferred |
 
 Connections start with read permissions. Reviewed sends, organization and calendar
 writes require optional grants. The model cannot directly dispatch them.
@@ -260,6 +264,13 @@ CI runs the default suite in debug and release on macOS 26 and packages an ad ho
 release app without account credentials. CI does not establish the manual release
 gates or run live provider actions.
 
+`make verify-local` repeats the independent roadmap checks with an already
+running Splash server, configured Cua Driver and installed speech language. It
+uses synthetic state, generated-file recognition and disposable browser/disk
+fixtures; it does not grant permissions or use provider accounts. See
+[local verification](docs/testing.md#independent-local-verification) and the
+[2 November acceptance report](docs/roadmap-acceptance-2026-11-02.md).
+
 Tests cover chat without accounts, tool-call round trips, unavailable tools,
 declined actions, incomplete calls, execution limits, memory/state migration,
 reminders, OAuth/PKCE, incremental Gmail, paginated Calendar, streamed replies,
@@ -273,8 +284,9 @@ The [six-month load report](docs/load-testing-2026-10-30.md) records tests with
 The [security and guardrail report](docs/security-testing-2026-10-30.md) records
 the security fixes, adversarial tests and remaining public-release gates.
 The [live browser/OS follow-up](docs/live-browser-os-acceptance-2026-10-30.md)
-records additional fixes, macOS unlock, browser acceptance and confirmed
-browser-write blockers requiring a release-scope decision.
+records additional fixes, macOS unlock, browser acceptance and the historical
+browser-write findings. The [current browser scope](docs/browser-use.md) defers
+clicking and typing from v1.
 
 Build scripts default to an ad hoc signed local app. Release scripts support
 Developer ID signing/notarization and a pinned signed update feed, but require

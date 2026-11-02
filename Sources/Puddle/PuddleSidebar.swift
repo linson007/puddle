@@ -3,6 +3,17 @@ import SwiftUI
 struct PuddleSidebar: View {
     @ObservedObject var store: PuddleStore
     @State private var hoveredSection: PuddleStore.Section?
+    @State private var showingMore = false
+
+    private var actionsNeedingReview: Int {
+        store.state.actionProposals.filter { $0.status == .draft || $0.status == .uncertain }.count
+    }
+
+    private func isAdditionalSection(_ section: PuddleStore.Section) -> Bool {
+        [PuddleStore.SidebarGroup.work, .workspace].contains { group in
+            group.sections(for: store.state.profileLibrary.active.kind).contains(section)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -28,14 +39,27 @@ struct PuddleSidebar: View {
             }.buttonStyle(.plain).padding(.horizontal, 14).accessibilityLabel("Search workspace and commands")
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(PuddleStore.SidebarGroup.allCases, id: \.self) { group in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(group.rawValue.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.3).foregroundStyle(PuddleStyle.muted)
-                                .padding(.horizontal, 11).padding(.bottom, 4)
-                                .accessibilityAddTraits(.isHeader)
-                            ForEach(group.sections(for: store.state.profileLibrary.active.kind), id: \.self) { navigationRow($0) }
-                        }
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(PuddleStore.SidebarGroup.main.sections(for: store.state.profileLibrary.active.kind), id: \.self) { navigationRow($0) }
+                        if !showingMore && actionsNeedingReview > 0 { navigationRow(.actions) }
                     }
+                    DisclosureGroup(isExpanded: $showingMore) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach([PuddleStore.SidebarGroup.work, .workspace], id: \.self) { group in
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(group.rawValue.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.3).foregroundStyle(PuddleStyle.muted)
+                                        .padding(.horizontal, 11).padding(.bottom, 4)
+                                        .accessibilityAddTraits(.isHeader)
+                                    ForEach(group.sections(for: store.state.profileLibrary.active.kind), id: \.self) { navigationRow($0) }
+                                }
+                            }
+                        }.padding(.top, 10)
+                    } label: {
+                        Label("More", systemImage: "ellipsis.circle")
+                            .font(.system(size: 13, weight: .medium)).foregroundStyle(PuddleStyle.muted)
+                            .padding(.vertical, 8)
+                            .help("Mail, calendar, meetings and other optional workspaces")
+                    }.padding(.horizontal, 10)
                 }.padding(.horizontal, 12).padding(.vertical, 4)
             }
             VStack(alignment: .leading, spacing: 3) {
@@ -58,6 +82,10 @@ struct PuddleSidebar: View {
                 }.font(.system(size: 10)).foregroundStyle(PuddleStyle.muted).padding(.horizontal, 10).padding(.top, 8)
             }.padding(.horizontal, 12).padding(.bottom, 18)
         }.background(PuddleStyle.sidebar)
+            .onAppear { if isAdditionalSection(store.section) { showingMore = true } }
+            .onChange(of: store.section) { _, section in
+                if isAdditionalSection(section) { showingMore = true }
+            }
     }
 
     private func navigationRow(_ section: PuddleStore.Section) -> some View {
@@ -66,8 +94,8 @@ struct PuddleSidebar: View {
                 Image(systemName: section.icon).font(.system(size: 14)).frame(width: 18)
                 Text(section.rawValue).font(.system(size: 13, weight: .medium))
                 Spacer()
-                if section == .tasks {
-                    let count = store.state.tasks.filter { !$0.completed }.count
+                if section == .tasks || section == .actions {
+                    let count = section == .tasks ? store.state.tasks.filter { !$0.completed }.count : actionsNeedingReview
                     if count > 0 {
                         Text(String(count)).font(.system(size: 10, weight: .medium)).monospacedDigit()
                             .padding(.horizontal, 6).padding(.vertical, 2)

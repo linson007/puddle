@@ -28,7 +28,7 @@ final class LocalAISetupTests: XCTestCase {
         let result = try await SplashClient(address: "http://127.0.0.1:8000").verifySetup()
         XCTAssertTrue(result.toolCalling); XCTAssertFalse(result.answer.isEmpty)
     }
-    private func hardware(chip: String = "Apple M5 Pro", memory: Int = 32, disk: Int = 50, major: Int = 26, minor: Int = 4) -> LocalAIHardware {
+    private func hardware(chip: String = "Apple M5 Pro", memory: Int = 36, disk: Int = 50, major: Int = 26, minor: Int = 4) -> LocalAIHardware {
         LocalAIHardware(chip: chip, memoryBytes: UInt64(memory) * 1_073_741_824, freeDiskBytes: Int64(disk) * 1_073_741_824,
             os: OperatingSystemVersion(majorVersion: major, minorVersion: minor, patchVersion: 0))
     }
@@ -38,6 +38,9 @@ final class LocalAISetupTests: XCTestCase {
         XCTAssertFalse(hardware(major: 26, minor: 3).supportsSplash)
         XCTAssertTrue(hardware(major: 27, minor: 0).supportsSplash)
         XCTAssertEqual(hardware(memory: 24).recommendation, .compact)
+        XCTAssertEqual(hardware(memory: 32).recommendation, .compact)
+        XCTAssertFalse(hardware(memory: 32).issues(for: .balanced).isEmpty)
+        XCTAssertEqual(hardware(memory: 36).recommendation, .balanced)
         XCTAssertEqual(hardware(memory: 16, disk: 5).issues(for: .balanced).count, 2)
     }
     func testLaunchArgumentsKeepServerOnLoopbackAndBoundContext() throws {
