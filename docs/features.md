@@ -1,16 +1,18 @@
 # Puddle supported features
 
 Puddle is a native macOS personal assistant using a local
-Splash server. Today brings together priorities, commitments, follow-ups,
+OpenAI-compatible model server. Today brings together priorities, commitments, follow-ups,
 meeting preparation and optional Gmail/Calendar context. Personal memory,
 conversation history and portable workspace backups stay local. Organizing
-work needs no account or model; conversation needs only Splash.
+work needs no account or model; conversation needs a running compatible local server.
 
 ## Requirements and setup
 
 - macOS 14 or later; Swift 6 tools or Xcode to build.
-- A running Splash server for real model responses. Splash has its own hardware,
-  model, and operating system requirements.
+- A local server providing `/v1/models` and `/v1/chat/completions` with streaming
+  for real model responses, such as Ollama, LM Studio, llama.cpp or Splash.
+  Assistant tools require compatible function calling. Server and model
+  hardware/OS requirements are independent of Puddle.
 - A Google account and an app-owner-provisioned Desktop OAuth client only for
   Gmail or Calendar. See [Google setup](gmail-setup.md).
 - Desktop notification permission for reminders outside the app.
@@ -18,14 +20,18 @@ work needs no account or model; conversation needs only Splash.
 - Google Chrome for the experimental local Google Meet attendance assistant.
 
 Build with `make build`, then open `build/Puddle.app`. In Settings → Local AI,
-enter the Splash address and optional API key and choose **Save and Test
-Connection**. The default address is `http://127.0.0.1:8000`.
+enter the local server address, optional exact Model ID and optional API key, then
+choose **Save and Test Connection**. Leave Model ID blank for the first model
+listed by the server. Root addresses and `/v1` addresses are accepted. Common
+ports are 11434 for Ollama, 1234 for LM Studio, 8080 for llama.cpp and 8000 for Splash.
+See the [connection examples and compatibility contract](../README.md#build-and-run).
 
 ## Guided setup, privacy and additional workspaces
 
-**Set Up Local AI** checks chip/OS/RAM/free disk, discovers or installs Splash,
-offers two resource presets, starts/stops its own process and tests a real answer
-plus a synthetic required tool call. It never executes personal tools during
+**Set Up Local AI** connects any supported local server and tests a real answer
+plus a synthetic required tool call. Its optional Splash section checks
+chip/OS/RAM/free disk, discovers or installs Splash, offers two resource presets
+and starts/stops its own process. It never executes personal tools during
 setup. Installation/first model download need internet; cached models can start
 with external APIs paused. Existing independently managed servers remain usable.
 
@@ -88,9 +94,13 @@ See [browser setup and scope](browser-use.md).
 The sidebar starts with **Today**, **Puddle**, **Tasks** and **Memory**.
 Expand **More** for Calendar, Mail, Meetings, Actions, Work Context, Browser,
 Routines, Knowledge and History. **Developer** appears there only for Developer
-profiles. Opening one of these destinations through search or another view
-expands More so the current location stays visible. When More is collapsed,
-an **Actions** shortcut appears for drafts or uncertain actions that need review.
+profiles. Use an item's pin button (or right-click → **Pin … to sidebar**) to move
+it into the main sidebar. The filled pin moves it back to More. Pins are saved
+locally across launches and shared across profiles; a pinned Developer item
+remains visible only in Developer profiles. Opening an unpinned destination through
+search or another view expands More so the current location stays visible.
+When More is collapsed, an **Actions** shortcut appears for drafts or uncertain
+actions that need review, unless Actions is already pinned.
 Navigation scrolls at shorter window heights. **Connections** and **Settings**
 stay at the bottom. Mail and Calendar offer sign-in in their own views.
 
