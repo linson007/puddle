@@ -1202,7 +1202,7 @@ final class PuddleStore: ObservableObject {
     private func saveSnapshot(_ next: AppSnapshot) async throws {
         guard storageAvailable else { state = lastSavedState; throw PuddleError("Saved state is unavailable. Retry loading it in Settings.") }
         saveRevision &+= 1
-        let revision = saveRevision, epoch = saveEpoch, access = workspaceAccessRevision
+        let revision = saveRevision, epoch = saveEpoch
         pendingSaves += 1
         defer { saveFinished() }
         do {
@@ -1217,7 +1217,7 @@ final class PuddleStore: ObservableObject {
                     savedRevision = durable.revision; lastSavedState = durable.snapshot.mergingMeetingRecoveries(lastSavedState.meetingCaptureRecoveries)
                 }
                 saveEpoch = UUID()
-                if access == workspaceAccessRevision, !demo { state = lastSavedState }
+                if !demo, !privateSession { state = lastSavedState }
                 else if privateSession { savedPrivateWorkspace = lastSavedState }
             }
             throw error

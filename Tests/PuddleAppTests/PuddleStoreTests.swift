@@ -12,16 +12,24 @@ private final class TestSecrets: SecretStore, @unchecked Sendable {
 }
 
 private final class TestDisk: SnapshotPersistence, @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = NSCondition()
     private var saved = AppSnapshot()
+    private var writeEntered: XCTestExpectation?
+    private var holdingWrite = false
     var failRead = false
     var failWrite = false
     func load() throws -> AppSnapshot {
         try lock.withLock { if failRead { throw PuddleError("Corrupt fixture") }; return saved }
     }
     func save(_ state: AppSnapshot) throws {
-        try lock.withLock { if failWrite { throw PuddleError("Full disk fixture") }; saved = state }
+        try lock.withLock {
+            writeEntered?.fulfill(); writeEntered = nil
+            while holdingWrite { lock.wait() }
+            if failWrite { throw PuddleError("Full disk fixture") }; saved = state
+        }
     }
+    func blockFailingWrite(_ entered: XCTestExpectation) { lock.withLock { writeEntered = entered; holdingWrite = true; failWrite = true } }
+    func releaseWrite() { lock.withLock { holdingWrite = false; lock.broadcast() } }
 }
 
 private actor AppTransport: HTTPTransport {
@@ -67,6 +75,23 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testPendingWriteFailureStillRollsBackAfterLockRevokesAccess() async throws {
+        let (store, disk, _, _) = fixture()
+        await store.start()
+        let entered = expectation(description: "Pending write entered")
+        disk.blockFailingWrite(entered)
+        let edit = Task { await store.addTask(title: "Unacknowledged task", dueAt: nil) }
+        await fulfillment(of: [entered], timeout: 5)
+        await store.lockWorkspace()
+        XCTAssertTrue(store.isLocked)
+        XCTAssertThrowsError(try store.workspaceAccess())
+        disk.releaseWrite()
+        await edit.value
+        XCTAssertTrue(store.state.tasks.isEmpty)
+        XCTAssertNotNil(store.errorMessage)
+        store.unlockWorkspace()
+        await store.suspendConnectionWork()
+    }
     func testLocalModelSelectionPersistsAndIsUsedByEveryClient() async throws {
         let (store, disk, _, _) = fixture()
         await store.start()

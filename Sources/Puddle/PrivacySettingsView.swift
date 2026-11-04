@@ -107,9 +107,10 @@ extension PuddleStore {
     }
     func lockWorkspace() async {
         guard !demo else { return }
-        await stopAI(); cancelMeetingSummary(); await suspendConnectionWork(); browserWorkspace.stop(); meetingCapture.stop(); meetAttendance.leave()
+        // Revoke access before cleanup can suspend for a durable checkpoint.
         isLocked = true; networkPolicy.allowExternalConnections(false)
         systemDictation.stop()
+        await stopAI(); cancelMeetingSummary(); await suspendConnectionWork(); browserWorkspace.stop(); meetingCapture.stop(); meetAttendance.leave()
     }
     func unlockWorkspace() {
         isLocked = false; networkPolicy.allowExternalConnections(!state.settings.networkDisabled && !privateSession)
