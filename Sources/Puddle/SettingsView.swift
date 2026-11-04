@@ -11,14 +11,7 @@ struct GoogleSetupView: View {
     @State private var editCalendar = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 14) {
-                PuddleMark(size: 48)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(L10n.text("Connect Google")).font(.title2).fontWeight(.semibold)
-                    Text("Your inbox and calendar, ready when you need them.").foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
+            header
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Puddle works without connected accounts. Connect Google when you want it to help with your email or schedule.")
@@ -72,20 +65,7 @@ struct GoogleSetupView: View {
                 }
             }
             Divider()
-            HStack {
-                Spacer()
-                if store.isSigningIn {
-                    ProgressView().controlSize(.small)
-                    Text(store.googleSignInStatus).font(.caption).foregroundStyle(.secondary)
-                    Button(L10n.text("Cancel")) { store.cancelSignIn() }
-                } else {
-                    Button(L10n.text("Close")) { dismiss() }
-                    Button("Sign in with Google") { Task {
-                        let scopes = (mail ? [OAuthFlow.scope] + (sendMail ? [OAuthFlow.mailSendScope] : []) + (organizeMail ? [OAuthFlow.mailModifyScope] : []) : []) + (calendar ? [OAuthFlow.calendarScope, OAuthFlow.calendarListScope] + (editCalendar ? [OAuthFlow.calendarWriteScope] : []) : [])
-                        await store.connect(scopes: scopes)
-                    } }.buttonStyle(.borderedProminent).disabled(!store.configured || (!mail && !calendar))
-                }
-            }
+            actions
         }.padding(28).frame(width: 620, height: store.configured ? 540 : 700).tint(PuddleStyle.teal)
             .onAppear {
                 if store.connected { mail = store.mailConnected; calendar = store.calendarConnected }
@@ -93,6 +73,44 @@ struct GoogleSetupView: View {
                 organizeMail = store.grantedScopes.contains(OAuthFlow.mailModifyScope)
                 editCalendar = store.grantedScopes.contains(OAuthFlow.calendarWriteScope)
             }
+    }
+    private var header: some View {
+        HStack(spacing: 14) {
+            PuddleMark(size: 48)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.text("Connect Google")).font(.title2).fontWeight(.semibold)
+                Text("Your inbox and calendar, ready when you need them.").foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+    private var actions: some View {
+        HStack {
+            Spacer()
+            if store.isSigningIn {
+                ProgressView().controlSize(.small)
+                Text(store.googleSignInStatus).font(.caption).foregroundStyle(.secondary)
+                Button(L10n.text("Cancel")) { store.cancelSignIn() }
+            } else {
+                Button(L10n.text("Close")) { dismiss() }
+                Button("Sign in with Google") { Task {
+                    await store.connect(scopes: requestedScopes)
+                } }.buttonStyle(.borderedProminent).disabled(!store.configured || (!mail && !calendar))
+            }
+        }
+    }
+    private var requestedScopes: [String] {
+        var scopes: [String] = []
+        if mail {
+            scopes.append(OAuthFlow.scope)
+            if sendMail { scopes.append(OAuthFlow.mailSendScope) }
+            if organizeMail { scopes.append(OAuthFlow.mailModifyScope) }
+        }
+        if calendar {
+            scopes += [OAuthFlow.calendarScope, OAuthFlow.calendarListScope]
+            if editCalendar { scopes.append(OAuthFlow.calendarWriteScope) }
+        }
+        return scopes
     }
     private func step(_ number: String, _ title: String, _ description: String) -> some View {
         HStack(alignment: .top, spacing: 14) {

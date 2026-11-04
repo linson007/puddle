@@ -144,7 +144,15 @@ extension PuddleStore {
         func match(_ id: UUID, _ text: String) -> Bool { query.isEmpty || id.uuidString == query || text.localizedCaseInsensitiveContains(query) }
         let projects = state.workProjects.filter { match($0.id, $0.title + " " + $0.objective) }.prefix(10).map { ["id": $0.id.uuidString, "title": $0.title, "objective": String($0.objective.prefix(1000)), "success": String($0.successCriteria.prefix(500)), "status": $0.status.rawValue] }
         let people = state.people.filter { match($0.id, $0.name + " " + $0.email + " " + $0.notes) }.prefix(10).map { ["id": $0.id.uuidString, "name": $0.name, "email": $0.email, "role": $0.role, "promises": String($0.promises.prefix(1000)), "talking_points": String($0.talkingPoints.prefix(1000)), "notes": String($0.notes.prefix(1000)), "last_interaction": $0.lastInteraction?.ISO8601Format() ?? "", "source": $0.sourceURL?.absoluteString ?? ""] }
-        let decisions: [[String: Any]] = state.workDecisions.filter { match($0.id, $0.title + " " + $0.rationale) }.prefix(10).map { ["id": $0.id.uuidString, "title": $0.title, "owner": $0.owner, "project_id": $0.projectID?.uuidString ?? "", "options": String($0.options.prefix(1000)), "rationale": String($0.rationale.prefix(1000)), "outcome": String($0.outcome.prefix(1000)), "review_at": $0.reviewAt?.ISO8601Format() ?? "", "status": $0.status.rawValue, "evidence": $0.evidence.prefix(5).map { ["title": $0.title, "url": $0.url.absoluteString] }] }
+        let decisions: [[String: Any]] = state.workDecisions
+            .filter { match($0.id, $0.title + " " + $0.rationale) }.prefix(10)
+            .map { decision -> [String: Any] in
+                let evidence: [[String: String]] = decision.evidence.prefix(5).map { ["title": $0.title, "url": $0.url.absoluteString] }
+                return ["id": decision.id.uuidString, "title": decision.title, "owner": decision.owner,
+                        "project_id": decision.projectID?.uuidString ?? "", "options": String(decision.options.prefix(1000)),
+                        "rationale": String(decision.rationale.prefix(1000)), "outcome": String(decision.outcome.prefix(1000)),
+                        "review_at": decision.reviewAt?.ISO8601Format() ?? "", "status": decision.status.rawValue, "evidence": evidence]
+            }
         let object: [String: Any] = ["scope": "Bounded user-maintained records, not inferred facts or proof of execution.", "projects": projects, "people": people, "decisions": decisions]
         return (try? JSONSerialization.data(withJSONObject: object)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }
