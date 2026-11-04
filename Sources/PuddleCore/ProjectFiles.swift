@@ -35,7 +35,7 @@ public struct ProjectSearchResult: Codable, Sendable {
 
 /// Files are opened relative to a held directory descriptor. Symlinks are refused at every component.
 /// This avoids both traversal and a symlink-swap between checking a path and reading its bytes.
-public final class ProjectFiles: @unchecked Sendable {
+public final class ProjectFiles: Sendable {
     public static let maximumFileBytes = 512 * 1024
     private let rootFD: Int32
     private let root: URL
@@ -74,7 +74,7 @@ public final class ProjectFiles: @unchecked Sendable {
                 value.hasSuffix(".key") || value.hasSuffix(".p12") || value.hasSuffix(".pfx") || value.hasSuffix(".keystore") { return false }
         }
         guard !directory else { return true }
-        let name = parts.last!.lowercased()
+        guard let name = parts.last?.lowercased() else { return false }
         return ["makefile", "dockerfile", "gemfile", "rakefile", "license", ".gitignore", ".gitattributes", ".editorconfig"].contains(name) || textExtensions.contains((name as NSString).pathExtension)
     }
 
@@ -160,7 +160,8 @@ public final class ProjectFiles: @unchecked Sendable {
 
     public func read(_ path: String, startLine: Int = 1, lineCount: Int = 120) throws -> ProjectFileExcerpt {
         guard startLine >= 1, (1...160).contains(lineCount) else { throw PuddleError("Read from line 1 or later, with 1–160 lines per request.") }
-        let lines = try content(path)!.components(separatedBy: "\n")
+        guard let text = try content(path) else { throw PuddleError("The source file is no longer available.") }
+        let lines = text.components(separatedBy: "\n")
         guard startLine <= lines.count else { throw PuddleError("The requested line is beyond this file's \(lines.count) lines.") }
         let end = min(lines.count, startLine + lineCount - 1)
         var excerpt = "", last = startLine - 1, shortened = end < lines.count
@@ -184,7 +185,7 @@ public final class ProjectFiles: @unchecked Sendable {
             bytes += file.bytes
             if bytes > 8 * 1024 * 1024 { incomplete = true; break }
             let value: String
-            do { value = try content(file.path)! } catch is CancellationError { throw CancellationError() } catch { incomplete = true; continue }
+            do { guard let text = try content(file.path) else { incomplete = true; continue }; value = text } catch is CancellationError { throw CancellationError() } catch { incomplete = true; continue }
             searched += 1
             for (index, line) in value.components(separatedBy: "\n").enumerated() where line.localizedCaseInsensitiveContains(query) {
                 matches.append(ProjectSearchMatch(path: file.path, line: index + 1, text: String(line.prefix(350))))

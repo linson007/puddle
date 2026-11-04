@@ -199,7 +199,7 @@ public enum GmailMessageDecoder {
             }
         }
         var attachments: [String] {
-            let own = (filename ?? "").isEmpty ? [] : [filename!]
+            let own = filename.flatMap { $0.isEmpty ? nil : [$0] } ?? []
             return own + (parts ?? []).flatMap(\.attachments)
         }
         var attachmentParts: [MailAttachment] {

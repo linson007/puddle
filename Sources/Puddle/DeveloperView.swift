@@ -19,7 +19,7 @@ struct DeveloperView: View {
                     Label("Developer workspace", systemImage: "chevron.left.forwardslash.chevron.right")
                 } description: {
                     Text("Use the Developer profile to browse a local project, inspect changes and keep engineering context. Your personal workspace stays shared.")
-                } actions: { Button("Use Developer Profile") { store.chooseDeveloperProfile() }.buttonStyle(.borderedProminent) }
+                } actions: { Button("Use Developer Profile") { Task { await store.chooseDeveloperProfile() } }.buttonStyle(.borderedProminent) }
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -41,8 +41,8 @@ struct DeveloperView: View {
                             if let error = workspace.error { Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
                             if let result = workspace.inspection { inspection(result, project: project) }
                             HStack {
-                                Button("Explain this project") { store.ask("Inspect the connected project with the available project tools. Start with its file list and relevant manifests or README, then explain its architecture and entry points. Cite files and lines, distinguish assumptions, and state any inspection limits.") }
-                                Button("Review current changes") { store.ask("Read the connected project's Git status, then inspect relevant changed source and working/staged text diffs. Identify concrete bugs, regressions and missing verification with file/line evidence. State omitted paths and incomplete results. Do not claim tests ran or that files were changed.") }
+                                Button("Explain this project") { Task { await store.ask("Inspect the connected project with the available project tools. Start with its file list and relevant manifests or README, then explain its architecture and entry points. Cite files and lines, distinguish assumptions, and state any inspection limits.") } }
+                                Button("Review current changes") { Task { await store.ask("Read the connected project's Git status, then inspect relevant changed source and working/staged text diffs. Identify concrete bugs, regressions and missing verification with file/line evidence. State omitted paths and incomplete results. Do not claim tests ran or that files were changed.") } }
                             }.disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
                         }
                         sessionPanel
@@ -56,12 +56,12 @@ struct DeveloperView: View {
         }
         .sheet(item: $editingProject) { ProjectContextEditor(store: store, project: $0) }
         .confirmationDialog("Remove this folder connection?", isPresented: $removingProject, titleVisibility: .visible) {
-            Button("Remove Connection", role: .destructive) { if let project { store.removeDeveloperProject(project.id) } }
-            Button("Cancel", role: .cancel) {}
+            Button("Remove Connection", role: .destructive) { Task { if let project { await store.removeDeveloperProject(project.id) } } }
+            Button(L10n.text("Cancel"), role: .cancel) {}
         } message: { Text("Project files are untouched. Saved development sessions remain available without a folder connection.") }
         .confirmationDialog("Delete this development session?", isPresented: $deletingSession, titleVisibility: .visible) {
-            Button("Delete Session", role: .destructive) { if let id = workspace.selectedSessionID { store.deleteDevelopmentSession(id) } }
-            Button("Cancel", role: .cancel) {}
+            Button("Delete Session", role: .destructive) { Task { if let id = workspace.selectedSessionID { await store.deleteDevelopmentSession(id) } } }
+            Button(L10n.text("Cancel"), role: .cancel) {}
         }
         .onDisappear { workspace.cancelInspection() }
     }
@@ -74,7 +74,7 @@ struct DeveloperView: View {
                 Button(project == nil ? "Choose Folder…" : "Connect Folder…") { Task { await store.chooseDeveloperFolder() } }.disabled(store.demo)
             }
             if !store.state.developerProjects.isEmpty {
-                Picker("Active project", selection: Binding(get: { store.state.activeDeveloperProjectID }, set: { store.selectDeveloperProject($0) })) {
+                Picker("Active project", selection: Binding(get: { store.state.activeDeveloperProjectID }, set: { value in Task { await store.selectDeveloperProject(value) } })) {
                     Text("No project selected").tag(Optional<UUID>.none)
                     ForEach(store.state.developerProjects) { Text($0.name).tag(Optional($0.id)) }
                 }
@@ -159,7 +159,7 @@ struct DeveloperView: View {
                 Label("Development sessions", systemImage: "ladybug").font(.headline)
                 Spacer()
                 Menu("New Session") {
-                    ForEach(DevelopmentSessionKind.allCases, id: \.self) { kind in Button(kind.title) { store.createDevelopmentSession(kind: kind) } }
+                    ForEach(DevelopmentSessionKind.allCases, id: \.self) { kind in Button(kind.title) { Task { await store.createDevelopmentSession(kind: kind) } } }
                 }
             }
             Text("Keep the problem, reproduction, findings and verification evidence together. Saved sessions are shared across role profiles; folders are connected separately.")
@@ -187,8 +187,8 @@ private struct ProjectContextEditor: View {
             TextField("Stack, architecture, goals and constraints", text: $draft.context, axis: .vertical).lineLimit(5...10).textFieldStyle(.roundedBorder)
             if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange) }
             HStack {
-                Spacer(); Button("Cancel") { dismiss() }
-                Button("Save Context") { if store.saveDeveloperProject(draft) { dismiss() } }.buttonStyle(.borderedProminent)
+                Spacer(); Button(L10n.text("Cancel")) { dismiss() }
+                Button("Save Context") { Task { if await store.saveDeveloperProject(draft) { dismiss() } } }.buttonStyle(.borderedProminent)
             }
         }.padding(26).frame(width: 520)
     }
@@ -223,16 +223,16 @@ private struct DevelopmentSessionEditor: View {
             field("Verification plan and observed results", key: \.verification)
             Text("Verification is user-recorded evidence. Puddle does not run project code or tests.").font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("Save Session") { store.saveDevelopmentSession(draft) }.buttonStyle(.borderedProminent)
-                Button("Save & Ask Puddle") {
-                    if store.saveDevelopmentSession(draft) {
-                        if let id = draft.projectID, !store.selectDeveloperProject(id) { return }
-                        store.ask(draft.question)
+                Button("Save Session") { Task { await store.saveDevelopmentSession(draft) } }.buttonStyle(.borderedProminent)
+                Button("Save & Ask Puddle") { Task {
+                    if await store.saveDevelopmentSession(draft) {
+                        if let id = draft.projectID, !(await store.selectDeveloperProject(id)) { return }
+                        await store.ask(draft.question)
                     }
-                }.disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
+                } }.disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
                 if draft != session { Button("Discard Draft") { workspace.saved(session.id) } }
                 Spacer()
-                Button("Delete…", role: .destructive, action: onDelete)
+                Button(L10n.text("Delete…"), role: .destructive, action: onDelete)
             }
         }
     }

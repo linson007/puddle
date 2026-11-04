@@ -18,7 +18,7 @@ struct NewsletterReviewView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Text("Review newsletters").font(.title2.bold()); Spacer(); Button("Close") { dismiss() } }
+            HStack { Text("Review newsletters").font(.title2.bold()); Spacer(); Button(L10n.text("Close")) { dismiss() } }
             Text("Reviews senders with a supported HTTPS one-click unsubscribe header. Your cached inbox is a partial view. Each unsubscribe gets its own exact-destination review.").font(.callout).foregroundStyle(.secondary)
             HStack {
                 TextField("Search mail (Gmail syntax or Outlook text)", text: $query).textFieldStyle(.roundedBorder)

@@ -30,8 +30,8 @@ struct TasksView: View {
                     Image(systemName: "plus.circle").font(.title3).foregroundStyle(PuddleStyle.teal)
                     TextField("What's the next small step?", text: $quickTitle).textFieldStyle(.plain)
                         .font(.system(size: 14)).focused($captureFocused).accessibilityLabel("Quick capture a task")
-                        .onSubmit { quickAdd() }
-                    Button("Add task") { quickAdd() }.buttonStyle(PuddleSecondaryButtonStyle())
+                        .onSubmit { Task { await quickAdd() } }
+                    Button(L10n.text("Add task")) { Task { await quickAdd() } }.buttonStyle(PuddleSecondaryButtonStyle())
                         .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }.puddleCard(padding: 12)
                 ViewThatFits(in: .horizontal) {
@@ -71,7 +71,7 @@ struct TasksView: View {
 
     private var filters: some View {
         Picker("Show commitments", selection: $filter) {
-            ForEach(Filter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            ForEach(Filter.allCases, id: \.self) { Text(L10n.text($0.rawValue)).tag($0) }
         }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 330)
     }
 
@@ -85,13 +85,13 @@ struct TasksView: View {
     }
 
     private var newTask: some View {
-        Button { adding = true } label: { Label("New task", systemImage: "plus") }.buttonStyle(PuddlePrimaryButtonStyle())
+        Button { adding = true } label: { Label(L10n.text("New task"), systemImage: "plus") }.buttonStyle(PuddlePrimaryButtonStyle())
     }
 
     private var searchField: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").foregroundStyle(PuddleStyle.muted)
-            TextField("Search title, owner or notes", text: $search).textFieldStyle(.plain).accessibilityLabel("Search tasks")
+            TextField("Search title, owner or notes", text: $search).textFieldStyle(.plain).accessibilityLabel(L10n.text("Search tasks"))
             if !search.isEmpty {
                 Button { search = "" } label: { Image(systemName: "xmark.circle.fill") }
                     .buttonStyle(.plain).foregroundStyle(PuddleStyle.muted).accessibilityLabel("Clear task search")
@@ -100,8 +100,8 @@ struct TasksView: View {
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(PuddleStyle.line))
     }
 
-    private func quickAdd() {
-        if store.addTask(title: quickTitle, dueAt: nil) { quickTitle = "" }
+    private func quickAdd() async {
+        if await store.addTask(title: quickTitle, dueAt: nil) { quickTitle = "" }
     }
 }
 
@@ -115,11 +115,13 @@ struct CommitmentRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Button { store.toggleTask(task.id) } label: {
+            Button { Task { await store.toggleTask(task.id) } } label: {
                 Image(systemName: task.completed ? "checkmark.circle.fill" : "circle").font(.title3)
                     .foregroundStyle(task.completed ? PuddleStyle.teal : .secondary)
             }.buttonStyle(.plain).frame(width: 24, height: 24)
                 .accessibilityLabel(task.completed ? "Reopen \(task.title)" : "Complete \(task.title)")
+                .accessibilityValue(L10n.text(task.completed ? "Completed" : "Open"))
+                .accessibilityHint("Changes completion status and saves the task")
             VStack(alignment: .leading, spacing: 7) {
                 Button(action: onEdit) {
                     Text(task.title).font(.system(size: 13, weight: .medium)).strikethrough(task.completed)
@@ -146,25 +148,26 @@ struct CommitmentRow: View {
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             if !task.completed {
-                Button { store.setDailyPriority(task.id, enabled: !focused, now: now) } label: {
+                Button { Task { await store.setDailyPriority(task.id, enabled: !focused, now: now) } } label: {
                     Image(systemName: focused ? "star.fill" : "star").foregroundStyle(focused ? PuddleStyle.teal : .secondary)
                 }.buttonStyle(.plain).frame(width: 24, height: 24).help(focused ? "Remove from today's priorities" : "Make a priority for today")
                     .accessibilityLabel(focused ? "Remove \(task.title) from today's priorities" : "Prioritize \(task.title) today")
+                    .accessibilityValue(focused ? "Priority selected" : "Not a priority")
             }
             Menu {
-                Button("Edit…", action: onEdit)
+                Button(L10n.text("Edit…"), action: onEdit)
                 if !task.completed {
-                    Button("Snooze 10 minutes") { store.snoozeTask(task.id) }
-                    Button("Snooze 24 hours") { store.snoozeTask(task.id, minutes: 1440) }
+                    Button("Snooze 10 minutes") { Task { await store.snoozeTask(task.id) } }
+                    Button("Snooze 24 hours") { Task { await store.snoozeTask(task.id, minutes: 1440) } }
                 }
                 Divider()
-                Button("Delete…", role: .destructive) { deleting = true }
+                Button(L10n.text("Delete…"), role: .destructive) { deleting = true }
             } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 22)
                 .accessibilityLabel("Actions for \(task.title)")
         }.puddleCard(padding: 14)
             .confirmationDialog("Delete this commitment?", isPresented: $deleting, titleVisibility: .visible) {
-                Button("Delete", role: .destructive) { store.deleteTask(task.id) }
-                Button("Cancel", role: .cancel) {}
+                Button(L10n.text("Delete"), role: .destructive) { Task { await store.deleteTask(task.id) } }
+                Button(L10n.text("Cancel"), role: .cancel) {}
             } message: { Text(task.title) }
     }
 }
@@ -196,7 +199,7 @@ struct CommitmentEditor: View {
                     Text("None").tag(Optional<UUID>.none)
                     ForEach(store.state.workProjects) { Text($0.title).tag(Optional($0.id)) }
                 }
-                Picker("Priority", selection: $draft.priority) {
+                Picker(L10n.text("Priority"), selection: $draft.priority) {
                     ForEach(TaskPriority.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
                 Toggle(draft.workflow == .waiting ? "Set a follow-up reminder" : "Set a due date & reminder", isOn: $dated)
@@ -205,18 +208,18 @@ struct CommitmentEditor: View {
                     Text("Does not repeat").tag(Optional<TaskFrequency>.none)
                     ForEach(TaskFrequency.allCases, id: \.self) { Text($0.rawValue.capitalized).tag(Optional($0)) }
                 }.disabled(!dated)
-                TextField("Notes", text: $draft.notes, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder)
+                TextField(L10n.text("Notes"), text: $draft.notes, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder)
             }
             Text("Saved on this Mac. Assigning an owner does not send them a message.").font(.caption).foregroundStyle(.secondary)
             if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save Commitment") {
+                Button(L10n.text("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Save Commitment") { Task {
                     draft.dueAt = dated ? due : nil
                     if !dated { draft.frequency = nil }
-                    if store.saveCommitment(draft, taskID: task?.id) { dismiss() }
-                }.buttonStyle(PuddlePrimaryButtonStyle()).keyboardShortcut(.defaultAction)
+                    if await store.saveCommitment(draft, taskID: task?.id) { dismiss() }
+                } }.buttonStyle(PuddlePrimaryButtonStyle()).keyboardShortcut(.defaultAction)
                     .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(26).frame(width: 540).background(PuddleStyle.background)

@@ -98,8 +98,8 @@ private actor AttendanceChrome: ChromeCommanding {
     }
     func testDemoCannotLaunchBrowserAndArgumentsUseDedicatedLoopbackProfile() async throws {
         let launcher = AttendanceLauncher(AttendanceChrome())
-        let store = PuddleStore(meetBrowserLauncher: launcher); store.enterDemo()
-        store.joinGoogleMeet(try link(), noteID: nil, guestName: "Fixture")
+        let store = PuddleStore(meetBrowserLauncher: launcher); await store.enterDemo()
+        await store.joinGoogleMeet(try link(), noteID: nil, guestName: "Fixture")
         await Task.yield(); XCTAssertEqual(launcher.calls, 0)
         let args = ManagedMeetBrowser.arguments(directory: URL(fileURLWithPath: "/tmp/puddle-fixture-profile"))
         XCTAssertTrue(args.contains("--remote-debugging-port=0")); XCTAssertTrue(args.contains("--remote-debugging-address=127.0.0.1"))

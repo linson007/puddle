@@ -25,7 +25,7 @@ public struct ExecutiveProfile: Codable, Equatable, Sendable {
 public enum TaskPriority: String, Codable, CaseIterable, Sendable {
     case high, normal, low
     public var label: String { rawValue.capitalized }
-    public var rank: Int { Self.allCases.firstIndex(of: self)! }
+    public var rank: Int { Self.allCases.firstIndex(of: self) ?? 0 }
 }
 
 public enum TaskWorkflow: String, Codable, CaseIterable, Sendable {

@@ -26,6 +26,8 @@ public struct ProjectGitDiff: Codable, Sendable {
 private struct GitOutput: Sendable { let data: Data; let status: Int32; let shortened: Bool }
 
 /// Only fixed read commands use this runner. No shell, hooks, external diff, textconv or user argv.
+// Sendable invariant: mutable process/output/cancellation state is protected
+// by lock; Process control is thread-safe and each reader is used once.
 private final class GitReadProcess: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?

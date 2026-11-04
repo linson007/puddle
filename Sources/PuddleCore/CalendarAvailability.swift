@@ -19,12 +19,11 @@ public enum CalendarAvailability {
                   let finish = endHour == 24 ? nextDay : calendar.date(bySettingHour: endHour, minute: 0, second: 0, of: day) else { continue }
             let busy: [(Date, Date)] = events.compactMap { event in
                 guard let start = AssistantDates.calendarDate(event.start, timezone: calendar.timeZone) else { return nil }
-                let end = AssistantDates.calendarDate(event.end, timezone: calendar.timeZone)
-                if end == nil || end! <= start {
+                guard let end = AssistantDates.calendarDate(event.end, timezone: calendar.timeZone), end > start else {
                     return start >= day && start < nextDay ? (day, nextDay) : nil
                 }
                 let buffer = event.start.count == 10 ? 0 : Double(max(0, bufferMinutes)) * 60
-                return (start.addingTimeInterval(-buffer), end!.addingTimeInterval(buffer))
+                return (start.addingTimeInterval(-buffer), end.addingTimeInterval(buffer))
             }
             var cursor = begin
             while cursor.addingTimeInterval(Double(durationMinutes) * 60) <= finish {

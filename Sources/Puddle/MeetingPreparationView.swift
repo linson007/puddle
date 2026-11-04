@@ -14,7 +14,7 @@ struct MeetingPreparationView: View {
                     Text(event.title).font(.title2).fontWeight(.semibold).textSelection(.enabled)
                 }
                 Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L10n.text("Done")) { dismiss() }.keyboardShortcut(.cancelAction)
             }
             Text("Calendar updated: \(store.state.calendarLastSync?.formatted() ?? "not refreshed"). Saved notes and actions are local reference material.")
                 .font(.caption).foregroundStyle(.secondary)
@@ -30,7 +30,7 @@ struct MeetingPreparationView: View {
                         }
                         HStack {
                             if let url = event.sourceURL { Link("Open calendar source", destination: url) }
-                            if let link = event.joinLinks.first { Button("Join meeting") { store.openMeetingLink(link.url.absoluteString) }.disabled(store.demo) }
+                            if let link = event.joinLinks.first { Button("Join meeting") { Task { await store.openMeetingLink(link.url.absoluteString) } }.disabled(store.demo) }
                         }
                     }
                     Divider()
@@ -76,9 +76,9 @@ struct MeetingPreparationView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
             Divider()
-            Button("Open meeting workspace") {
-                if store.createMeetingNote(event: event) != nil { dismiss() }
-            }.buttonStyle(.borderedProminent)
+            Button("Open meeting workspace") { Task {
+                if await store.createMeetingNote(event: event) != nil { dismiss() }
+            } }.buttonStyle(.borderedProminent)
         }.padding(26).frame(width: 680, height: 650)
     }
 }

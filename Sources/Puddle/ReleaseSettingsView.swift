@@ -13,7 +13,7 @@ struct ReleaseSettingsView: View {
     private var updatesBlocked: Bool { store.isLocked || store.privateSession || store.state.settings.networkDisabled }
     var body: some View {
         Form {
-            Section("Updates") {
+            Section(L10n.text("Updates")) {
                 LabeledContent("Installed", value: (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") + ")")
                 Text("Checks use a publisher-signed manifest and verify the downloaded archive before opening it. Installation stays under your control. Export a workspace backup before upgrading; older app versions may not read newer workspace schemas.").font(.caption).foregroundStyle(.secondary)
                 Button("Check for Updates") { updates.check() }.disabled(updates.busy || updatesBlocked)
@@ -23,7 +23,7 @@ struct ReleaseSettingsView: View {
                 }
                 if updates.downloaded != nil { Button("Open Verified Installer") { updates.openInstaller { NSWorkspace.shared.open($0) } }.disabled(updates.busy || updatesBlocked) }
                 if updates.busy {
-                    HStack { ProgressView().controlSize(.small); Button("Cancel") { updates.cancel() } }
+                    HStack { ProgressView().controlSize(.small); Button(L10n.text("Cancel")) { updates.cancel() } }
                 }
                 if !updates.status.isEmpty { Text(updates.status).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             }

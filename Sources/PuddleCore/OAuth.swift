@@ -86,7 +86,8 @@ public struct KeychainStore: SecretStore {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw keychainError(status) }
     }
     private func keychainError(_ status: OSStatus) -> PuddleError {
-        PuddleError("macOS Keychain could not access Puddle’s credentials (\(status)). Unlock your login keychain and try again.")
+        PuddleDiagnostics.failure(.oauth, "Access Keychain", NSError(domain: NSOSStatusErrorDomain, code: Int(status)))
+        return PuddleError("macOS Keychain could not access Puddle’s credentials (\(status)). Unlock your login keychain and try again.")
     }
 }
 
@@ -258,6 +259,7 @@ public actor GoogleSession {
         }
         return GoogleAccount(id: identity.sub, email: identity.email, name: identity.name)
     }
+    var pendingTokenRequests = 0
     public func accessToken(rejected: String? = nil, expectedAccount: String? = nil) async throws -> String {
         try Task.checkCancellation()
         guard let data = try store.read("google-tokens") else { throw PuddleError("Connect Google in Connections first.") }
@@ -266,6 +268,8 @@ public actor GoogleSession {
         if credentials.expiresAt > Date().addingTimeInterval(60), credentials.accessToken != rejected {
             return credentials.accessToken
         }
+        pendingTokenRequests += 1
+        defer { pendingTokenRequests -= 1 }
         if let refreshTask {
             let expectedGeneration = generation
             let updated = try await refreshTask.value

@@ -85,7 +85,7 @@ struct TodayView: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Button { adding = true } label: { Label("New task", systemImage: "plus") }
+                Button { adding = true } label: { Label(L10n.text("New task"), systemImage: "plus") }
                     .buttonStyle(PuddleSecondaryButtonStyle()).help("Capture a commitment · ⌘⇧N")
             }
             if !store.state.profile.objectives.isEmpty {
@@ -128,7 +128,7 @@ struct TodayView: View {
         Button(store.state.profile.configured ? "Manage profiles" : "Choose a profile") { showingProfile = true }
             .buttonStyle(PuddleSecondaryButtonStyle())
         if store.inferenceModel == nil && !store.demo {
-            Button { store.showLocalSetup = true } label: { Label("Set up local AI", systemImage: "desktopcomputer") }
+            Button { store.showLocalSetup = true } label: { Label(L10n.text("Set up local AI"), systemImage: "desktopcomputer") }
                 .buttonStyle(PuddlePrimaryButtonStyle())
         } else {
             Label(store.demo ? "Demo workspace" : "Local AI connected", systemImage: "checkmark.circle")
@@ -169,10 +169,10 @@ struct TodayView: View {
 
     private var briefActions: some View {
         HStack(spacing: 12) {
-            Button("End-of-day review") {
-                store.ask("Read my daily brief and help me close out the day. Review open priorities and commitments and suggest what to carry forward or follow up. Ask me what was completed; do not assume progress or change anything.")
-            }.buttonStyle(PuddleTextButtonStyle()).font(.caption).disabled(!canAsk)
-            Button(store.state.profileLibrary.active.kind.planLabel) { store.ask(store.state.profileLibrary.active.kind.planQuestion) }
+            Button("End-of-day review") { Task {
+                await store.ask("Read my daily brief and help me close out the day. Review open priorities and commitments and suggest what to carry forward or follow up. Ask me what was completed; do not assume progress or change anything.")
+            } }.buttonStyle(PuddleTextButtonStyle()).font(.caption).disabled(!canAsk)
+            Button(store.state.profileLibrary.active.kind.planLabel) { Task { await store.ask(store.state.profileLibrary.active.kind.planQuestion) } }
                 .buttonStyle(PuddlePrimaryButtonStyle()).disabled(!canAsk)
         }
     }
@@ -220,7 +220,7 @@ struct TodayView: View {
             HStack {
                 Label("Today's agenda", systemImage: "calendar").font(.headline).foregroundStyle(PuddleStyle.ink)
                 Spacer()
-                Button { store.refresh() } label: {
+                Button { Task { await store.refresh() } } label: {
                     if store.isRefreshingCalendar { ProgressView().controlSize(.small) }
                     else { Image(systemName: "arrow.clockwise") }
                 }.buttonStyle(.plain).frame(width: 24, height: 24)
@@ -281,7 +281,7 @@ struct TodayView: View {
                     Button("Prepare") { preparing = item.event }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
                         .accessibilityLabel("Prepare for \(item.event.title)")
                     if let link = item.event.joinLinks.first {
-                        Button("Join") { store.openMeetingLink(link.url.absoluteString) }.buttonStyle(PuddleTextButtonStyle()).font(.caption).disabled(store.demo)
+                        Button("Join") { Task { await store.openMeetingLink(link.url.absoluteString) } }.buttonStyle(PuddleTextButtonStyle()).font(.caption).disabled(store.demo)
                             .accessibilityLabel("Join \(item.event.title)")
                     }
                 }

@@ -30,7 +30,7 @@ public enum PublicNewsletterHost {
             let address = item.pointee
             var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
             guard getnameinfo(address.ai_addr, address.ai_addrlen, &buffer, socklen_t(buffer.count), nil, 0, NI_NUMERICHOST) == 0 else { throw PuddleError("Could not verify the unsubscribe destination.") }
-            guard isPublic(String(cString: buffer)) else { throw PuddleError("Unsubscribe destinations on private or reserved networks are blocked.") }
+            guard isPublic(String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)) else { throw PuddleError("Unsubscribe destinations on private or reserved networks are blocked.") }
             cursor = address.ai_next
         }
     }
@@ -49,7 +49,7 @@ public struct NewsletterClient: Sendable {
     public init(transport: any HTTPTransport = URLSessionTransport(), validateHost: @escaping @Sendable (String) async throws -> Void = { host in try await Task.detached { try PublicNewsletterHost.check(host) }.value }) { self.transport = transport; self.validateHost = validateHost }
     public func execute(_ action: ActionProposal) async throws -> ActionResult {
         guard action.status == .dispatching, action.authorizedDigest == action.digest, case .unsubscribe(let target) = action.payload else { throw PuddleError("Review an exact unsubscribe proposal first.") }
-        try target.validate(); try await validateHost(target.url.host!); try Task.checkCancellation()
+        try target.validate(); guard let host = target.url.host else { throw PuddleError("The unsubscribe URL has no host.") }; try await validateHost(host); try Task.checkCancellation()
         var request = URLRequest(url: target.url, timeoutInterval: 30); request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type"); request.httpBody = Data("List-Unsubscribe=One-Click".utf8)
         let (data, response) = try await transport.sendBounded(request, maximumBytes: 64 * 1024, until: nil)

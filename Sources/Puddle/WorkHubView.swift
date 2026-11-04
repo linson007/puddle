@@ -8,14 +8,14 @@ struct WorkHubView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Projects, people & decisions").font(.largeTitle.bold())
-            Picker("Workspace", selection: $tab) { Text("Projects").tag(0); Text("People").tag(1); Text("Decisions").tag(2) }.pickerStyle(.segmented)
+            Picker(L10n.text("Workspace"), selection: $tab) { Text("Projects").tag(0); Text("People").tag(1); Text("Decisions").tag(2) }.pickerStyle(.segmented)
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     if tab == 0 {
                         Button("New Project") { store.editingWorkProject = WorkProject() }
                         ForEach(store.state.workProjects) { project in
                             VStack(alignment: .leading, spacing: 8) {
-                                HStack { Text(project.title).font(.headline); Spacer(); Text(project.status.rawValue.capitalized).font(.caption); Button("Edit") { store.editingWorkProject = project }; Button("Delete…", role: .destructive) { deleting = ("project", project.id, project.title) } }
+                                HStack { Text(project.title).font(.headline); Spacer(); Text(project.status.rawValue.capitalized).font(.caption); Button("Edit") { store.editingWorkProject = project }; Button(L10n.text("Delete…"), role: .destructive) { deleting = ("project", project.id, project.title) } }
                                 Text(project.objective).font(.callout).textSelection(.enabled)
                                 if !project.successCriteria.isEmpty { Text("Success: \(project.successCriteria)").font(.caption).foregroundStyle(.secondary) }
                                 Text("\(store.state.tasks.filter { $0.projectID == project.id && !$0.completed }.count) open commitments · \(store.state.meetings.filter { $0.projectID == project.id }.count) meetings · \(store.state.workDecisions.filter { $0.projectID == project.id }.count) decisions").font(.caption)
@@ -39,7 +39,7 @@ struct WorkHubView: View {
                         Button("New Decision") { store.editingDecision = WorkDecision() }
                         ForEach(store.state.workDecisions) { decision in
                             VStack(alignment: .leading, spacing: 8) {
-                                HStack { Text(decision.title).font(.headline); Spacer(); Text(decision.status.rawValue.capitalized).font(.caption); Button("Edit") { store.editingDecision = decision }; Button("Delete…", role: .destructive) { deleting = ("decision", decision.id, decision.title) } }
+                                HStack { Text(decision.title).font(.headline); Spacer(); Text(decision.status.rawValue.capitalized).font(.caption); Button("Edit") { store.editingDecision = decision }; Button(L10n.text("Delete…"), role: .destructive) { deleting = ("decision", decision.id, decision.title) } }
                                 Text(decision.rationale).font(.callout).textSelection(.enabled)
                                 if let date = decision.reviewAt { Label("Review: \(date.formatted())", systemImage: date < Date() ? "exclamationmark.circle" : "calendar").font(.caption).foregroundStyle(date < Date() ? .orange : .secondary) }
                                 if !decision.outcome.isEmpty { Text("Outcome: \(decision.outcome)").font(.callout) }
@@ -50,8 +50,8 @@ struct WorkHubView: View {
                 }.frame(maxWidth: .infinity, alignment: .leading)
             }
         }.padding(28).confirmationDialog("Delete \(deleting?.title ?? "this record")?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
-            Button("Delete Record", role: .destructive) { if let value = deleting { store.deleteWorkRecord(kind: value.kind, id: value.id) }; deleting = nil }
-            Button("Cancel", role: .cancel) {}
+            Button("Delete Record", role: .destructive) { Task { if let value = deleting { await store.deleteWorkRecord(kind: value.kind, id: value.id) }; deleting = nil } }
+            Button(L10n.text("Cancel"), role: .cancel) {}
         }
     }
 }
@@ -63,7 +63,7 @@ struct WorkProjectEditor: View {
     @State private var project: WorkProject
     init(store: PuddleStore, project: WorkProject) { self.store = store; _project = State(initialValue: project) }
     var body: some View {
-        WorkRecordForm(store: store, title: "Project & goal", save: { store.saveWorkProject(project) }, close: { dismiss() }) {
+        WorkRecordForm(store: store, title: "Project & goal", save: { await store.saveWorkProject(project) }, close: { dismiss() }) {
             TextField("Project name", text: $project.title)
             TextField("Objective", text: $project.objective, axis: .vertical).lineLimit(3...6)
             TextField("Success criteria", text: $project.successCriteria, axis: .vertical).lineLimit(3...6)
@@ -77,14 +77,14 @@ struct PersonContextEditor: View {
     @State private var person: PersonContext
     init(store: PuddleStore, person: PersonContext) { self.store = store; _person = State(initialValue: person) }
     var body: some View {
-        WorkRecordForm(store: store, title: "Person & relationship context", save: { store.savePerson(person) }, close: { dismiss() }) {
+        WorkRecordForm(store: store, title: "Person & relationship context", save: { await store.savePerson(person) }, close: { dismiss() }) {
             TextField("Name", text: $person.name); TextField("Email", text: $person.email); TextField("Role", text: $person.role)
             Toggle("VIP sender", isOn: $person.isVIP)
             Toggle("Record last interaction", isOn: Binding(get: { person.lastInteraction != nil }, set: { person.lastInteraction = $0 ? Date() : nil }))
             if person.lastInteraction != nil { DatePicker("Last interaction", selection: Binding(get: { person.lastInteraction ?? Date() }, set: { person.lastInteraction = $0 })) }
             TextField("Promises and commitments", text: $person.promises, axis: .vertical).lineLimit(2...4)
             TextField("Talking points", text: $person.talkingPoints, axis: .vertical).lineLimit(2...4)
-            TextField("Notes", text: $person.notes, axis: .vertical).lineLimit(2...4)
+            TextField(L10n.text("Notes"), text: $person.notes, axis: .vertical).lineLimit(2...4)
             if let url = person.sourceURL { Link("Original source", destination: url) }
         }
     }
@@ -100,10 +100,10 @@ struct WorkDecisionEditor: View {
             var next = decision
             let urls = links.split(whereSeparator: \.isNewline).compactMap { URL(string: String($0)) }
             guard urls.count == links.split(whereSeparator: \.isNewline).count else { store.fail(PuddleError("Check each evidence URL.")); return false }
-            next.evidence = urls.map { SourceReference(title: $0.host ?? $0.lastPathComponent, url: $0) }; return store.saveDecision(next)
+            next.evidence = urls.map { SourceReference(title: $0.host ?? $0.lastPathComponent, url: $0) }; return await store.saveDecision(next)
         }, close: { dismiss() }) {
             TextField("Decision", text: $decision.title); projectPicker($decision.projectID)
-            TextField("Owner", text: $decision.owner)
+            TextField(L10n.text("Owner"), text: $decision.owner)
             TextField("Options considered", text: $decision.options, axis: .vertical).lineLimit(2...4)
             TextField("Rationale", text: $decision.rationale, axis: .vertical).lineLimit(2...4)
             TextField("Evidence URLs, one per line", text: $links, axis: .vertical).lineLimit(2...4)
@@ -117,19 +117,19 @@ struct WorkDecisionEditor: View {
 }
 private struct WorkRecordForm<Content: View>: View {
     @ObservedObject var store: PuddleStore
-    let title: String; let save: () -> Bool; let close: () -> Void; @ViewBuilder let content: () -> Content
+    let title: String; let save: () async -> Bool; let close: () -> Void; @ViewBuilder let content: () -> Content
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(title).font(.title2.bold()); Form { content() }.textFieldStyle(.roundedBorder)
             if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange) }
-            HStack { Button("Cancel", action: close); Spacer(); Button("Save") { if save() { close() } }.buttonStyle(.borderedProminent) }
+            HStack { Button(L10n.text("Cancel"), action: close); Spacer(); Button(L10n.text("Save")) { Task { if await save() { close() } } }.buttonStyle(.borderedProminent) }
         }.padding(24).frame(width: 640)
     }
 }
 
 extension PuddleStore {
-    func deleteWorkRecord(kind: String, id: UUID) {
-        do { try commit { next in
+    func deleteWorkRecord(kind: String, id: UUID) async {
+        do { try await commit { next in
             if kind == "person" { next.people.removeAll { $0.id == id } }
             if kind == "decision" { next.workDecisions.removeAll { $0.id == id } }
             if kind == "project" {
@@ -148,20 +148,20 @@ extension PuddleStore {
         let object: [String: Any] = ["scope": "Bounded user-maintained records, not inferred facts or proof of execution.", "projects": projects, "people": people, "decisions": decisions]
         return (try? JSONSerialization.data(withJSONObject: object)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }
-    @discardableResult func saveWorkProject(_ value: WorkProject) -> Bool {
-        do { let next = try value.validated(); try commit { snapshot in
+    @discardableResult func saveWorkProject(_ value: WorkProject) async -> Bool {
+        do { let next = try value.validated(); try await commit { snapshot in
             if let index = snapshot.workProjects.firstIndex(where: { $0.id == next.id }) { snapshot.workProjects[index] = next } else { snapshot.workProjects.append(next) }
         }; errorMessage = nil; return true } catch { fail(error); return false }
     }
-    @discardableResult func savePerson(_ value: PersonContext) -> Bool {
-        do { let next = try value.validated(); try commit { snapshot in
+    @discardableResult func savePerson(_ value: PersonContext) async -> Bool {
+        do { let next = try value.validated(); try await commit { snapshot in
             if let index = snapshot.people.firstIndex(where: { $0.id == next.id }) { snapshot.people[index] = next } else { snapshot.people.append(next) }
         }; errorMessage = nil; return true } catch { fail(error); return false }
     }
-    @discardableResult func saveDecision(_ value: WorkDecision) -> Bool {
+    @discardableResult func saveDecision(_ value: WorkDecision) async -> Bool {
         do { var next = try value.validated()
             if let id = next.projectID, !state.workProjects.contains(where: { $0.id == id }) { next.projectID = nil }
-            try commit { snapshot in
+            try await commit { snapshot in
             if let index = snapshot.workDecisions.firstIndex(where: { $0.id == next.id }) { snapshot.workDecisions[index] = next } else { snapshot.workDecisions.append(next) }
         }; errorMessage = nil; return true } catch { fail(error); return false }
     }

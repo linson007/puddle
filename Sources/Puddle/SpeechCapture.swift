@@ -44,7 +44,7 @@ import Speech
             }, onError: { [weak self] message in
                 guard self?.session == expected else { return }; onError(message)
             })
-        } catch {
+        } catch { PuddleDiagnostics.failure(.speech, "Capture speech", error);
             if session == expected { cancel() }
             throw error
         }
@@ -76,13 +76,13 @@ import Speech
             try await capture.start(language: language, source: .microphone, onSegment: { [weak self] segment in
                 guard let self, self.session == expected else { return }
                 do { try self.timeline.receive(segment); self.onText?(self.text, false) }
-                catch { self.onError?(error.localizedDescription) }
+                catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); self.onError?(error.localizedDescription) }
             }, onStatus: { _ in }, onError: { [weak self] message in
                 guard let self, self.session == expected else { return }; self.onError?(message)
             })
             try Task.checkCancellation()
             guard session == expected else { throw CancellationError() }
-        } catch {
+        } catch { PuddleDiagnostics.failure(.speech, "Capture speech", error);
             if session == expected { cancel() }
             throw error
         }
@@ -97,7 +97,7 @@ import Speech
                 try Task.checkCancellation(); try await capture.finish(); try Task.checkCancellation()
                 guard session == expected else { return }; onText?(text, true)
             } catch is CancellationError {}
-            catch { if session == expected { onError?(error.localizedDescription) } }
+            catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); if session == expected { onError?(error.localizedDescription) } }
         }
     }
 
@@ -158,7 +158,7 @@ import Speech
         }
         engine.prepare()
         do { try engine.start() }
-        catch { cancel(); throw PuddleError("The microphone could not start: \(error.localizedDescription)") }
+        catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); cancel(); throw PuddleError("The microphone could not start: \(error.localizedDescription)") }
     }
 
     func finish() { stopAudio(); request?.endAudio() }

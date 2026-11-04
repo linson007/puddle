@@ -124,7 +124,7 @@ public actor ChromeDevTools: ChromeCommanding {
     }
 }
 
-private final class BrowserWebSocket: ChromeWire, @unchecked Sendable {
+private final class BrowserWebSocket: ChromeWire, Sendable {
     private let session: URLSession
     private let socket: URLSessionWebSocketTask
     init(endpoint: URL, timeout: Double) {

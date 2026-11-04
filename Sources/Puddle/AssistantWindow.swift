@@ -31,7 +31,7 @@ struct PuddleMark: View {
 struct AssistantWindow: View {
     @ObservedObject var store: PuddleStore
     var body: some View {
-        Group { if store.isLocked { PrivacyLockView(store: store) } else { workspace } }
+        Group { if store.isLoadingState { ProgressView(L10n.text("Loading saved workspace…")).frame(maxWidth: .infinity, maxHeight: .infinity) } else if store.isLocked { PrivacyLockView(store: store) } else { workspace } }
     }
     private var workspace: some View {
         NavigationSplitView {
@@ -46,7 +46,7 @@ struct AssistantWindow: View {
                 }
                 #endif
                 if store.privateSession {
-                    HStack { Label("Private session · Changes stay in memory", systemImage: "eye.slash"); Spacer(); Button("End Session") { store.endPrivateSession() } }
+                    HStack { Label("Private session · Changes stay in memory", systemImage: "eye.slash"); Spacer(); Button(L10n.text("End Session")) { Task { await store.endPrivateSession() } } }
                         .font(.caption).padding(12).background(.orange.opacity(0.12))
                 }
                 MeetAttendanceBanner(store: store, attendance: store.meetAttendance)
@@ -56,7 +56,7 @@ struct AssistantWindow: View {
                         Label("Demo", systemImage: "flask").fontWeight(.semibold)
                         Text("Sample connections and fixture responses").foregroundStyle(.secondary)
                         Spacer()
-                        Button("Use my local model") { store.leaveDemo() }
+                        Button("Use my local model") { Task { await store.leaveDemo() } }
                     }.font(.caption).padding(.horizontal, 24).padding(.vertical, 10).background(.orange.opacity(0.08))
                 }
                 if let error = store.errorMessage {
@@ -65,7 +65,7 @@ struct AssistantWindow: View {
                         Text(error).font(.callout).textSelection(.enabled)
                         Spacer()
                         Button { store.errorMessage = nil } label: { Image(systemName: "xmark") }.buttonStyle(.plain)
-                            .accessibilityLabel("Dismiss error")
+                            .accessibilityLabel(L10n.text("Dismiss error"))
                     }.padding(16).background(.orange.opacity(0.07))
                 }
                 Group {
@@ -101,13 +101,13 @@ struct AssistantWindow: View {
                         .overlay(alignment: .top) { Divider() }
                 }
             }.background(PuddleStyle.background)
-                .navigationTitle(store.section == .chat ? "Puddle" : store.section.rawValue)
+                .navigationTitle(L10n.text(store.section.rawValue))
         }.tint(PuddleStyle.teal)
             .toolbar {
                 ToolbarItemGroup(placement: .primaryAction) {
-                    if store.isThinking { Button("Stop") { store.stopAI() } }
+                    if store.isThinking { Button("Stop") { Task { await store.stopAI() } } }
                     if store.section == .chat {
-                        Button { store.clearChat() } label: { Label("New Conversation", systemImage: "square.and.pencil") }
+                        Button { Task { await store.clearChat() } } label: { Label("New Conversation", systemImage: "square.and.pencil") }
                             .help("Start a new conversation; keep memory and tasks")
                     }
                     Button { store.showCommands = true } label: { Label("Search & Commands", systemImage: "magnifyingglass") }
@@ -142,13 +142,13 @@ private struct ConversationView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Text("Puddle").font(.system(size: 17, weight: .semibold, design: .rounded))
+                Text(L10n.text("Puddle")).font(.system(size: 17, weight: .semibold, design: .rounded))
                 Label(store.state.profileLibrary.active.title, systemImage: store.state.profileLibrary.active.kind.icon).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if let model = store.inferenceModel {
-                    Label("Local model", systemImage: "desktopcomputer").font(.caption).foregroundStyle(PuddleStyle.teal).help(model)
+                    Label(L10n.text("Local model"), systemImage: "desktopcomputer").font(.caption).foregroundStyle(PuddleStyle.teal).help(model)
                 } else if !store.demo {
-                    Button { store.showLocalSetup = true } label: { Label("Set up local AI", systemImage: "bolt.horizontal") }.font(.caption)
+                    Button { store.showLocalSetup = true } label: { Label(L10n.text("Set up local AI"), systemImage: "bolt.horizontal") }.font(.caption)
                 }
             }.padding(.horizontal, compact ? 18 : 30).padding(.vertical, 16)
                 .background(PuddleStyle.panel.opacity(0.6))
@@ -167,53 +167,7 @@ private struct ConversationView: View {
                             }
                         }
                         ForEach(store.state.chat.suffix(visibleMessageLimit)) { line in
-                            HStack(alignment: .top, spacing: 14) {
-                                if line.role == "user" { Spacer(minLength: compact ? 18 : 60) }
-                                if line.role == "assistant" { PuddleMark(size: 30) }
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(line.role == "user" ? "YOU" : line.profileName.map { "PUDDLE · \($0)" } ?? "PUDDLE")
-                                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                                    Group {
-                                        if line.role == "user" { Text(verbatim: line.visibleText) }
-                                        else { Text(.init(line.content)) }
-                                    }.font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
-                                        .fixedSize(horizontal: false, vertical: true)
-                                    HStack {
-                                        Button("Copy") {
-                                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(line.visibleText, forType: .string)
-                                        }
-                                        if line.role == "user" { Button("Use as draft") { input = line.visibleText } }
-                                        if line.role == "assistant" {
-                                            Button(store.speakingMessageID == line.id ? "Stop reading" : "Read aloud") { store.readAloud(line) }
-                                                .disabled(voice.isActive)
-                                                .help("Read up to 8,000 characters using an installed system voice; code blocks are omitted.")
-                                        }
-                                        if let metrics = line.metrics {
-                                            Text("\(metrics.totalSeconds, specifier: "%.1f")s elapsed")
-                                                .foregroundStyle(.secondary)
-                                                .help("Elapsed time includes tool work and waiting for your review. First streamed text: \(String(format: "%.1f", metrics.firstTokenSeconds ?? 0))s; memory learning: \(String(format: "%.1f", metrics.extractionSeconds))s.")
-                                        }
-                                    }.font(.caption2).buttonStyle(PuddleTextButtonStyle())
-                                    if line.role == "user", line.displayText != nil {
-                                        DisclosureGroup("Context sent to the local model") {
-                                            Text(verbatim: line.content).textSelection(.enabled)
-                                                .fixedSize(horizontal: false, vertical: true)
-                                        }.font(.caption)
-                                    }
-                                    ForEach(line.receipts ?? []) { receipt in
-                                        DisclosureGroup("\(AgentTool(rawValue: receipt.tool)?.label ?? receipt.tool) · \(receipt.status)") {
-                                            VStack(alignment: .leading, spacing: 4) {
-                                                Text(receipt.detail).textSelection(.enabled)
-                                                ForEach(Array(receipt.references.enumerated()), id: \.offset) { _, reference in
-                                                    Link(reference.title, destination: reference.url)
-                                                }
-                                            }
-                                        }.font(.caption)
-                                    }
-                                }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
-                                    .background(line.role == "user" ? PuddleStyle.inset : PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 14))
-                                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(PuddleStyle.line.opacity(0.7)))
-                            }.id(line.id)
+                            message(line)
                         }
                         if store.isThinking {
                             if !store.streamingReply.isEmpty {
@@ -246,7 +200,7 @@ private struct ConversationView: View {
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 32).padding(.bottom, 8)
             }
             if !store.isThinking, store.state.chat.contains(where: { $0.role == "user" }) {
-                Button("Retry last message") { store.retryLastQuestion() }.font(.caption).buttonStyle(PuddleTextButtonStyle()).padding(.bottom, 8)
+                Button(L10n.text("Retry last message")) { Task { await store.retryLastQuestion() } }.font(.caption).buttonStyle(PuddleTextButtonStyle()).padding(.bottom, 8)
             }
             if voice.isActive {
                 VStack(alignment: .leading, spacing: 8) {
@@ -254,8 +208,8 @@ private struct ConversationView: View {
                         Image(systemName: "mic.fill").foregroundStyle(.red)
                         Text(voice.status == .requestingPermission ? "Waiting for microphone permission…" : voice.status == .finishing ? "Finishing speech…" : "Listening on this Mac…")
                         Spacer()
-                        if voice.status == .listening { Button("Done") { voice.finish() } }
-                        Button("Cancel") { voice.cancel() }
+                        if voice.status == .listening { Button(L10n.text("Done")) { voice.finish() } }
+                        Button(L10n.text("Cancel")) { voice.cancel() }
                     }
                     if !voice.transcript.isEmpty { Text(voice.transcript).lineLimit(4).textSelection(.enabled) }
                     Text("Up to 50 seconds. Review the transcript in your draft before sending.").font(.caption).foregroundStyle(.secondary)
@@ -264,21 +218,21 @@ private struct ConversationView: View {
             if let error = voice.errorMessage {
                 HStack {
                     Text(error).font(.caption).foregroundStyle(.orange)
-                    Spacer(); Button("Dismiss") { voice.dismissError() }.buttonStyle(PuddleTextButtonStyle())
+                    Spacer(); Button(L10n.text("Dismiss")) { voice.dismissError() }.buttonStyle(PuddleTextButtonStyle())
                 }.padding(.horizontal, 30).padding(.bottom, 8)
             }
             HStack(alignment: .bottom, spacing: 12) {
-                TextField("Message Puddle…", text: $input, axis: .vertical).lineLimit(1...6).textFieldStyle(.plain)
-                    .font(.system(size: 14)).onSubmit(send).accessibilityLabel("Message Puddle")
+                TextField(L10n.text("Message Puddle…"), text: $input, axis: .vertical).lineLimit(1...6).textFieldStyle(.plain)
+                    .font(.system(size: 14)).onSubmit { Task { await send() } }.accessibilityLabel(L10n.text("Message Puddle"))
                 Button { store.toggleVoiceInput() } label: {
                     Image(systemName: voice.isActive ? "stop.circle.fill" : "mic.fill").font(.system(size: 16))
                 }.buttonStyle(.borderless).disabled(store.isThinking || store.demo)
                     .accessibilityLabel(voice.isActive ? "Stop voice input" : "Start voice input")
                     .help(store.demo ? "Voice input requires the live app." : "Dictate on this Mac, then review and send. Command-Shift-M.")
                     .keyboardShortcut("m", modifiers: [.command, .shift])
-                Button(action: send) { Image(systemName: "arrow.up").fontWeight(.semibold).frame(width: 21, height: 21) }
+                Button(action: { Task { await send() } }) { Image(systemName: "arrow.up").fontWeight(.semibold).frame(width: 21, height: 21) }
                     .buttonStyle(PuddlePrimaryButtonStyle()).disabled(input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isThinking || voice.isActive)
-                    .accessibilityLabel("Send message")
+                    .accessibilityLabel(L10n.text("Send message"))
             }.padding(16).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 16))
                 .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(PuddleStyle.line))
                 .frame(maxWidth: 820).padding(.horizontal, compact ? 18 : 30)
@@ -304,7 +258,7 @@ private struct ConversationView: View {
                         Text("Connect a local AI server to start a conversation.").font(.caption).foregroundStyle(PuddleStyle.muted)
                     }
                     Spacer(minLength: 0)
-                    Button("Set up local AI") { store.showLocalSetup = true }.buttonStyle(PuddlePrimaryButtonStyle())
+                    Button(L10n.text("Set up local AI")) { store.showLocalSetup = true }.buttonStyle(PuddlePrimaryButtonStyle())
                 }.puddleCard(padding: 16)
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 200))], spacing: 12) {
@@ -316,13 +270,62 @@ private struct ConversationView: View {
             }
             HStack(spacing: 10) {
                 Text("Connect mail and calendar whenever you need them.").font(.caption).foregroundStyle(.secondary)
-                Button("Connections") { store.section = .connections }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
+                Button(L10n.text("Connections")) { store.section = .connections }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
             }
-            if !store.demo { Button("Explore the demo") { store.enterDemo() }.buttonStyle(PuddleTextButtonStyle()).font(.caption) }
+            if !store.demo { Button("Explore the demo") { Task { await store.enterDemo() } }.buttonStyle(PuddleTextButtonStyle()).font(.caption) }
         }.padding(.top, 16).padding(.bottom, 20)
     }
+    private func message(_ line: ChatLine) -> some View {
+                            HStack(alignment: .top, spacing: 14) {
+                                if line.role == "user" { Spacer(minLength: compact ? 18 : 60) }
+                                if line.role == "assistant" { PuddleMark(size: 30) }
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(line.role == "user" ? "YOU" : line.profileName.map { "PUDDLE · \($0)" } ?? "PUDDLE")
+                                        .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                                    Group {
+                                        if line.role == "user" { Text(verbatim: line.visibleText) }
+                                        else { Text(.init(line.content)) }
+                                    }.font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                    HStack {
+                                        Button(L10n.text("Copy")) {
+                                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(line.visibleText, forType: .string)
+                                        }
+                                        if line.role == "user" { Button(L10n.text("Use as draft")) { input = line.visibleText } }
+                                        if line.role == "assistant" {
+                                            Button(store.speakingMessageID == line.id ? "Stop reading" : "Read aloud") { store.readAloud(line) }
+                                                .disabled(voice.isActive)
+                                                .help("Read up to 8,000 characters using an installed system voice; code blocks are omitted.")
+                                        }
+                                        if let metrics = line.metrics {
+                                            Text("\(metrics.totalSeconds, specifier: "%.1f")s elapsed")
+                                                .foregroundStyle(.secondary)
+                                                .help("Elapsed time includes tool work and waiting for your review. First streamed text: \(String(format: "%.1f", metrics.firstTokenSeconds ?? 0))s; memory learning: \(String(format: "%.1f", metrics.extractionSeconds))s.")
+                                        }
+                                    }.font(.caption2).buttonStyle(PuddleTextButtonStyle())
+                                    if line.role == "user", line.displayText != nil {
+                                        DisclosureGroup("Context sent to the local model") {
+                                            Text(verbatim: line.content).textSelection(.enabled)
+                                                .fixedSize(horizontal: false, vertical: true)
+                                        }.font(.caption)
+                                    }
+                                    ForEach(line.receipts ?? []) { receipt in
+                                        DisclosureGroup("\(AgentTool(rawValue: receipt.tool)?.label ?? receipt.tool) · \(receipt.status)") {
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(receipt.detail).textSelection(.enabled)
+                                                ForEach(Array(receipt.references.enumerated()), id: \.offset) { _, reference in
+                                                    Link(reference.title, destination: reference.url)
+                                                }
+                                            }
+                                        }.font(.caption)
+                                    }
+                                }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(line.role == "user" ? PuddleStyle.inset : PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 14))
+                                    .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(PuddleStyle.line.opacity(0.7)))
+                            }.id(line.id)
+    }
     private func prompt(_ title: String, icon: String, message: String) -> some View {
-        Button { store.ask(message) } label: {
+        Button { Task { await store.ask(message) } } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon).foregroundStyle(PuddleStyle.teal)
                 Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(PuddleStyle.ink)
@@ -332,9 +335,9 @@ private struct ConversationView: View {
                 .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(PuddleStyle.line))
         }.buttonStyle(.plain).disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
     }
-    private func send() {
+    private func send() async {
         guard !store.isThinking, !voice.isActive, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if store.ask(input) { input = "" }
+        if await store.ask(input) { input = "" }
     }
 }
 
@@ -353,7 +356,7 @@ private struct ConversationHistoryView: View {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(matches) { conversation in
                         HStack {
-                            Button { store.openConversation(conversation.id) } label: {
+                            Button { Task { await store.openConversation(conversation.id) } } label: {
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(conversation.title).lineLimit(2)
                                     if conversation.id == store.state.currentConversationID {
@@ -364,7 +367,7 @@ private struct ConversationHistoryView: View {
                                     }
                                 }.frame(maxWidth: .infinity, alignment: .leading)
                             }.buttonStyle(.plain).accessibilityLabel("Open conversation: \(conversation.title)")
-                            Button("Delete") { store.deleteConversation(conversation.id) }.buttonStyle(PuddleTextButtonStyle())
+                            Button(L10n.text("Delete")) { Task { await store.deleteConversation(conversation.id) } }.buttonStyle(PuddleTextButtonStyle())
                         }.padding(16).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 12))
                     }
                 }
@@ -407,9 +410,9 @@ private struct MemoryView: View {
                     HStack {
                         Text("Saved locally and available across conversations.").font(.caption).foregroundStyle(.secondary)
                         Spacer()
-                        Button("Save Memory") {
-                            if store.saveMemory(title: title, content: content) { title = ""; content = "" }
-                        }
+                        Button("Save Memory") { Task {
+                            if await store.saveMemory(title: title, content: content) { title = ""; content = "" }
+                        } }
                             .buttonStyle(.borderedProminent)
                             .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200 || content.count > 4000)
                     }
@@ -421,7 +424,7 @@ private struct MemoryView: View {
                         HStack {
                             Text(note.title).fontWeight(.semibold)
                             Spacer()
-                            Button("Forget") { store.removeMemory(note.id) }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
+                            Button("Forget") { Task { await store.removeMemory(note.id) } }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
                         }
                         Text(note.content).textSelection(.enabled)
                         if let source = note.source {
@@ -450,7 +453,7 @@ private struct ConnectionsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text("Connections").font(.system(size: 29, weight: .semibold, design: .rounded))
+                Text(L10n.text("Connections")).font(.system(size: 29, weight: .semibold, design: .rounded))
                 Text("Give Puddle context when it helps. You can chat, save memories, and set local reminders without connecting an account.")
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 14) {
@@ -477,17 +480,17 @@ private struct ConnectionsView: View {
                     if let account = store.state.account { Text(account).font(.caption).foregroundStyle(.secondary) }
                     GoogleAccountsView(store: store)
                     HStack {
-                        Button(store.isSigningIn ? "Connecting Google…" : store.connected ? "Manage Google Permissions…" : "Connect Google") { store.requestGoogleConnection() }
+                        Button(store.isSigningIn ? "Connecting Google…" : store.connected ? "Manage Google Permissions…" : "Connect Google") { Task { await store.requestGoogleConnection() } }
                             .buttonStyle(.borderedProminent)
                             .disabled(store.isSigningIn)
                         if store.isSigningIn {
                             ProgressView().controlSize(.small)
                             Text(store.googleSignInStatus).font(.caption).foregroundStyle(.secondary)
-                            Button("Cancel") { store.cancelSignIn() }
+                            Button(L10n.text("Cancel")) { store.cancelSignIn() }
                         }
                         if store.connected {
-                            Button("Refresh") { store.refresh() }.disabled(store.isSyncing)
-                            Button("Disconnect This Google Account") { store.disconnect() }
+                            Button("Refresh") { Task { await store.refresh() } }.disabled(store.isSyncing)
+                            Button("Disconnect This Google Account") { Task { await store.disconnect() } }
                         }
                     }
                     if let error = store.errorMessage {

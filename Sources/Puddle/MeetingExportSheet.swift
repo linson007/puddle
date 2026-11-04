@@ -24,7 +24,7 @@ struct MeetingExportSheet: View {
             Text("Choose where to save the file. Puddle does not upload or send the export.").font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
             HStack {
-                Spacer(); Button("Cancel") { dismiss() }.disabled(exporting)
+                Spacer(); Button(L10n.text("Cancel")) { dismiss() }.disabled(exporting)
                 Button("Export…") {
                     exporting = true; error = nil
                     Task { @MainActor in

@@ -25,7 +25,12 @@ def verify(app):
     executable = app / "Contents/MacOS/Puddle"
     run(["/usr/bin/plutil", "-lint", str(info_path)])
     run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)])
-    print("PASS: bundle plist and code signature", flush=True)
+    if info.get("CFBundleLocalizations") != ["en", "tr"]:
+        raise RuntimeError("The app must declare English and Turkish localizations.")
+    for locale in ("en", "tr"):
+        if not list((app / "Contents/Resources").glob(f"Puddle_*.bundle/**/{locale}.lproj/Localizable.strings")):
+            raise RuntimeError(f"The app is missing the {locale} localization resource.")
+    print("PASS: bundle plist, localizations and code signature", flush=True)
     with tempfile.TemporaryDirectory(prefix="puddle-bundle-check-") as disposable:
         root = Path(disposable)
 

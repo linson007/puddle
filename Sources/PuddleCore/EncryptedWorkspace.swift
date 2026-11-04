@@ -83,6 +83,8 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             let data = try Data(contentsOf: file)
             let snapshot = try decode(data, key: key)
             cache.primaryDigest = fingerprint(data, key: key)
+            cache.primaryMetadata = try TranscriptVault.fingerprint(file)
+            cache.primaryKeyDigest = fingerprint(header, key: key)
             result = SnapshotLoadResult(snapshot: snapshot, notice: cache.recoveredPages ? "Recovered damaged transcript pages from encrypted recovery copies. All messages were retained; damaged files were preserved." : nil)
         } catch let error as SnapshotVersionError { throw error }
         catch {
@@ -92,6 +94,8 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             if fm.fileExists(atPath: file.path) { try fm.moveItem(at: file, to: directory.appendingPathComponent("workspace-unreadable-\(UUID()).vault")) }
             try write(data, to: file)
             cache.primaryDigest = fingerprint(data, key: key)
+            cache.primaryMetadata = try TranscriptVault.fingerprint(file)
+            cache.primaryKeyDigest = fingerprint(header, key: key)
             result = SnapshotLoadResult(snapshot: snapshot, notice: "Recovered the previous encrypted workspace. Recent changes may be missing.")
         }
         try protectLegacyFiles()
@@ -104,27 +108,40 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         cache.lock.lock(); defer { cache.lock.unlock() }
         let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path)
         let key = try key(create: !exists)
-        var previous: Data?
-        if FileManager.default.fileExists(atPath: file.path) {
-            let data = try Data(contentsOf: file)
-            if cache.primaryDigest != fingerprint(data, key: key) { _ = try decode(data, key: key) }
-            previous = data
-        } else if FileManager.default.fileExists(atPath: backup.path) {
-            let data = try Data(contentsOf: backup)
-            _ = try decode(data, key: key); previous = data
+        let fm = FileManager.default
+        var previous: URL?
+        if fm.fileExists(atPath: file.path) {
+            let metadata = try TranscriptVault.fingerprint(file)
+            if cache.primaryMetadata != metadata || cache.primaryKeyDigest != fingerprint(header, key: key) {
+                let data = try Data(contentsOf: file)
+                if cache.primaryDigest != fingerprint(data, key: key) { _ = try decode(data, key: key) }
+            }
+            previous = file
+        } else if fm.fileExists(atPath: backup.path) {
+            _ = try decode(Data(contentsOf: backup), key: key)
         }
         let oldNames = cache.committedNames
         let prepared = try TranscriptVault.prepare(state, directory: transcripts, cache: cache,
             seal: { try sealPage($0, key: key) }, open: { try openPage($0, key: key) })
         do {
             let encrypted = try seal(prepared.data, key: key)
-            if let previous { try write(previous, to: backup) }
+            if let previous {
+                if fm.fileExists(atPath: backup.path) { _ = try TranscriptVault.fingerprint(backup) }
+                let temporary = directory.appendingPathComponent(".backup-\(UUID()).vault")
+                defer { if fm.fileExists(atPath: temporary.path) { PuddleDiagnostics.removeRecoveryFile(temporary) } }
+                try fm.copyItem(at: previous, to: temporary)
+                try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
+                if fm.fileExists(atPath: backup.path) { _ = try fm.replaceItemAt(backup, withItemAt: temporary) }
+                else { try fm.moveItem(at: temporary, to: backup) }
+            }
             try write(encrypted, to: file)
             cache.primaryDigest = fingerprint(encrypted, key: key)
+            cache.primaryMetadata = try TranscriptVault.fingerprint(file)
+            cache.primaryKeyDigest = fingerprint(header, key: key)
             cache.transcripts = prepared.transcripts
             cache.committedNames = Set(prepared.index.pages.map(\.file))
         } catch {
-            for page in prepared.created { try? FileManager.default.removeItem(at: page); cache.fingerprints.removeValue(forKey: TranscriptVault.cacheKey(page)) }
+            for page in prepared.created { PuddleDiagnostics.removeRecoveryFile(page); cache.fingerprints.removeValue(forKey: TranscriptVault.cacheKey(page)) }
             throw error
         }
         let names = Set(prepared.index.pages.map(\.file))
@@ -144,6 +161,20 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
                 cache.garbageCandidates.formIntersection(keep.subtracting(names))
             }
         }
+    }
+    public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] {
+        cache.lock.lock(); defer { cache.lock.unlock() }
+        let url = directory.appendingPathComponent("meeting-recovery.vault")
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        return try JSONDecoder().decode([MeetingCaptureRecovery].self, from: open(Data(contentsOf: url), key: key(create: false)))
+    }
+    public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws {
+        cache.lock.lock(); defer { cache.lock.unlock() }
+        let data = try JSONEncoder().encode(values)
+        // Never create a new key over an existing workspace/recovery file.
+        let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path) ||
+            FileManager.default.fileExists(atPath: directory.appendingPathComponent("meeting-recovery.vault").path)
+        try write(seal(data, key: key(create: !exists)), to: directory.appendingPathComponent("meeting-recovery.vault"))
     }
     private func protectLegacyFiles() throws {
         let fm = FileManager.default, key = try key(create: false)
@@ -178,7 +209,9 @@ public enum ProtectedWorkspaceBackup {
         guard password.count >= 12 else { throw PuddleError("Choose a backup passphrase with at least 12 characters. It is needed to restore this file.") }
         let salt = SymmetricKey(size: .bits128).withUnsafeBytes { Data($0) }, rounds = 600_000
         let data = try WorkspaceBackup.encode(snapshot), key = try key(password: password, salt: salt, rounds: rounds)
-        let sealed = try AES.GCM.seal(data, using: key, authenticating: Data(format.utf8)).combined!
+        guard let sealed = try AES.GCM.seal(data, using: key, authenticating: Data(format.utf8)).combined else {
+            throw PuddleError("The encrypted backup could not be encoded.")
+        }
         return try JSONEncoder().encode(Envelope(format: format, version: 1, salt: salt, rounds: rounds, sealed: sealed))
     }
     public static func inspect(_ data: Data, password: String) throws -> WorkspaceBackupPreview {

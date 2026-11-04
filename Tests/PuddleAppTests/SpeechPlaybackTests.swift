@@ -14,11 +14,11 @@ import PuddleCore
 }
 
 @MainActor final class SpeechPlaybackTests: XCTestCase {
-    func testReadingTogglesAndIgnoresCompletionFromOldUtterance() {
+    func testReadingTogglesAndIgnoresCompletionFromOldUtterance() async {
         let player = FakeSpeechPlayer()
         // The store below uses only in-memory demo state and an injected speech engine.
         let subject = PuddleStore(speechPlayer: player)
-        subject.enterDemo()
+        await subject.enterDemo()
         let first = ChatLine(role: "assistant", content: "First reply"), second = ChatLine(role: "assistant", content: "Second reply")
         subject.readAloud(first); XCTAssertEqual(subject.speakingMessageID, first.id)
         subject.readAloud(second); player.completions[0]()
@@ -29,30 +29,30 @@ import PuddleCore
         XCTAssertEqual(player.texts, ["First reply", "Second reply", "First reply"])
     }
 
-    func testUserTextCannotTriggerPlaybackAndNewConversationStopsIt() {
+    func testUserTextCannotTriggerPlaybackAndNewConversationStopsIt() async {
         let player = FakeSpeechPlayer(), store = PuddleStore(speechPlayer: player)
-        store.enterDemo()
+        await store.enterDemo()
         store.readAloud(ChatLine(role: "user", content: "Do not speak"))
         XCTAssertTrue(player.texts.isEmpty)
         store.readAloud(ChatLine(role: "assistant", content: "**Useful** [label](https://example.test)"))
         XCTAssertEqual(player.texts.last, "Useful label")
-        store.clearChat()
+        await store.clearChat()
         XCTAssertNil(store.speakingMessageID)
         XCTAssertGreaterThan(player.stopped, 0)
     }
 
     func testAutomaticPlaybackIsOptInAndStopsWhenDisabled() async throws {
         let player = FakeSpeechPlayer(), store = PuddleStore(speechPlayer: player)
-        store.enterDemo()
+        await store.enterDemo()
         XCTAssertFalse(store.state.settings.readRepliesAloud)
-        store.setReadRepliesAloud(true); store.ask("Explain a planning method")
+        await store.setReadRepliesAloud(true); await store.ask("Explain a planning method")
         for _ in 0..<200 {
             if !store.isThinking { break }; try await Task.sleep(for: .milliseconds(5))
         }
         XCTAssertFalse(store.isThinking)
         XCTAssertEqual(player.texts.count, 1)
         XCTAssertNotNil(store.speakingMessageID)
-        store.setReadRepliesAloud(false)
+        await store.setReadRepliesAloud(false)
         XCTAssertNil(store.speakingMessageID)
         XCTAssertFalse(store.state.settings.readRepliesAloud)
     }

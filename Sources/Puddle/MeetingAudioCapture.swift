@@ -128,7 +128,7 @@ extension MeetingAudioCapturing {
             }
         }
         sink.startClock(at: CMClockGetTime(CMClockGetHostTimeClock()).seconds)
-        do { try engine.start() } catch { cancel(); throw error }
+        do { try engine.start() } catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); cancel(); throw error }
         sourceDescription = "Microphone"
     }
     func finish() async throws {
@@ -179,7 +179,7 @@ extension MeetingAudioCapturing {
         let started = CMClockGetTime(CMClockGetHostTimeClock()).seconds
         audio.sink.startClock(at: started); microphone?.sink.startClock(at: started)
         do { try await stream.startCapture(); try Task.checkCancellation() }
-        catch { cancel(); throw error }
+        catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); cancel(); throw error }
         guard generation == expected else { cancel(); throw CancellationError() }
         sourceDescription = selectedSource
     }
@@ -205,10 +205,17 @@ extension MeetingAudioCapturing {
     private var cancelled = false
     private init(sink: AnalyzerAudioSink, analyzer: SpeechAnalyzer) { self.sink = sink; self.analyzer = analyzer }
 
+    static func compatibleFormat(for transcriber: SpeechTranscriber) async throws -> AVAudioFormat {
+        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+            throw PuddleError("No compatible on-device audio format is available.")
+        }
+        return format
+    }
+
     static func make(transcriber: SpeechTranscriber, channel: MeetingAudioChannel, origin: Double,
                      onSegment: @escaping @MainActor @Sendable (MeetingTranscriptSegment) -> Void,
                      onError: @escaping @MainActor @Sendable (String) -> Void) async throws -> AnalyzerAudioTrack {
-        guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else { throw PuddleError("No compatible on-device audio format is available.") }
+        let format = try await compatibleFormat(for: transcriber)
         let (sequence, builder) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(64))
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let sink = AnalyzerAudioSink(format: format, builder: builder, origin: origin) { message in Task { @MainActor in onError(message) } }
@@ -220,10 +227,10 @@ extension MeetingAudioCapturing {
                     onSegment(MeetingTranscriptSegment(channel: channel, start: result.range.start.seconds,
                         end: result.range.end.seconds, text: String(result.text.characters), isFinal: result.isFinal))
                 }
-            } catch { if !Task.isCancelled, track?.cancelled == false { onError("Speech recognition stopped: \(error.localizedDescription)") } }
+            } catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); if !Task.isCancelled, track?.cancelled == false { onError("Speech recognition stopped: \(error.localizedDescription)") } }
         }
         do { try await analyzer.prepareToAnalyze(in: format); try await analyzer.start(inputSequence: sequence); try Task.checkCancellation() }
-        catch { track.cancel(); throw error }
+        catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); track.cancel(); throw error }
         return track
     }
     func finish() async throws {
@@ -239,6 +246,8 @@ extension MeetingAudioCapturing {
 
 /// Serializes callback conversion and bounds queued audio; overload stops capture visibly.
 @available(macOS 26, *)
+// Sendable invariant: lock serializes converter, timing and closed state;
+// the stream continuation and failure callback are Sendable.
 final class AnalyzerAudioSink: @unchecked Sendable {
     private let lock = NSLock()
     private let converter: AudioBufferConverter
@@ -255,6 +264,15 @@ final class AnalyzerAudioSink: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         guard !closed else { return }
         do {
+            let format = converter.outputFormat
+            guard format.sampleRate.isFinite, format.sampleRate > 0, format.sampleRate <= Double(Int32.max),
+                  format.channelCount > 0,
+                  format.commonFormat == .pcmFormatInt16 || format.commonFormat == .pcmFormatFloat32 else {
+                throw PuddleError("Speech returned an unsupported PCM format. Restart transcription or import a transcript.")
+            }
+            if #available(macOS 27, *), format.commonFormat != .pcmFormatInt16 {
+                throw PuddleError("This macOS speech engine requires Int16 audio. Restart transcription to select a compatible format.")
+            }
             let output = try converter.convert(buffer)
             guard output.frameLength > 0 else { return }
             let clock = hostSeconds.map { $0 - origin }
@@ -270,7 +288,7 @@ final class AnalyzerAudioSink: @unchecked Sendable {
             case .enqueued: break
             @unknown default: break
             }
-        } catch { closed = true; builder.finish(); failure("Audio processing stopped: \(error.localizedDescription)") }
+        } catch { PuddleDiagnostics.failure(.speech, "Capture speech", error); closed = true; builder.finish(); failure("Audio processing stopped: \(error.localizedDescription)") }
     }
     func finish() { lock.lock(); defer { lock.unlock() }; closed = true; builder.finish() }
     func startClock(at seconds: Double) { lock.lock(); defer { lock.unlock() }; if frames == 0 { origin = seconds } }

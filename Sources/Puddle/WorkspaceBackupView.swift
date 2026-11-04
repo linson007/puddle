@@ -24,12 +24,12 @@ struct WorkspaceBackupView: View {
                 if encrypt { SecureField("Confirm passphrase for export", text: $confirmation) }
                 Text("Encrypted backups use your passphrase, independently of this Mac’s Keychain. Keep the passphrase somewhere safe; it cannot be recovered by Puddle. Drafts include their sending account and message contents.").font(.caption).foregroundStyle(.secondary)
                 if !encrypt { Label("Unencrypted exports can contain confidential work.", systemImage: "lock.open").font(.caption) }
-                Button("Export Workspace Backup…") { run { try await export() } }.disabled(busy || store.demo || !store.storageAvailable)
+                Button("Export Workspace Backup…") { Task { run { try await export() } } }.disabled(busy || store.demo || !store.storageAvailable)
             }
             Section("Restore from a backup") {
                 Text("Review a backup, then merge missing items into this workspace. Existing items and your active conversation are kept. Restored chats appear in History; saved connections remain as they are.")
                     .font(.callout).foregroundStyle(.secondary)
-                Button("Review Backup…") { run { try await review() } }.disabled(busy || store.demo || !store.storageAvailable)
+                Button("Review Backup…") { Task { run { try await review() } } }.disabled(busy || store.demo || !store.storageAvailable)
                 Text("Imported tasks start without daily priority stars. Past reminders appear as overdue without replaying notifications; future reminders use your current notification setting.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -54,12 +54,12 @@ struct WorkspaceBackupView: View {
             if let error { Text(error).font(.caption).foregroundStyle(.orange) }
             HStack {
                 Spacer()
-                Button("Cancel") { showingMerge = false }.keyboardShortcut(.cancelAction)
-                Button("Merge Workspace") {
-                    if let result = store.restoreWorkspaceBackup(backup) {
+                Button(L10n.text("Cancel")) { showingMerge = false }.keyboardShortcut(.cancelAction)
+                Button("Merge Workspace") { Task {
+                    if let result = await store.restoreWorkspaceBackup(backup) {
                         status = result.summary; showingMerge = false; error = nil
                     } else { error = store.errorMessage }
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
             }
         }.padding(28).frame(width: 560)
     }
@@ -112,13 +112,13 @@ struct WorkspaceBackupView: View {
 }
 
 extension PuddleStore {
-    @discardableResult func restoreWorkspaceBackup(_ backup: WorkspaceBackupPreview) -> WorkspaceRestoreReport? {
+    @discardableResult func restoreWorkspaceBackup(_ backup: WorkspaceBackupPreview) async -> WorkspaceRestoreReport? {
         do {
             _ = try workspaceAccess()
             let (next, report) = WorkspaceBackup.merging(backup, into: state)
             let profileChanged = next.profileLibrary.active != state.profileLibrary.active
-            try commit { $0 = next }
-            if profileChanged { stopAI() }
+            try await commit { $0 = next }
+            if profileChanged { await stopAI() }
             scheduleReminders(); errorMessage = nil; return report
         } catch { fail(error); return nil }
     }

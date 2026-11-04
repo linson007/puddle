@@ -55,62 +55,72 @@ private actor DeveloperModel: HTTPTransport {
     func testToolsRequireDeveloperRoleAndExplicitProjectSelection() async throws {
         let store = fixture(); await store.start()
         let selected = try project()
-        XCTAssertTrue(store.saveDeveloperProject(selected, isNew: true))
+        let result1 = await store.saveDeveloperProject(selected, isNew: true)
+        XCTAssertTrue(result1)
         XCTAssertFalse(store.availableTools.contains(.projectRead))
-        store.chooseDeveloperProfile()
+        await store.chooseDeveloperProfile()
         XCTAssertTrue(store.availableTools.contains(.projectRead)); XCTAssertTrue(store.availableTools.contains(.developerWorkspace))
-        XCTAssertTrue(store.selectDeveloperProject(nil))
+        let result2 = await store.selectDeveloperProject(nil)
+        XCTAssertTrue(result2)
         XCTAssertFalse(store.availableTools.contains(.projectRead)); XCTAssertTrue(store.availableTools.contains(.developerWorkspace))
-        store.enterDemo(); store.chooseDeveloperProfile()
+        await store.enterDemo(); await store.chooseDeveloperProfile()
         XCTAssertFalse(store.availableTools.contains(.projectRead))
     }
     func testProjectAndSessionPersistAndFailedSavesKeepDraft() async throws {
         let disk = DeveloperDisk(), store = fixture(disk); await store.start()
-        let selected = try project(); XCTAssertTrue(store.saveDeveloperProject(selected, isNew: true))
-        let id = try XCTUnwrap(store.createDevelopmentSession(kind: .debug))
+        let selected = try project(); let result3 = await store.saveDeveloperProject(selected, isNew: true)
+        XCTAssertTrue(result3)
+        let result4 = await store.createDevelopmentSession(kind: .debug)
+        let id = try XCTUnwrap(result4)
         let saved = try XCTUnwrap(store.state.developmentSessions.first)
         store.developerWorkspace.edit(saved) { $0.problem = "A reproducible failure"; $0.observed = "Timeout" }
         disk.failWrite = true
-        XCTAssertFalse(store.saveDevelopmentSession(store.developerWorkspace.draft(saved)))
+        let result5 = await store.saveDevelopmentSession(store.developerWorkspace.draft(saved))
+        XCTAssertFalse(result5)
         XCTAssertEqual(store.developerWorkspace.draft(saved).observed, "Timeout")
         XCTAssertTrue(store.state.developmentSessions[0].observed.isEmpty)
         disk.failWrite = false
-        XCTAssertTrue(store.saveDevelopmentSession(store.developerWorkspace.draft(saved)))
+        let result6 = await store.saveDevelopmentSession(store.developerWorkspace.draft(saved))
+        XCTAssertTrue(result6)
         let restarted = fixture(disk); await restarted.start()
         XCTAssertEqual(restarted.state.activeDeveloperProjectID, selected.id)
         XCTAssertEqual(restarted.state.developmentSessions.first { $0.id == id }?.observed, "Timeout")
         let moved = try project("Moved")
         let reconnected = DeveloperProject(id: selected.id, name: selected.name, path: moved.path)
-        XCTAssertFalse(restarted.saveDeveloperProject(reconnected))
-        XCTAssertTrue(restarted.saveDeveloperProject(reconnected, reconnecting: true))
+        let result7 = await restarted.saveDeveloperProject(reconnected)
+        XCTAssertFalse(result7)
+        let result8 = await restarted.saveDeveloperProject(reconnected, reconnecting: true)
+        XCTAssertTrue(result8)
         XCTAssertEqual(restarted.state.activeDeveloperProject?.path, moved.path)
         XCTAssertEqual(restarted.state.developmentSessions.first { $0.id == id }?.projectID, selected.id)
     }
     func testRemovingConnectionPreservesNotesAndUncommittedDraftAndRejectsStaleProjectEditor() async throws {
         let disk = DeveloperDisk(), store = fixture(disk); await store.start()
-        let selected = try project(); store.saveDeveloperProject(selected, isNew: true)
-        _ = store.createDevelopmentSession(kind: .debug)
+        let selected = try project(); await store.saveDeveloperProject(selected, isNew: true)
+        _ = await store.createDevelopmentSession(kind: .debug)
         let saved = try XCTUnwrap(store.state.developmentSessions.first)
         store.developerWorkspace.edit(saved) { $0.findings = "Unsaved evidence" }
-        store.removeDeveloperProject(selected.id)
+        await store.removeDeveloperProject(selected.id)
         XCTAssertTrue(store.state.developerProjects.isEmpty); XCTAssertNil(store.state.developmentSessions[0].projectID)
         XCTAssertEqual(store.state.developmentSessions[0].projectName, selected.name)
         XCTAssertEqual(store.developerWorkspace.draft(saved).findings, "Unsaved evidence")
         XCTAssertNil(store.developerWorkspace.draft(saved).projectID)
-        XCTAssertFalse(store.saveDeveloperProject(selected)); XCTAssertTrue(store.state.developerProjects.isEmpty)
+        let result9 = await store.saveDeveloperProject(selected)
+        XCTAssertFalse(result9); XCTAssertTrue(store.state.developerProjects.isEmpty)
         XCTAssertTrue(FileManager.default.fileExists(atPath: selected.path))
     }
     func testFailedRemovalAndSelectionDoNotRevokeSavedConnectionOrLoseSessionDraft() async throws {
         let disk = DeveloperDisk(), store = fixture(disk); await store.start()
-        let selected = try project(); store.saveDeveloperProject(selected, isNew: true)
+        let selected = try project(); await store.saveDeveloperProject(selected, isNew: true)
         disk.failWrite = true
-        XCTAssertFalse(store.selectDeveloperProject(nil)); store.removeDeveloperProject(selected.id)
+        let result10 = await store.selectDeveloperProject(nil)
+        XCTAssertFalse(result10); await store.removeDeveloperProject(selected.id)
         XCTAssertEqual(store.state.activeDeveloperProjectID, selected.id); XCTAssertEqual(store.state.developerProjects.count, 1)
     }
     func testSourceToolRoundTripIncludesLinesReferencesAndNoAccountCalls() async throws {
         let disk = DeveloperDisk(), model = DeveloperModel(), store = fixture(disk, model: model); await store.start()
-        let selected = try project(); store.saveDeveloperProject(selected, isNew: true); store.chooseDeveloperProfile()
-        store.ask("Please inspect Main.swift and cite the greeting's line.")
+        let selected = try project(); await store.saveDeveloperProject(selected, isNew: true); await store.chooseDeveloperProfile()
+        await store.ask("Please inspect Main.swift and cite the greeting's line.")
         try await wait { !store.isThinking }
         XCTAssertEqual(store.state.chat.last?.content, "Main.swift:2 contains the greeting.")
         let receipt = try XCTUnwrap(store.state.chat.first(where: { $0.role == "user" })?.receipts?.first)
@@ -123,8 +133,8 @@ private actor DeveloperModel: HTTPTransport {
     }
     func testToolTraversalFailureProducesFailedReceiptAndNeverReturnsOutsideContents() async throws {
         let disk = DeveloperDisk(), model = DeveloperModel(path: "../outside.txt"), store = fixture(disk, model: model); await store.start()
-        store.saveDeveloperProject(try project(), isNew: true); store.chooseDeveloperProfile()
-        store.ask("Read a source file")
+        await store.saveDeveloperProject(try project(), isNew: true); await store.chooseDeveloperProfile()
+        await store.ask("Read a source file")
         try await wait { !store.isThinking }
         let receipts = store.state.chat.first(where: { $0.role == "user" })?.receipts ?? []
         XCTAssertEqual(receipts.first?.status, "failed"); XCTAssertTrue(receipts.first?.references.isEmpty == true)
@@ -134,11 +144,12 @@ private actor DeveloperModel: HTTPTransport {
     func testLatestInspectionWinsAndProjectSwitchKeepsOtherDrafts() async throws {
         let store = fixture(); await store.start()
         let first = try project("First"), second = try project("Second")
-        store.saveDeveloperProject(first, isNew: true)
-        let id = try XCTUnwrap(store.createDevelopmentSession(kind: .debug)), saved = store.state.developmentSessions[0]
+        await store.saveDeveloperProject(first, isNew: true)
+        let result11 = await store.createDevelopmentSession(kind: .debug)
+        let id = try XCTUnwrap(result11), saved = store.state.developmentSessions[0]
         store.developerWorkspace.edit(saved) { $0.findings = "Preserve across project switches" }
         store.developerWorkspace.inspect(.search("old"), project: first)
-        store.saveDeveloperProject(second, isNew: true)
+        await store.saveDeveloperProject(second, isNew: true)
         XCTAssertNil(store.developerWorkspace.selectedSessionID)
         store.developerWorkspace.inspect(.read("Main.swift", 1), project: second)
         try await wait { !store.developerWorkspace.isInspecting }

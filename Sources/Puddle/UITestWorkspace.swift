@@ -92,6 +92,7 @@ enum UITestWorkspace {
 }
 
 /// Contains synthetic fixture credentials only. Ad hoc rebuilds cannot block on Keychain ACL prompts.
+// Sendable invariant: the fixture secret dictionary is protected by its lock.
 private final class UITestSecrets: SecretStore, @unchecked Sendable {
     private let file: URL
     private let lock = NSLock()

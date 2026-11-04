@@ -24,6 +24,7 @@ private actor BrowserRPCFixture: CuaRPCTransport {
     var snapshot = 0
     var actionCount = 0
     var delayedRead = false
+    let readGate = AsyncTestGate()
     var bindingRefusals = 0
     var bindingCount = 0
     var versionedBindings = false, secondTab = false
@@ -55,7 +56,7 @@ private actor BrowserRPCFixture: CuaRPCTransport {
         case "list_windows": value = .object(["windows": .array([.object(["window_id": .number(42), "pid": .number(1234)])])])
         case "get_browser_state":
             if args["tab_id"] != nil {
-                if delayedRead { try? await Task.sleep(for: .milliseconds(80)) }
+                if delayedRead { await readGate.pause() }
                 snapshot += 1
                 let refs = ["click", "type", "scroll"].map { action in
                     ConnectorJSON.object(["ref": .string("s\(snapshot):\(action)"), "name": .string("Fixture \(action)"), "actions": .strings([action])])
@@ -216,7 +217,8 @@ final class CuaBrowserTests: XCTestCase {
         let rpc = BrowserRPCFixture(), browser = CuaBrowser(factory: { _ in rpc })
         _ = try await browser.connect(executable: executable); await rpc.configure(delayedRead: true)
         let read = Task { try await browser.observe(tabID: "", query: "") }
-        try await Task.sleep(for: .milliseconds(10)); await browser.disconnect()
+        await fulfillment(of: [rpc.readGate.entered], timeout: 5)
+        await browser.disconnect(); await rpc.readGate.release()
         do { _ = try await read.value; XCTFail("Late page published") } catch is CancellationError {} catch { XCTFail("Expected cancellation: \(error)") }
     }
 
@@ -252,9 +254,11 @@ final class CuaBrowserTests: XCTestCase {
         let file = try script("time.sleep(10)")
         let transport = CuaStdioTransport(executable: file, timeout: 0.1)
         do { _ = try await transport.rpc("tools/call", parameters: .object([:])); XCTFail("Expected timeout") } catch {}
-        let cancelled = CuaStdioTransport(executable: file)
+        let cancellationFile = try script("open(__file__ + '.entered', 'w').close()\n    time.sleep(10)")
+        let cancelled = CuaStdioTransport(executable: cancellationFile)
         let request = Task { try await cancelled.rpc("tools/call", parameters: .object([:])) }
-        try await Task.sleep(for: .milliseconds(50)); request.cancel()
+        try await waitForTestEvent("child received cancellation request") { FileManager.default.fileExists(atPath: cancellationFile.path + ".entered") }
+        request.cancel()
         do { _ = try await request.value; XCTFail("Expected cancellation") } catch {}
         do { _ = try await cancelled.rpc("tools/call", parameters: .object([:])); XCTFail("Closed connection replayed") } catch {}
     }

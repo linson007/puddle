@@ -27,10 +27,59 @@ Leave live opt-ins unset for ordinary changes. A passing fixture suite covers
 application behavior under those fixtures; it does not establish model quality,
 real provider behavior, permission delivery, or public-release readiness.
 
-The [CI workflow](../.github/workflows/ci.yml) runs the default debug and release
-suites on macOS 26, then builds and verifies an ad hoc release bundle without an
-OAuth client file. For setup and contribution expectations, see
-[CONTRIBUTING.md](../CONTRIBUTING.md).
+The [CI workflow](../.github/workflows/ci.yml) runs debug fixtures on macOS 15,
+26 and 27, release fixtures on macOS 26, complete Swift 6 concurrency checks,
+translation completeness, and release bundle verification. It builds against a
+**macOS 14 deployment target**, so unguarded newer API use fails compilation.
+Live transcription requires macOS 26+. macOS 14 remains supported but has no
+hosted runtime job: GitHub retired that runner on 2 November 2026. macOS 27 uses
+the `xcode-27` label. See the [runner catalog](https://github.com/actions/runner-images).
+
+| Environment | Xcode / Swift | Coverage |
+| --- | --- | --- |
+| Local macOS 26.6 (25G72), Apple Silicon | Xcode 27.2 / Swift 6.4.2 | Debug, release, bundle and targeted regressions |
+| CI macOS 15 | Xcode 26.3 / bundled Swift 6 | Debug, older runtime paths |
+| CI macOS 26 | Default Xcode / bundled Swift 6 (printed in each run) | Debug, release, bundle |
+| CI macOS 27 (`xcode-27`) | Default Xcode 27 / bundled Swift 6 | Debug, newest Speech format behavior |
+| macOS 14 | Deployment target only | Availability checking; native runtime review remains manual |
+
+The suite contains roughly 500 tests; counts and optional skips vary by build
+configuration, SDK and opt-ins. Use the XCTest `Executed … tests` totals for both
+core and app bundles in a fresh run, not the separate Swift Testing “0 tests”
+summary. DEBUG-only UI fixture tests are absent in release. The Speech pipeline
+regression ([#5](https://github.com/linson007/puddle/issues/5)) now selects the
+production-compatible format when speech assets are available, with an explicit
+Int16 synthetic fallback on hosts without assets. It no longer assumes Float32
+channel pointers or force-unwraps timestamps.
+
+See [persistence and concurrency](persistence-and-concurrency.md),
+[localization](localization.md), [accessibility](accessibility.md), and
+[CONTRIBUTING.md](../CONTRIBUTING.md) for the associated contracts.
+
+## Reproducible evidence
+
+Historical logs in temporary directories are not portable evidence. Regenerate
+fixture/build results from the checked-out commit:
+
+```sh
+mkdir -p build/verification
+sw_vers > build/verification/environment.txt
+xcodebuild -version >> build/verification/environment.txt
+swift --version >> build/verification/environment.txt
+make test > build/verification/debug.log 2>&1
+sh scripts/swift.sh test -c release > build/verification/release.log 2>&1
+make build > build/verification/build.log 2>&1
+python3 scripts/verify-bundle.py > build/verification/bundle.log 2>&1
+python3 scripts/localizations.py --check
+python3 scripts/check-concurrency.py
+```
+
+Run commands in order and stop if one exits unsuccessfully. The normal suite uses
+local loopback listeners, extended attributes and security-scoped bookmark
+fixtures; an external execution sandbox can block these OS operations. Use the
+normal contributor terminal environment for those fixtures. CI retains its job
+logs; link the PR checks when sharing verification. The pre-model runner below
+also creates a fresh evidence directory with checksums and a source diff.
 
 ## Pre-model verification
 
@@ -60,13 +109,11 @@ Native sleep/device/host-volume and clean-Mac acceptance remain separate. See th
 [model/hardware contract](model-acceptance.md) and
 [roadmap dependencies](production-roadmap.md#work-before-live-model-acceptance).
 
-Verified on 1 November 2026: debug executed **479 tests** (465 passed, 14 optional
-skips); release executed **475 tests** (461 passed, 14 optional skips), zero
-failures. Regular/heavy load and the 1,000-save long-chat run passed all budgets.
-Release bundling, plist/strict signature, both fixture-refusal paths and whitespace
-checks passed. Synthetic driver regressions reject click/type before dispatch;
-reads, reviewed navigation/scroll, cancellation and historical receipts remain
-covered. No live model, provider or audio opt-in was enabled.
+Historical pre-model verification on 1 November 2026 passed regular/heavy load,
+the 1,000-save long-chat run, bundle/signature checks and fixture-refusal paths.
+Those historical suite counts are not the current default test count. Re-run the
+commands above or `make verify-premodel` for the current checkout. No live model,
+provider or audio opt-in was enabled in that historical pre-model run.
 
 Native isolated checks passed for the simple first-run screen, keyboard task
 capture/Return save, memory creation and same-title correction without a duplicate,

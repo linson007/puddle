@@ -12,6 +12,8 @@ struct MeetingCaptureView: View {
             if capture.isActive, capture.noteID == note.id {
                 Label(capture.status == .listening ? "Audio capture active" : capture.message, systemImage: "waveform.circle.fill")
                     .foregroundStyle(capture.status == .listening ? .red : .secondary)
+                    .accessibilityLabel("Transcription status")
+                    .accessibilityValue(capture.status == .listening ? "Audio capture active" : capture.message)
                 if let selectedSource = capture.sourceDescription {
                     Text("Source: \(selectedSource)").font(.callout).textSelection(.enabled)
                 }
@@ -23,11 +25,11 @@ struct MeetingCaptureView: View {
                 if !capture.timeline.segments.isEmpty {
                     Text(String(capture.timeline.text.suffix(2000))).font(.callout).textSelection(.enabled)
                 }
-                Button(capture.status == .preparing ? "Cancel start" : "Stop and review") { capture.stop() }.disabled(capture.status == .finishing)
+                Button(capture.status == .preparing ? "Cancel start" : "Stop and review") { capture.stop() }.disabled(capture.status == .finishing).accessibilityHint("Stops audio capture and keeps the text for review")
             } else {
                 HStack {
                     Picker("Capture", selection: $source) { ForEach(MeetingAudioSource.allCases) { Text($0.title).tag($0) } }
-                    Button("Start transcription") { store.startMeetingTranscription(note.id, source: source) }.buttonStyle(.borderedProminent)
+                    Button("Start transcription") { store.startMeetingTranscription(note.id, source: source) }.buttonStyle(.borderedProminent).accessibilityHint("Starts on-device transcription using the selected audio source")
                         .disabled(store.demo || !store.storageAvailable || !capture.isSupported || capture.isActive || store.meetingWorkspace.pendingImport != nil || store.meetingWorkspace.isImporting)
                 }
                 HStack {

@@ -23,7 +23,7 @@ struct PendingTranscriptImport: Identifiable {
     @Published private(set) var searchResults: [MeetingSearchResult] = []
     @Published private(set) var isSearching = false
     @Published private(set) var searchError: String?
-    private var searchTask: Task<Void, Never>?
+    private(set) var searchTask: Task<Void, Never>?
     private var searchGeneration = UUID()
     private var importingNoteID: UUID?
     private var importGeneration = UUID()

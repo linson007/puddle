@@ -7,7 +7,7 @@ import PuddleCore
     @Published private(set) var isVerifying = false
     @Published private(set) var verification: LocalAISetupVerification?
     @Published private(set) var error: String?
-    private var operation: Task<Void, Never>?
+    private(set) var operation: Task<Void, Never>?
     private var revision = UUID()
 
     func verify(client: LocalInferenceClient) {

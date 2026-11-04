@@ -121,41 +121,42 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
     }
     func testDemoCannotStartMeetingCaptureOrInstallLanguages() async {
         let hardware = FixtureMeetingCapture()
-        let store = PuddleStore(meetingAudioCapture: hardware); store.enterDemo()
-        let id = store.createMeetingNote()!
+        let store = PuddleStore(meetingAudioCapture: hardware); await store.enterDemo()
+        let id = await store.createMeetingNote()!
         store.startMeetingTranscription(id, source: .microphone); store.installMeetingSpeechLanguage()
         await Task.yield(); XCTAssertEqual(hardware.starts, 0); XCTAssertEqual(hardware.installs, 0)
     }
     func testSpeechLanguageInstallationHonorsPausePrivateSessionAndLock() async {
         let hardware = FixtureMeetingCapture()
         let store = PuddleStore(cache: CaptureDisk(), meetingAudioCapture: hardware); store.storageAvailable = true
-        store.setExternalConnectionsPaused(true)
+        await store.setExternalConnectionsPaused(true)
         XCTAssertFalse(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
-        store.setExternalConnectionsPaused(false); store.beginPrivateSession()
+        await store.setExternalConnectionsPaused(false); await store.beginPrivateSession()
         XCTAssertFalse(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
-        store.endPrivateSession(); store.lockWorkspace()
+        await store.endPrivateSession(); await store.lockWorkspace()
         XCTAssertFalse(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
         await Task.yield(); XCTAssertEqual(hardware.installs, 0)
         store.unlockWorkspace()
         XCTAssertTrue(store.canInstallMeetingSpeechLanguage); store.installMeetingSpeechLanguage()
         await wait { hardware.installs == 1 && store.meetingCapture.status == .idle }
-        store.suspendConnectionWork()
+        await store.suspendConnectionWork()
     }
     func testPauseCancelsLanguageDownloadAndIgnoresLateCompletionWithoutStoppingLocalCapture() async throws {
         let hardware = FixtureMeetingCapture(); hardware.holdInstall = true
         let store = PuddleStore(cache: CaptureDisk(), meetingAudioCapture: hardware); store.storageAvailable = true
         store.installMeetingSpeechLanguage(); await wait { hardware.installGate != nil }
         let cancellations = hardware.cancellations
-        store.setExternalConnectionsPaused(true)
+        await store.setExternalConnectionsPaused(true)
         XCTAssertEqual(store.meetingCapture.status, .idle); XCTAssertGreaterThan(hardware.cancellations, cancellations)
         hardware.installGate?.resume(); hardware.installGate = nil
         await Task.yield(); await Task.yield()
         XCTAssertEqual(store.meetingCapture.status, .idle); XCTAssertFalse(store.meetingCapture.message.contains("ready"))
-        let id = try XCTUnwrap(store.createMeetingNote())
+        let result1 = await store.createMeetingNote()
+        let id = try XCTUnwrap(result1)
         store.startMeetingTranscription(id, source: .microphone); await wait { store.meetingCapture.status == .listening }
-        store.setExternalConnectionsPaused(true)
+        await store.setExternalConnectionsPaused(true)
         XCTAssertEqual(store.meetingCapture.status, .listening)
-        store.meetingCapture.cancel(); store.suspendConnectionWork()
+        store.meetingCapture.cancel(); await store.suspendConnectionWork()
     }
     func testCancelledSystemPickerAndCancelledFinalizationNeverLeaveControlsStuck() async {
         let hardware = FixtureMeetingCapture(); hardware.cancelStart = true
@@ -171,26 +172,30 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         XCTAssertTrue(captured.contains("Retained after cancellation"))
         XCTAssertTrue(controller.errorMessage?.contains("Finalization was cancelled") == true)
     }
-    func testCheckpointSurvivesRestartUntilReviewedAndSavedAndDeletionRemovesIt() throws {
+    func testCheckpointSurvivesRestartUntilReviewedAndSavedAndDeletionRemovesIt() async throws {
         let disk = CaptureDisk(), store = PuddleStore(cache: disk)
         store.storageAvailable = true
-        let id = try XCTUnwrap(store.createMeetingNote())
-        store.checkpointMeetingCapture(id, text: "[00:02] Microphone\nRecovered words")
+        let result2 = await store.createMeetingNote()
+        let id = try XCTUnwrap(result2)
+        await store.checkpointMeetingCapture(id, text: "[00:02] Microphone\nRecovered words")
         XCTAssertEqual(disk.state.meetingCaptureRecoveries.count, 1)
         let restarted = PuddleStore(cache: disk); restarted.state = try disk.load(); restarted.storageAvailable = true
         restarted.reviewMeetingCapture(id)
         XCTAssertEqual(restarted.meetingWorkspace.pendingImport?.result.text, "[00:02] Microphone\nRecovered words")
-        XCTAssertTrue(restarted.useImportedTranscript(append: true)); XCTAssertTrue(restarted.saveMeetingNote(id))
+        XCTAssertTrue(restarted.useImportedTranscript(append: true)); let result3 = await restarted.saveMeetingNote(id)
+        XCTAssertTrue(result3)
         XCTAssertTrue(disk.state.meetingCaptureRecoveries.isEmpty)
-        restarted.checkpointMeetingCapture(id, text: "Another checkpoint")
-        restarted.deleteMeetingNote(id); XCTAssertTrue(disk.state.meetingCaptureRecoveries.isEmpty)
+        await restarted.checkpointMeetingCapture(id, text: "Another checkpoint")
+        await restarted.deleteMeetingNote(id); XCTAssertTrue(disk.state.meetingCaptureRecoveries.isEmpty)
     }
     func testStoreRequiresExplicitApplyAndSaveAndPreservesExistingTranscript() async throws {
         let hardware = FixtureMeetingCapture()
         let disk = CaptureDisk()
         let store = PuddleStore(cache: disk, meetingAudioCapture: hardware); store.storageAvailable = true
-        let id = try XCTUnwrap(store.createMeetingNote()), note = try XCTUnwrap(store.state.meetings.first)
-        store.meetingWorkspace.edit(note) { $0.transcript = "Previously saved text" }; XCTAssertTrue(store.saveMeetingNote(id))
+        let result4 = await store.createMeetingNote()
+        let id = try XCTUnwrap(result4), note = try XCTUnwrap(store.state.meetings.first)
+        store.meetingWorkspace.edit(note) { $0.transcript = "Previously saved text" }; let result5 = await store.saveMeetingNote(id)
+        XCTAssertTrue(result5)
         store.startMeetingTranscription(id, source: .microphone); await wait { store.meetingCapture.status == .listening }
         hardware.segments[0](.init(channel: .microphone, start: 0, end: 1, text: "Captured words", isFinal: true))
         store.meetingCapture.stop(); await wait { store.meetingWorkspace.pendingImport != nil }
@@ -200,15 +205,17 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         XCTAssertTrue(store.useImportedTranscript(append: true))
         XCTAssertTrue(store.meetingWorkspace.draft(for: store.state.meetings[0]).transcript.contains("Captured words"))
         XCTAssertFalse(disk.state.meetings[0].transcript.contains("Captured words"))
-        XCTAssertTrue(store.saveMeetingNote(id)); XCTAssertTrue(disk.state.meetings[0].transcript.contains("Captured words"))
+        let result6 = await store.saveMeetingNote(id)
+        XCTAssertTrue(result6); XCTAssertTrue(disk.state.meetings[0].transcript.contains("Captured words"))
         XCTAssertTrue(store.state.memories.isEmpty); XCTAssertTrue(store.state.tasks.isEmpty)
     }
     func testDeletingActiveNoteCancelsCaptureAndCannotResurrectIt() async throws {
         let hardware = FixtureMeetingCapture()
         let store = PuddleStore(cache: CaptureDisk(), meetingAudioCapture: hardware); store.storageAvailable = true
-        let id = try XCTUnwrap(store.createMeetingNote())
+        let result7 = await store.createMeetingNote()
+        let id = try XCTUnwrap(result7)
         store.startMeetingTranscription(id, source: .microphone); await wait { store.meetingCapture.status == .listening }
-        store.deleteMeetingNote(id)
+        await store.deleteMeetingNote(id)
         hardware.segments[0](.init(channel: .microphone, start: 0, end: 1, text: "Late result", isFinal: true))
         XCTAssertTrue(store.state.meetings.isEmpty); XCTAssertNil(store.meetingWorkspace.pendingImport)
         XCTAssertEqual(store.meetingCapture.status, .idle)

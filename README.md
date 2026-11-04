@@ -274,7 +274,7 @@ Context budgets respect the model's reported capacity and use text token estimat
 
 The default suite uses fixtures. Live inference, installed browser-driver, audio,
 and load evaluations are opt-in and are skipped unless explicitly configured.
-CI runs the default suite in debug and release on macOS 26 and packages an ad hoc
+CI runs debug fixtures on macOS 15, 26 and 27, release fixtures on macOS 26, and packages an ad hoc
 release app without account credentials. CI does not establish the manual release
 gates or run live provider actions.
 
@@ -342,3 +342,15 @@ provided under the same license. Model providers, Cua Driver, browsers, models, 
 optional external tools retain their own licenses and terms; they are not
 included in Puddle's Swift package.
 
+
+## Languages
+
+English is the default. Turkish is available for primary navigation, common
+controls, local AI setup, settings, meeting controls and common recovery errors.
+macOS chooses the app language from your preferred languages; per-app language
+selection is available in System Settings → General → Language & Region.
+Specialist provider messages, generated responses and some detailed help still
+use English. Saved content and provider identifiers are never translated.
+
+[Localization scope and contribution workflow](docs/localization.md) describes
+the String Catalog and the translation completeness check.

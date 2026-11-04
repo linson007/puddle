@@ -19,9 +19,12 @@ public struct TaskRepetition: Codable, Equatable, Sendable {
         for offset in 1...5000 {
             let shifted: Date?
             if frequency == .monthly {
-                let start = calendar.date(from: calendar.dateComponents([.year, .month], from: due))!
-                let month = calendar.date(byAdding: .month, value: offset, to: start)!
-                let lastDay = calendar.range(of: .day, in: .month, for: month)!.count
+                guard let start = calendar.date(from: calendar.dateComponents([.year, .month], from: due)),
+                      let month = calendar.date(byAdding: .month, value: offset, to: start),
+                      let days = calendar.range(of: .day, in: .month, for: month) else {
+                    throw PuddleError("The repeating date is outside the supported calendar range.")
+                }
+                let lastDay = days.count
                 shifted = calendar.date(byAdding: .day, value: min(day, lastDay) - 1, to: month)
             } else { shifted = calendar.date(byAdding: .day, value: offset * (frequency == .weekly ? 7 : 1), to: due) }
             if let shifted, let candidate = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: shifted), candidate > threshold { return candidate }

@@ -47,9 +47,10 @@ private actor SetupProbeTransport: HTTPTransport {
         }
         let started = await transport.started
         XCTAssertTrue(started)
+        let operation = controller.operation
         controller.invalidateVerification()
         await transport.resume()
-        try await Task.sleep(for: .milliseconds(20))
+        await operation?.value
         XCTAssertFalse(controller.isVerifying); XCTAssertNil(controller.verification)
         XCTAssertNil(controller.error); XCTAssertTrue(controller.status.isEmpty)
     }

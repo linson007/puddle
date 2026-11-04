@@ -65,7 +65,7 @@ extension HTTPTransport {
 
 /// Redirects are rejected: OAuth/Gmail use fixed HTTPS hosts, and email text
 /// sent to the local inference server must never follow a redirect elsewhere.
-public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
+public final class URLSessionTransport: HTTPTransport, Sendable {
     private let session: URLSession
     public init() {
         let configuration = URLSessionConfiguration.ephemeral
@@ -130,9 +130,18 @@ private final class RejectRedirects: NSObject, URLSessionTaskDelegate {
 }
 
 public func formBody(_ fields: [String: String]) -> Data {
-    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
+    // Encode UTF-8 bytes directly; every byte has a representation, including
+    // non-ASCII text. This cannot fail like the optional String URL encoder.
+    func encode(_ value: String) -> String {
+        value.utf8.map { byte in
+            switch byte {
+            case 65...90, 97...122, 48...57, 45, 46, 95, 126: String(UnicodeScalar(byte))
+            default: String(format: "%%%02X", byte)
+            }
+        }.joined()
+    }
     return Data(fields.sorted { $0.key < $1.key }.map {
-        "\($0.key.addingPercentEncoding(withAllowedCharacters: allowed)!)=\($0.value.addingPercentEncoding(withAllowedCharacters: allowed)!)"
+        "\(encode($0.key))=\(encode($0.value))"
     }.joined(separator: "&").utf8)
 }
 

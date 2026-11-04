@@ -92,7 +92,7 @@ import PuddleCore
         XCTAssertEqual(subject.completedTranscript?.text, "Useful fragment")
         XCTAssertNotNil(subject.errorMessage)
         let store = PuddleStore(speechCapture: capture)
-        store.enterDemo(); store.toggleVoiceInput()
+        await store.enterDemo(); store.toggleVoiceInput()
         XCTAssertEqual(capture.starts, 1)
     }
 }

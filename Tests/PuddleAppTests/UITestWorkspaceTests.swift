@@ -11,12 +11,13 @@ final class UITestWorkspaceTests: XCTestCase {
         let store = UITestWorkspace.makeStore(arguments: ["Puddle"], bundledWorkspace: directory.path)
         await store.start()
         XCTAssertFalse(store.mailConnected); XCTAssertFalse(store.calendarConnected)
-        XCTAssertTrue(store.addTask(title: "Synthetic icon-launch task", dueAt: nil))
+        let result1 = await store.addTask(title: "Synthetic icon-launch task", dueAt: nil)
+        XCTAssertTrue(result1)
         let reopened = UITestWorkspace.makeStore(arguments: ["Puddle"], bundledWorkspace: directory.path)
         await reopened.start()
         XCTAssertEqual(reopened.state.tasks.map(\.title), ["Synthetic icon-launch task"])
         XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("fixture-secrets.json").path))
-        store.suspendConnectionWork(); reopened.suspendConnectionWork()
+        await store.suspendConnectionWork(); await reopened.suspendConnectionWork()
     }
     func testAcceptanceMarkerRejectsInvalidPathsAndExplicitArgumentsTakePrecedence() throws {
         for marker: Any in ["", "/", "/tmp/..", "relative/workspace", "/tmp/bad\npath", 42] {
@@ -36,7 +37,8 @@ final class UITestWorkspaceTests: XCTestCase {
         XCTAssertNil(store.state.account); XCTAssertNil(store.state.outlookAccount); XCTAssertNil(store.inferenceModel)
         XCTAssertTrue(store.state.tasks.isEmpty); XCTAssertFalse(store.state.profile.configured)
         XCTAssertEqual(store.state.settings.inferenceAddress, "http://127.0.0.1:65534")
-        XCTAssertTrue(store.addTask(title: "First launch commitment", dueAt: nil))
+        let result2 = await store.addTask(title: "First launch commitment", dueAt: nil)
+        XCTAssertTrue(result2)
         let restarted = UITestWorkspace.makeStore(arguments: arguments)
         await restarted.start()
         XCTAssertEqual(restarted.state.tasks.map(\.title), ["First launch commitment"])

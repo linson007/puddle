@@ -13,14 +13,14 @@ struct MeetingsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Meetings").font(.system(size: 29, weight: .semibold, design: .rounded))
+                Text(L10n.text("Meetings")).font(.system(size: 29, weight: .semibold, design: .rounded))
                     .foregroundStyle(PuddleStyle.ink).accessibilityAddTraits(.isHeader)
                 Text("Open a meeting from your calendar or paste an invitation link.").font(.callout).foregroundStyle(PuddleStyle.muted)
                 joinCard
                 if workspace.selectedID == nil { MeetAttendanceView(store: store, attendance: store.meetAttendance, invitation: $address) }
                 HStack {
                     Text("Your meeting notes").font(.headline)
-                    Spacer(); Button("New notes") { store.createMeetingNote() }.buttonStyle(PuddlePrimaryButtonStyle())
+                    Spacer(); Button("New notes") { Task { await store.createMeetingNote() } }.buttonStyle(PuddlePrimaryButtonStyle())
                 }
                 if !store.state.meetings.isEmpty {
                     TextField("Search meeting titles, notes, transcripts, and actions", text: $workspace.searchQuery).textFieldStyle(.roundedBorder)
@@ -46,7 +46,7 @@ struct MeetingsView: View {
                         }
                     }
                     Picker("Open notes", selection: $workspace.selectedID) {
-                        Text("Choose meeting notes").tag(Optional<UUID>.none)
+                        Text(L10n.text("Choose meeting notes")).tag(Optional<UUID>.none)
                         ForEach(store.state.meetings.sorted { $0.updatedAt > $1.updatedAt }) { note in
                             Text(note.title + (workspace.isDirty(note) ? " · Unsaved" : "")).tag(Optional(note.id))
                         }
@@ -71,11 +71,11 @@ struct MeetingsView: View {
                             .font(.caption).foregroundStyle(.secondary)
                         HStack {
                             Button("Prepare") { preparing = event }
-                            Button("Notes") { store.createMeetingNote(event: event) }
+                            Button(L10n.text("Notes")) { Task { await store.createMeetingNote(event: event) } }
                             if let link = event.joinLinks.first {
                                 Label(link.provider.title, systemImage: "video").font(.caption)
                                 Spacer()
-                                Button("Open join screen") { store.openMeetingLink(link.url.absoluteString) }.disabled(store.demo)
+                                Button("Open join screen") { Task { await store.openMeetingLink(link.url.absoluteString) } }.disabled(store.demo)
                             }
                             if let url = event.sourceURL { Link("View event", destination: url) }
                         }
@@ -100,8 +100,8 @@ struct MeetingsView: View {
                 TextField("Google Meet, Zoom, Teams, or Webex join link", text: $address)
                     .textFieldStyle(.roundedBorder)
                     .accessibilityLabel("Meeting invitation link")
-                    .onSubmit { if joinLink != nil && !store.demo { store.openMeetingLink(address) } }
-                Button("Open join screen") { store.openMeetingLink(address) }
+                    .onSubmit { Task { if joinLink != nil && !store.demo { await store.openMeetingLink(address) } } }
+                Button("Open join screen") { Task { await store.openMeetingLink(address) } }
                     .buttonStyle(PuddlePrimaryButtonStyle())
                     .disabled(store.demo || joinLink == nil)
                     .fixedSize()

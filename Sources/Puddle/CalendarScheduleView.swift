@@ -25,7 +25,7 @@ struct CalendarScheduleView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Button { move(-1) } label: { Image(systemName: "chevron.left") }.accessibilityLabel("Previous period")
-                Button("Today") { anchor = Date() }
+                Button(L10n.text("Today")) { anchor = Date() }
                 Button { move(1) } label: { Image(systemName: "chevron.right") }.accessibilityLabel("Next period")
                 Text(anchor.formatted(.dateTime.month(.wide).year())).font(.headline)
                 Spacer()
@@ -58,7 +58,7 @@ struct CalendarScheduleView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(event.title).font(.title2.bold()); Text(CalendarAgenda.timeLabel(event)); Text(event.description).textSelection(.enabled)
                     HStack {
-                        Button("Close") { chosenEvent = nil }
+                        Button(L10n.text("Close")) { chosenEvent = nil }
                         if event.etag != nil { Button("Edit & Review") { chosenEvent = nil; Task { @MainActor in await Task.yield(); store.proposeEvent(event) } } }
                         if let url = event.sourceURL { Link("Open Calendar", destination: url) }
                     }
@@ -158,13 +158,13 @@ struct CalendarScheduleView: View {
         })
     }
     private func preference(_ key: WritableKeyPath<PuddleSettings, Int>) -> Binding<Int> {
-        Binding(get: { store.state.settings[keyPath: key] }, set: { value in
+        Binding(get: { store.state.settings[keyPath: key] }, set: { value in Task {
             do {
                 var next = store.state.settings; next[keyPath: key] = value
                 guard next.workdayEndHour > next.workdayStartHour else { throw PuddleError("The workday must end after it starts.") }
-                try store.commit { $0.settings = next }
+                try await store.commit { $0.settings = next }
             } catch { store.fail(error) }
-        })
+        } })
     }
     private func move(_ direction: Int) { anchor = calendar.date(byAdding: month ? .month : .day, value: direction * (month ? 1 : 7), to: anchor) ?? anchor }
     private func load() async {

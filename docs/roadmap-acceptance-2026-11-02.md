@@ -146,7 +146,7 @@ record live audio, change permissions, stop the owner's server or publish.
 The complete runner passed. Evidence:
 `build/roadmap-independent-2026-11-02/`, with native fixture state and
 `palette-contrast.json`; the console log is
-`/tmp/puddle-independent-verification-2026-11-02.log`.
+[regenerable fixture evidence](testing.md#reproducible-evidence).
 
 | Follow-up build | Core | App | Total | Failures / skips |
 | --- | --- | --- | --- | --- |

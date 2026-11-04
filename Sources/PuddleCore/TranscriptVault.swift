@@ -31,13 +31,17 @@ enum TranscriptVault {
         let reference: Transcript
     }
     struct Fingerprint: Equatable {
-        let inode: UInt64, bytes: Int64, seconds: Int, nanoseconds: Int
+        let inode: UInt64, bytes: Int64, seconds: Int, nanoseconds: Int, changedSeconds: Int, changedNanoseconds: Int
     }
+    // Sendable invariant: every access is inside EncryptedSnapshotStore’s
+    // recursive lock, including migration re-entry and page helpers.
     final class Cache: @unchecked Sendable {
         let lock = NSRecursiveLock()
         var transcripts: [UUID: CachedTranscript] = [:]
         var fingerprints: [String: Fingerprint] = [:]
         var primaryDigest: Data?
+        var primaryMetadata: Fingerprint?
+        var primaryKeyDigest: Data?
         var committedNames = Set<String>()
         var garbageCandidates = Set<String>()
         var needsSweep = true
@@ -77,7 +81,7 @@ enum TranscriptVault {
         guard lstat(file.path, &value) == 0, value.st_mode & mode_t(S_IFMT) == mode_t(S_IFREG) else {
             throw PuddleError("A saved transcript page is missing or is not a regular file. Workspace files were preserved.")
         }
-        return Fingerprint(inode: value.st_ino, bytes: value.st_size, seconds: value.st_mtimespec.tv_sec, nanoseconds: value.st_mtimespec.tv_nsec)
+        return Fingerprint(inode: value.st_ino, bytes: value.st_size, seconds: value.st_mtimespec.tv_sec, nanoseconds: value.st_mtimespec.tv_nsec, changedSeconds: value.st_ctimespec.tv_sec, changedNanoseconds: value.st_ctimespec.tv_nsec)
     }
     private static func location(_ page: Page, directory: URL) throws -> URL {
         guard page.file.hasSuffix(".vault"), page.file.count == 42,
@@ -203,7 +207,7 @@ enum TranscriptVault {
             guard total <= maximumBytes else { throw PuddleError("This workspace exceeds the encrypted storage limit.") }
             return Prepared(data: data, index: index, transcripts: entries, created: created)
         } catch {
-            for file in created { try? fm.removeItem(at: file); cache.fingerprints.removeValue(forKey: cacheKey(file)) }
+            for file in created { PuddleDiagnostics.removeRecoveryFile(file); cache.fingerprints.removeValue(forKey: cacheKey(file)) }
             throw error
         }
     }
@@ -212,13 +216,13 @@ enum TranscriptVault {
     static func collect(in directory: URL, keeping names: Set<String>, cache: Cache) {
         guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else { return }
         for file in files where file.pathExtension == "vault" && UUID(uuidString: file.deletingPathExtension().lastPathComponent) != nil && !names.contains(file.lastPathComponent) {
-            try? FileManager.default.removeItem(at: file); cache.fingerprints.removeValue(forKey: cacheKey(file))
+            PuddleDiagnostics.removeRecoveryFile(file); cache.fingerprints.removeValue(forKey: cacheKey(file))
         }
     }
     static func collectKnown(_ candidates: Set<String>, in directory: URL, keeping names: Set<String>, cache: Cache) {
         for name in candidates where !names.contains(name) {
             let file = directory.appendingPathComponent(name)
-            try? FileManager.default.removeItem(at: file); cache.fingerprints.removeValue(forKey: cacheKey(file))
+            PuddleDiagnostics.removeRecoveryFile(file); cache.fingerprints.removeValue(forKey: cacheKey(file))
         }
     }
 }

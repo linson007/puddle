@@ -26,7 +26,7 @@ import PuddleCore
                     guard let port = listener.port else { return }
                     self.ready?.resume(returning: URL(string: "http://127.0.0.1:\(port.rawValue)/oauth/callback")!); self.ready = nil
                     self.timeout = Task { [weak self] in
-                        do { try await Task.sleep(for: .seconds(300)) } catch { return }
+                        do { try await Task.sleep(for: .seconds(300)) } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); return }
                         self?.finish(.failure(PuddleError("Browser sign-in timed out. Connect again when ready.")))
                     }
                 case .failed: self.ready?.resume(throwing: PuddleError("The local sign-in callback could not start. Check firewall settings.")); self.ready = nil
@@ -72,7 +72,7 @@ import PuddleCore
             let states = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.filter { $0.name == "state" } ?? []
             guard states.count == 1, states[0].value == attempt.state else { self.respond(connection, id: id, success: false); return }
             do { let code = try attempt.code(from: url); self.respond(connection, id: id, success: true); self.finish(.success(code)) }
-            catch { self.respond(connection, id: id, success: false); self.finish(.failure(error)) }
+            catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); self.respond(connection, id: id, success: false); self.finish(.failure(error)) }
         } }
     }
     private func respond(_ connection: NWConnection, id: UUID, success: Bool) {

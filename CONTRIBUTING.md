@@ -53,7 +53,7 @@ sh scripts/swift.sh test -c release
 ```
 
 Use `scripts/swift.sh` for Swift package commands so build caches stay in `.build/`.
-The package uses a Swift 6 toolchain with Swift 5 language mode. You can also open
+The package uses a Swift 6 toolchain in Swift 6 language mode. You can also open
 `Package.swift` in Xcode; the scripts handle app-bundle metadata, icons, and signing.
 
 ### Optional integrations
@@ -119,8 +119,8 @@ git diff --check
 For documentation-only changes, check links and formatting. For website changes,
 preview the site and check the affected interactions and layout; Swift tests are
 needed when app behavior changes. State which checks you ran and any checks you
-could not run. CI runs fixture tests in both configurations on macOS 26 and builds
-the release app; it does not need provider secrets or a model.
+could not run. CI runs debug fixtures on macOS 15, 26 and 27, release fixtures on macOS 26,
+and builds the release app; it does not need provider secrets or a model.
 
 Live model, browser, audio, and synthetic load tests require explicit opt-in.
 Expected skips in a normal run are documented in [testing.md](docs/testing.md).
