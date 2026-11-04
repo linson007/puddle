@@ -88,36 +88,52 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         let hardware = FixtureMeetingCapture(); hardware.holdStart = true
         let controller = MeetingCaptureController(capture: hardware)
         controller.start(noteID: UUID(), language: "en-US", source: .microphone)
-        await wait { hardware.startGate != nil }; controller.stop()
+        await wait { hardware.startGate != nil }
+        let starting = controller.work; controller.stop()
         hardware.startGate?.resume(); hardware.startGate = nil
         hardware.segments[0](.init(channel: .microphone, start: 0, end: 1, text: "Stale", isFinal: true))
-        await Task.yield()
+        await starting?.value
         XCTAssertEqual(controller.status, .idle); XCTAssertTrue(controller.timeline.segments.isEmpty)
     }
     func testFinishTimeoutRetainsTextAndLateFinalCannotOverwriteNextSession() async {
         let hardware = FixtureMeetingCapture(); hardware.holdFinish = true
-        let controller = MeetingCaptureController(capture: hardware, finishTimeout: 0.02)
+        let timeout = AsyncTestGate()
+        let controller = MeetingCaptureController(capture: hardware, sleep: { interval in
+            if interval == .seconds(15) { await timeout.pause(); try Task.checkCancellation() }
+            else { try await Task.sleep(for: interval) }
+        })
         var text = ""; controller.onCompletion = { _, value in text = value }
         controller.start(noteID: UUID(), language: "en-US", source: .microphone); await wait { controller.status == .listening }
         hardware.segments[0](.init(channel: .microphone, start: 1, end: 2, text: "Retain me", isFinal: false))
-        controller.stop(); await wait { hardware.finishGate != nil }; await wait { controller.status == .idle }
+        controller.stop(); let finalizing = controller.work
+        await wait { hardware.finishGate != nil }
+        await fulfillment(of: [timeout.entered], timeout: 5)
+        await timeout.release(); await wait { controller.status == .idle }
         XCTAssertTrue(text.contains("Retain me")); XCTAssertTrue(controller.errorMessage?.contains("timed out") == true)
         controller.start(noteID: UUID(), language: "en-US", source: .microphone); await wait { hardware.starts == 2 && controller.status == .listening }
         hardware.finishGate?.resume(); hardware.finishGate = nil
         hardware.segments[0](.init(channel: .microphone, start: 1, end: 2, text: "Late text", isFinal: true))
-        await Task.yield(); XCTAssertTrue(controller.timeline.segments.isEmpty); controller.cancel()
+        await finalizing?.value; XCTAssertTrue(controller.timeline.segments.isEmpty); controller.cancel()
     }
     func testCaptureFailureAndDurationLimitRetainCollectedText() async {
         let hardware = FixtureMeetingCapture()
-        let controller = MeetingCaptureController(capture: hardware, maximumSeconds: 0.02)
+        let duration = AsyncTestGate()
+        let controller = MeetingCaptureController(capture: hardware, sleep: { interval in
+            if interval == .seconds(7200) { await duration.pause(); try Task.checkCancellation() }
+            else { try await Task.sleep(for: interval) }
+        })
         var text = ""; controller.onCompletion = { _, value in text = value }
         controller.start(noteID: UUID(), language: "en-US", source: .microphone); await wait { controller.status == .listening }
+        await fulfillment(of: [duration.entered], timeout: 5)
         hardware.segments[0](.init(channel: .microphone, start: 0, end: 1, text: "Keep this", isFinal: true))
+        await duration.release()
         await wait { controller.status == .idle }; XCTAssertTrue(text.contains("Keep this"))
-        controller.start(noteID: UUID(), language: "en-US", source: .microphone); await wait { controller.status == .listening }
+        let failing = MeetingCaptureController(capture: hardware)
+        failing.onCompletion = { _, value in text = value }
+        failing.start(noteID: UUID(), language: "en-US", source: .microphone); await wait { failing.status == .listening }
         hardware.segments[1](.init(channel: .microphone, start: 0, end: 1, text: "Also keep this", isFinal: true))
-        hardware.failures[1]("Device removed"); await wait { controller.status == .idle }
-        XCTAssertTrue(text.contains("Also keep this")); XCTAssertTrue(controller.errorMessage?.contains("Device removed") == true)
+        hardware.failures[1]("Device removed"); await wait { failing.status == .idle }
+        XCTAssertTrue(text.contains("Also keep this")); XCTAssertTrue(failing.errorMessage?.contains("Device removed") == true)
     }
     func testDemoCannotStartMeetingCaptureOrInstallLanguages() async {
         let hardware = FixtureMeetingCapture()
