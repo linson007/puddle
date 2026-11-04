@@ -26,7 +26,7 @@ import PuddleCore
         let capture = FakeSpeechCapture()
         let subject = VoiceInputController(capture: capture)
         subject.start(language: "en-US"); subject.cancel()
-        await Task.yield(); await Task.yield()
+        await subject.startTask?.value
         XCTAssertEqual(capture.starts, 0)
         XCTAssertEqual(subject.status, .idle)
     }
@@ -57,9 +57,10 @@ import PuddleCore
         let voice = VoiceInputController(capture: capture)
         voice.start(language: "en-US")
         await waitUntil { capture.permission != nil }
+        let pending = voice.startTask
         voice.cancel(); capture.permission?.resume(); capture.permission = nil
         capture.texts[0]("Must not appear", true)
-        await Task.yield()
+        await pending?.value
         XCTAssertEqual(voice.status, .idle)
         XCTAssertNil(voice.completedTranscript); XCTAssertTrue(voice.transcript.isEmpty)
     }
@@ -76,9 +77,20 @@ import PuddleCore
 
     func testDurationAndFinishDeadlinesPreserveRecognizedText() async {
         let capture = FakeSpeechCapture()
-        let voice = VoiceInputController(capture: capture, maximumSeconds: 0.02, finishTimeout: 0.01)
-        voice.start(language: "en-US"); await waitUntil { voice.status == .listening }
+        let duration = AsyncTestGate(), finishing = AsyncTestGate()
+        let voice = VoiceInputController(capture: capture, sleep: { interval in
+            if interval == .seconds(50) { await duration.pause() }
+            else { await finishing.pause() }
+            try Task.checkCancellation()
+        })
+        voice.start(language: "en-US")
+        await fulfillment(of: [duration.entered], timeout: 5)
+        XCTAssertEqual(voice.status, .listening)
         capture.texts[0]("Keep this draft", false)
+        await duration.release()
+        await fulfillment(of: [finishing.entered], timeout: 5)
+        XCTAssertEqual(voice.status, .finishing)
+        await finishing.release()
         await waitUntil { voice.status == .idle }
         XCTAssertEqual(capture.finishes, 1)
         XCTAssertEqual(voice.completedTranscript?.text, "Keep this draft")

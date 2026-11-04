@@ -17,12 +17,15 @@ struct DictationDraft: Identifiable, Equatable {
     private let capture: any SpeechCapturing
     private let maximumSeconds: Double
     private let finishTimeout: Double
+    private let sleep: @Sendable (Duration) async throws -> Void
     private var generation = UUID()
-    private var startTask: Task<Void, Never>?
+    private(set) var startTask: Task<Void, Never>?
     private var deadlineTask: Task<Void, Never>?
 
-    init(capture: any SpeechCapturing, maximumSeconds: Double = 50, finishTimeout: Double = 15) {
+    init(capture: any SpeechCapturing, maximumSeconds: Double = 50, finishTimeout: Double = 15,
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.capture = capture; self.maximumSeconds = maximumSeconds; self.finishTimeout = finishTimeout
+        self.sleep = sleep
     }
 
     func toggle(language: String) {
@@ -52,8 +55,8 @@ struct DictationDraft: Identifiable, Equatable {
                 try Task.checkCancellation()
                 guard generation == expected, status == .requestingPermission else { return }
                 status = .listening
-                deadlineTask = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(self?.maximumSeconds ?? 50)) } catch { return }
+                deadlineTask = Task { [weak self, sleep, maximumSeconds] in
+                    do { try await sleep(.seconds(maximumSeconds)) } catch { return }
                     guard let self, self.generation == expected else { return }
                     self.finish()
                 }
@@ -66,8 +69,8 @@ struct DictationDraft: Identifiable, Equatable {
         guard status == .listening else { if status == .requestingPermission { cancel() }; return }
         status = .finishing; deadlineTask?.cancel(); capture.finish()
         let expected = generation
-        deadlineTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(self?.finishTimeout ?? 2)) } catch { return }
+        deadlineTask = Task { [weak self, sleep, finishTimeout] in
+            do { try await sleep(.seconds(finishTimeout)) } catch { return }
             guard let self, self.generation == expected else { return }
             self.complete()
         }

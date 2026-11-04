@@ -86,7 +86,7 @@ private actor ReminderModel: HTTPTransport {
         XCTAssertTrue(store.isLocked)
         XCTAssertThrowsError(try store.workspaceAccess())
         disk.releaseWrite()
-        await edit.value
+        _ = await edit.value
         XCTAssertTrue(store.state.tasks.isEmpty)
         XCTAssertNotNil(store.errorMessage)
         store.unlockWorkspace()
