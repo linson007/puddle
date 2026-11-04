@@ -15,17 +15,19 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Swift (${{ matrix.runner }}, ${{ matrix.configuration }})
+    # Keep the existing required status names on macOS 26. Older/newer runtime
+    # coverage adds separate checks without changing repository protection.
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-15, configuration: debug, xcode: /Applications/Xcode_26.3.app/Contents/Developer }
-          - { runner: macos-26, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
-          - { runner: macos-26, configuration: release, xcode: /Applications/Xcode.app/Contents/Developer }
-          - { runner: xcode-27, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
+          - { name: 'Swift (macos-15, debug)', runner: macos-15, configuration: debug, xcode: /Applications/Xcode_26.3.app/Contents/Developer }
+          - { name: 'Swift (debug)', runner: macos-26, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
+          - { name: 'Swift (release)', runner: macos-26, configuration: release, xcode: /Applications/Xcode.app/Contents/Developer }
+          - { name: 'Swift (xcode-27, debug)', runner: xcode-27, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
     env:
       DEVELOPER_DIR: ${{ matrix.xcode }}
     steps:
