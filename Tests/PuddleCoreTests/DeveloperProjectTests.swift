@@ -180,7 +180,7 @@ final class DeveloperGitTests: XCTestCase {
         try git(["add", "Main.swift"], root: root)
         try Data("let safe = true\n".utf8).write(to: file)
         do { _ = try await ProjectGit.diff(ProjectFiles(project: project), path: "Main.swift", staged: false); XCTFail("Secret baseline must be withheld") }
-        catch { XCTAssertTrue(error.localizedDescription.contains("credential")) }
+        catch { XCTAssertTrue(error.localizedDescription.contains("credential"), "Unexpected Git inspection error: \(error.localizedDescription)") }
     }
     func testMissingPartialCloneObjectCannotRunARemoteHelper() async throws {
         let (root, project) = try fixture(), file = root.appendingPathComponent("Main.swift")
