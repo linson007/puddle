@@ -40,24 +40,24 @@ private actor TaskChatHTTP: HTTPTransport {
         let disk = TaskChatDisk(), task = AssistantTask(title: "Review launch")
         disk.state.tasks = [task]; disk.state.settings.automaticallyLearn = false
         let store = PuddleStore(cache: disk, secrets: TaskChatSecrets(), transport: TaskChatHTTP(task.id), reminderScheduler: TaskChatReminders())
-        await store.start(); store.ask("Complete Review launch")
+        await store.start(); await store.ask("Complete Review launch")
         try await wait { store.pendingApproval != nil }
         XCTAssertFalse(store.state.tasks[0].completed)
-        store.updateTask(task.id, title: "Changed while reviewing", dueAt: nil)
+        await store.updateTask(task.id, title: "Changed while reviewing", dueAt: nil)
         store.resolveApproval(true); try await wait { !store.isThinking }
         XCTAssertFalse(store.state.tasks[0].completed); XCTAssertEqual(store.state.tasks[0].title, "Changed while reviewing")
-        store.suspendConnectionWork()
+        await store.suspendConnectionWork()
     }
     func testReviewedCompletionAndRecurringSuccessorAreSavedTogether() async throws {
         let disk = TaskChatDisk(); var task = AssistantTask(title: "Daily review", dueAt: Date().addingTimeInterval(60))
         task.repetition = TaskRepetition(frequency: .daily, dueAt: task.dueAt!)
         disk.state.tasks = [task]; disk.state.settings.automaticallyLearn = false
         let store = PuddleStore(cache: disk, secrets: TaskChatSecrets(), transport: TaskChatHTTP(task.id), reminderScheduler: TaskChatReminders())
-        await store.start(); store.ask("Complete Daily review")
+        await store.start(); await store.ask("Complete Daily review")
         try await wait { store.pendingApproval != nil }; store.resolveApproval(true); try await wait { !store.isThinking }
         XCTAssertTrue(disk.state.tasks[0].completed); XCTAssertEqual(disk.state.tasks.count, 2)
         XCTAssertEqual(disk.state.chat.first(where: { $0.role == "user" })?.receipts?.first(where: { $0.tool == "update_task" })?.status, "completed")
-        store.toggleTask(task.id); store.toggleTask(task.id); XCTAssertEqual(disk.state.tasks.count, 2)
-        store.suspendConnectionWork()
+        await store.toggleTask(task.id); await store.toggleTask(task.id); XCTAssertEqual(disk.state.tasks.count, 2)
+        await store.suspendConnectionWork()
     }
 }

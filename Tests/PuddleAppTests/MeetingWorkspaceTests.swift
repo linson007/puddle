@@ -32,12 +32,13 @@ private struct MeetingFixtureTransport: HTTPTransport {
     func testDraftSurvivesSelectionAndSavedNoteSurvivesRestart() async throws {
         let disk = MeetingDisk()
         let subject = fixture(disk); await subject.start()
-        let firstID = try XCTUnwrap(subject.createMeetingNote())
+        let result1 = await subject.createMeetingNote();         let firstID = try XCTUnwrap(result1)
         let first = try XCTUnwrap(subject.state.meetings.first)
         subject.meetingWorkspace.edit(first) { $0.title = "First review"; $0.notes = "Useful decisions"; $0.transcript = "A supplied transcript" }
-        _ = subject.createMeetingNote()
+        _ = await subject.createMeetingNote()
         XCTAssertEqual(subject.meetingWorkspace.draft(for: first).notes, "Useful decisions")
-        XCTAssertTrue(subject.saveMeetingNote(firstID))
+        let result2 = await subject.saveMeetingNote(firstID)
+        XCTAssertTrue(result2)
         XCTAssertFalse(subject.meetingWorkspace.isDirty(try XCTUnwrap(subject.state.meetings.first { $0.id == firstID })))
         let restarted = fixture(disk); await restarted.start()
         XCTAssertEqual(restarted.state.meetings.count, 2)
@@ -47,32 +48,36 @@ private struct MeetingFixtureTransport: HTTPTransport {
     func testFailedSaveAndDeleteRetainDraftAndSavedVersion() async throws {
         let disk = MeetingDisk()
         let subject = fixture(disk); await subject.start()
-        let id = try XCTUnwrap(subject.createMeetingNote()), note = try XCTUnwrap(subject.state.meetings.first)
+        let result3 = await subject.createMeetingNote()
+        let id = try XCTUnwrap(result3), note = try XCTUnwrap(subject.state.meetings.first)
         subject.meetingWorkspace.edit(note) { $0.notes = "Do not lose this draft" }
         disk.failWrite = true
-        XCTAssertFalse(subject.saveMeetingNote(id))
+        let result4 = await subject.saveMeetingNote(id)
+        XCTAssertFalse(result4)
         XCTAssertTrue(subject.state.meetings[0].notes.isEmpty)
-        subject.deleteMeetingNote(id)
+        await subject.deleteMeetingNote(id)
         XCTAssertEqual(subject.state.meetings.count, 1)
         XCTAssertEqual(subject.meetingWorkspace.draft(for: note).notes, "Do not lose this draft")
         disk.failWrite = false
-        XCTAssertTrue(subject.saveMeetingNote(id))
+        let result5 = await subject.saveMeetingNote(id)
+        XCTAssertTrue(result5)
         XCTAssertEqual(try disk.load().meetings[0].notes, "Do not lose this draft")
     }
 
-    func testCalendarNoteIsReusedAndRetainsMeetingLink() throws {
-        let store = fixture(MeetingDisk()); store.enterDemo()
+    func testCalendarNoteIsReusedAndRetainsMeetingLink() async throws {
+        let store = fixture(MeetingDisk()); await store.enterDemo()
         let event = CalendarEvent(id: "event", title: "Standup", start: "2026-10-30", meetingLinks: [try MeetingJoinLink("https://meet.google.com/abc-defg-hij")])
-        let first = store.createMeetingNote(event: event), second = store.createMeetingNote(event: event)
+        let first = await store.createMeetingNote(event: event), second = await store.createMeetingNote(event: event)
         XCTAssertEqual(first, second); XCTAssertEqual(store.state.meetings.count, 1)
         XCTAssertEqual(store.state.meetings[0].joinLink?.provider, .googleMeet)
-        store.clearChat(); XCTAssertEqual(store.state.meetings.count, 1)
+        await store.clearChat(); XCTAssertEqual(store.state.meetings.count, 1)
     }
 
     func testTranscriptImportRequiresExplicitApplyAndPreservesExistingDraftWhenAppending() async throws {
         let disk = MeetingDisk()
         let store = fixture(disk); await store.start()
-        let id = try XCTUnwrap(store.createMeetingNote()), note = try XCTUnwrap(store.state.meetings.first)
+        let result6 = await store.createMeetingNote()
+        let id = try XCTUnwrap(result6), note = try XCTUnwrap(store.state.meetings.first)
         store.meetingWorkspace.edit(note) { $0.transcript = "Existing transcript"; $0.notes = "My own notes" }
         let result = try TranscriptImport.decode(Data("Imported transcript".utf8), filename: "fixture.txt")
         store.meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id, result: result)
@@ -81,13 +86,15 @@ private struct MeetingFixtureTransport: HTTPTransport {
         XCTAssertEqual(store.meetingWorkspace.draft(for: note).transcript, "Existing transcript\n\nImported transcript")
         XCTAssertEqual(store.meetingWorkspace.draft(for: note).notes, "My own notes")
         XCTAssertTrue(try disk.load().meetings[0].transcript.isEmpty)
-        XCTAssertTrue(store.saveMeetingNote(id))
+        let result7 = await store.saveMeetingNote(id)
+        XCTAssertTrue(result7)
         XCTAssertTrue(try disk.load().meetings[0].transcript.contains("Imported transcript"))
     }
 
     func testOversizedAppendKeepsOriginalDraftAndImportPreview() async throws {
         let store = fixture(MeetingDisk()); await store.start()
-        let id = try XCTUnwrap(store.createMeetingNote()), note = try XCTUnwrap(store.state.meetings.first)
+        let result8 = await store.createMeetingNote()
+        let id = try XCTUnwrap(result8), note = try XCTUnwrap(store.state.meetings.first)
         store.meetingWorkspace.edit(note) { $0.transcript = String(repeating: "x", count: 200_000) }
         let result = try TranscriptImport.decode(Data("extra".utf8), filename: "fixture.txt")
         store.meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id, result: result)
@@ -109,8 +116,8 @@ private struct MeetingFixtureTransport: HTTPTransport {
         for _ in 0..<200 { if !workspace.isSearching { break }; try await Task.sleep(for: .milliseconds(2)) }
         XCTAssertFalse(workspace.isSearching); XCTAssertEqual(workspace.searchResults.map(\.id), [second.id])
         XCTAssertTrue(workspace.isDirty(second)); XCTAssertEqual(workspace.selectedID, first.id)
-        workspace.searchQuery = "old"; workspace.updateSearch(notes: [first, second]); workspace.reset()
-        try await Task.sleep(for: .milliseconds(140))
+        workspace.searchQuery = "old"; workspace.updateSearch(notes: [first, second]); let search = workspace.searchTask; workspace.reset()
+        await search?.value
         XCTAssertTrue(workspace.searchResults.isEmpty); XCTAssertTrue(workspace.drafts.isEmpty)
     }
 }

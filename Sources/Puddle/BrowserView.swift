@@ -12,7 +12,7 @@ struct BrowserView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                Text("Browser").font(.system(size: 29, weight: .semibold, design: .rounded))
+                Text(L10n.text("Browser")).font(.system(size: 29, weight: .semibold, design: .rounded))
                 Text("Read and summarize pages with Puddle in a separate browser, powered by Cua.")
                     .foregroundStyle(.secondary)
                 Text("Puddle can open addresses and scroll. Take over in the browser to click links, fill forms or sign in.")
@@ -26,7 +26,7 @@ struct BrowserView: View {
                         Label("Cua browser connected", systemImage: "checkmark.circle.fill").foregroundStyle(PuddleStyle.teal)
                         Spacer()
                         Button("Show Browser") { workspace.showBrowser() }
-                        Button("Stop Browser", role: .destructive) { store.stopAI(); workspace.stop() }
+                        Button("Stop Browser", role: .destructive) { Task { await store.stopAI(); workspace.stop() } }
                     }
                     HStack {
                         TextField("Website address", text: $address).textFieldStyle(.roundedBorder).onSubmit(navigate)
@@ -55,7 +55,7 @@ struct BrowserView: View {
                             UserDefaults.standard.set(driverPath, forKey: "cuaDriverPath")
                             Task { await workspace.connect(path: driverPath) }
                         }.buttonStyle(.borderedProminent).disabled(workspace.isBusy || store.isThinking)
-                        if workspace.isBusy { Button("Cancel") { workspace.stop() } }
+                        if workspace.isBusy { Button(L10n.text("Cancel")) { workspace.stop() } }
                     }.padding(18).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 12))
                 }
                 if workspace.isBusy { ProgressView("Working with Cua…").controlSize(.small) }
@@ -101,8 +101,8 @@ struct BrowserControlBanner: View {
             HStack {
                 Label(workspace.isConnected ? "Cua browser connected" : "Starting Cua browser…", systemImage: "globe")
                 Spacer()
-                Button("Browser") { store.section = .browser }
-                Button("Stop Browser") { store.stopAI(); workspace.stop() }
+                Button(L10n.text("Browser")) { store.section = .browser }
+                Button("Stop Browser") { Task { await store.stopAI(); workspace.stop() } }
             }.font(.caption).padding(.horizontal, 24).padding(.vertical, 9).background(PuddleStyle.teal.opacity(0.08))
         }
     }

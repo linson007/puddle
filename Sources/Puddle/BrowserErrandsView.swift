@@ -18,7 +18,7 @@ struct BrowserErrandsView: View {
                         HStack {
                             Button("Continue with Fresh State") { Task { await store.continueBrowserErrand(job.id) } }
                                 .disabled(!workspace.isConnected || workspace.isBusy || store.isThinking || store.privateSession || store.state.settings.networkDisabled)
-                            if job.status == .running { Button("Pause") { store.stopAI() } }
+                            if job.status == .running { Button("Pause") { Task { await store.stopAI() } } }
                             Button("Take Over") { workspace.showBrowser() }.disabled(!workspace.isConnected)
                         }
                         TextField("Quote confirming the result from the page", text: Binding(get: { evidence[job.id] ?? "" }, set: { evidence[job.id] = $0 })).textFieldStyle(.roundedBorder)
@@ -36,7 +36,7 @@ extension PuddleStore {
         let goal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty, goal.count <= 4000, !demo, !privateSession, !isLocked else { return false }
         let job = BrowserErrand(goal: goal)
-        do { try commit { $0.browserErrands.insert(job, at: 0) }; await continueBrowserErrand(job.id); return true }
+        do { try await commit { $0.browserErrands.insert(job, at: 0) }; await continueBrowserErrand(job.id); return true }
         catch { fail(error); return false }
     }
     func continueBrowserErrand(_ id: UUID) async {
@@ -46,14 +46,14 @@ extension PuddleStore {
             let page = try await browserWorkspace.observe()
             try Task.checkCancellation()
             guard !isThinking, !privateSession, !isLocked else { return }
-            try commit { next in
+            try await commit { next in
                 if let index = next.browserErrands.firstIndex(where: { $0.id == id }) {
                     next.browserErrands[index].status = .running; next.browserErrands[index].turnCount += 1
                     next.browserErrands[index].updatedAt = Date(); next.browserErrands[index].conversationID = next.currentConversationID
                 }
             }
             activeBrowserErrandID = id
-            askBrowserErrand("""
+            await askBrowserErrand("""
             Continue this user-requested browser errand: \(job.goal)
             Saved progress (reference, not proof current state is unchanged): \(job.latestProgress)
             Start by inspecting the current page. Only page reading, URL navigation and scrolling are supported. Ask the user to take over for clicks, typing, forms, credentials, payments, CAPTCHAs and permissions. Prepare a short plan, perform supported steps with normal action review, and report concrete progress and the next step if a limit is reached. Never repeat an earlier action just because its result is uncertain. Do not claim a booking/purchase/cancellation without confirming page evidence. The user verifies completion from Browser → Errands.
@@ -62,10 +62,10 @@ extension PuddleStore {
             """, goal: job.goal)
         } catch { fail(error) }
     }
-    func finishBrowserErrandTurn(paused: Bool) {
+    func finishBrowserErrandTurn(paused: Bool) async {
         guard let id = activeBrowserErrandID else { return }; activeBrowserErrandID = nil
         do {
-            try commit { next in
+            try await commit { next in
                 if let index = next.browserErrands.firstIndex(where: { $0.id == id }) {
                     next.browserErrands[index].status = paused ? .paused : .needsReview
                     next.browserErrands[index].updatedAt = Date()
@@ -89,7 +89,7 @@ extension PuddleStore {
             try Task.checkCancellation()
             guard !privateSession, !isLocked, !state.settings.networkDisabled else { return }
             guard page.text.contains(quote) || page.summary.contains(quote) else { throw PuddleError("That quote was not found in fresh page state. Inspect the result before marking it complete.") }
-            try commit { next in
+            try await commit { next in
                 if let index = next.browserErrands.firstIndex(where: { $0.id == id }) {
                     next.browserErrands[index].status = .completed; next.browserErrands[index].evidence = quote
                     next.browserErrands[index].updatedAt = Date(); next.browserErrands[index].latestProgress = "You verified confirming text in freshly observed page state."

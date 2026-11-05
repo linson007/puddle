@@ -46,7 +46,8 @@ private actor ActionHTTP: HTTPTransport {
     }
     func testDraftDoesNotSendAndApprovedSendCreatesOneReceiptAndFollowup() async throws {
         let (store, disk, http) = try fixture(); await store.start()
-        let proposal = action(); XCTAssertTrue(store.saveAction(proposal))
+        let proposal = action(); let result1 = await store.saveAction(proposal)
+        XCTAssertTrue(result1)
         var writes = await http.writes; XCTAssertTrue(writes.isEmpty)
         await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
         XCTAssertEqual(disk.snapshot.actionProposals[0].status, .completed)
@@ -57,16 +58,20 @@ private actor ActionHTTP: HTTPTransport {
     }
     func testChangedContentsOrFailedSaveCannotDispatch() async throws {
         let (store, disk, http) = try fixture(); await store.start()
-        var proposal = action(); XCTAssertTrue(store.saveAction(proposal)); let digest = proposal.digest
-        proposal.account = "other@example.com"; XCTAssertTrue(store.saveAction(proposal))
+        var proposal = action(); let result2 = await store.saveAction(proposal)
+        XCTAssertTrue(result2); let digest = proposal.digest
+        proposal.account = "other@example.com"; let result3 = await store.saveAction(proposal)
+        XCTAssertTrue(result3)
         await store.executeAction(proposal.id, reviewedDigest: digest)
-        proposal.account = "me@example.com"; XCTAssertTrue(store.saveAction(proposal)); disk.failWrites = true
+        proposal.account = "me@example.com"; let result4 = await store.saveAction(proposal)
+        XCTAssertTrue(result4); disk.failWrites = true
         await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
         let writes = await http.writes; XCTAssertTrue(writes.isEmpty)
     }
     func testLostResponseIsUncertainAndNeverReplayed() async throws {
         let (store, disk, http) = try fixture(); await store.start(); await http.configureLoss()
-        let proposal = action(); XCTAssertTrue(store.saveAction(proposal))
+        let proposal = action(); let result5 = await store.saveAction(proposal)
+        XCTAssertTrue(result5)
         await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
         XCTAssertEqual(disk.snapshot.actionProposals[0].status, .uncertain)
         await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
@@ -78,15 +83,17 @@ private actor ActionHTTP: HTTPTransport {
         var draft = CalendarDraft(); draft.title = "UI test event"
         var action = ActionProposal(account: "me@example.com", payload: .calendar(draft))
         action.status = .completed; action.resultID = "event-id"; action.resultETag = "etag"
-        try store.commit { $0.actionProposals = [action] }
+        try await store.commit { $0.actionProposals = [action] }
         XCTAssertTrue(store.canUndoCalendarAction(action)); store.proposeCalendarUndo(action)
         let undo = try XCTUnwrap(store.editingAction); XCTAssertEqual(undo.undoOf, action.id)
-        XCTAssertTrue(store.saveAction(undo)); XCTAssertFalse(store.canUndoCalendarAction(action))
-        store.discardAction(undo.id); XCTAssertTrue(store.canUndoCalendarAction(action))
+        let result6 = await store.saveAction(undo)
+        XCTAssertTrue(result6); XCTAssertFalse(store.canUndoCalendarAction(action))
+        await store.discardAction(undo.id); XCTAssertTrue(store.canUndoCalendarAction(action))
     }
     func testReadPermissionCannotSend() async throws {
         let (store, _, http) = try fixture(scope: OAuthFlow.scope); await store.start()
-        let proposal = action(); XCTAssertTrue(store.saveAction(proposal))
+        let proposal = action(); let result7 = await store.saveAction(proposal)
+        XCTAssertTrue(result7)
         await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
         let writes = await http.writes; XCTAssertTrue(writes.isEmpty)
     }

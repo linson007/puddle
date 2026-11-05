@@ -12,20 +12,29 @@ private final class TestSecrets: SecretStore, @unchecked Sendable {
 }
 
 private final class TestDisk: SnapshotPersistence, @unchecked Sendable {
-    private let lock = NSLock()
+    private let lock = NSCondition()
     private var saved = AppSnapshot()
+    private var writeEntered: XCTestExpectation?
+    private var holdingWrite = false
     var failRead = false
     var failWrite = false
     func load() throws -> AppSnapshot {
         try lock.withLock { if failRead { throw PuddleError("Corrupt fixture") }; return saved }
     }
     func save(_ state: AppSnapshot) throws {
-        try lock.withLock { if failWrite { throw PuddleError("Full disk fixture") }; saved = state }
+        try lock.withLock {
+            writeEntered?.fulfill(); writeEntered = nil
+            while holdingWrite { lock.wait() }
+            if failWrite { throw PuddleError("Full disk fixture") }; saved = state
+        }
     }
+    func blockFailingWrite(_ entered: XCTestExpectation) { lock.withLock { writeEntered = entered; holdingWrite = true; failWrite = true } }
+    func releaseWrite() { lock.withLock { holdingWrite = false; lock.broadcast() } }
 }
 
 private actor AppTransport: HTTPTransport {
     var delay = false
+    let gate = AsyncTestGate()
     var requests: [URLRequest] = []
     func setDelay() { delay = true }
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
@@ -34,7 +43,7 @@ private actor AppTransport: HTTPTransport {
         switch request.url!.path {
         case "/v1/models": body = #"{"data":[{"id":"fixture","max_model_len":8192}]}"#
         default:
-            if delay { try? await Task.sleep(for: .milliseconds(100)) }
+            if delay { await gate.pause() }
             body = #"{"choices":[{"message":{"content":"Fixture answer"},"finish_reason":"stop"}]}"#
         }
         return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
@@ -66,6 +75,23 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testPendingWriteFailureStillRollsBackAfterLockRevokesAccess() async throws {
+        let (store, disk, _, _) = fixture()
+        await store.start()
+        let entered = expectation(description: "Pending write entered")
+        disk.blockFailingWrite(entered)
+        let edit = Task { await store.addTask(title: "Unacknowledged task", dueAt: nil) }
+        await fulfillment(of: [entered], timeout: 5)
+        await store.lockWorkspace()
+        XCTAssertTrue(store.isLocked)
+        XCTAssertThrowsError(try store.workspaceAccess())
+        disk.releaseWrite()
+        _ = await edit.value
+        XCTAssertTrue(store.state.tasks.isEmpty)
+        XCTAssertNotNil(store.errorMessage)
+        store.unlockWorkspace()
+        await store.suspendConnectionWork()
+    }
     func testLocalModelSelectionPersistsAndIsUsedByEveryClient() async throws {
         let (store, disk, _, _) = fixture()
         await store.start()
@@ -103,37 +129,41 @@ private actor ReminderModel: HTTPTransport {
         let (store, _, _, _) = fixture(disk)
         await store.start()
         XCTAssertFalse(store.storageAvailable)
-        store.addTask(title: "Must not be acknowledged", dueAt: nil)
+        await store.addTask(title: "Must not be acknowledged", dueAt: nil)
         XCTAssertTrue(store.state.tasks.isEmpty)
         disk.failRead = false
         await store.retryLoadingState()
         XCTAssertTrue(store.storageAvailable)
-        store.addTask(title: "Saved", dueAt: nil)
+        await store.addTask(title: "Saved", dueAt: nil)
         XCTAssertEqual(try disk.load().tasks.first?.title, "Saved")
     }
 
     func testWriteFailureRollsBackMemoryTaskAndReminderDelivery() async throws {
         let (store, disk, _, _) = fixture()
         await store.start()
-        store.addTask(title: "Due", dueAt: .distantPast)
+        await store.addTask(title: "Due", dueAt: .distantPast)
         disk.failWrite = true
-        store.processReminders()
+        await store.processReminders()
         XCTAssertNil(store.state.tasks[0].notifiedAt)
         XCTAssertTrue(store.state.chat.isEmpty)
-        XCTAssertFalse(store.saveMemory(title: "Name", content: "Mira"))
+        let result1 = await store.saveMemory(title: "Name", content: "Mira")
+        XCTAssertFalse(result1)
         XCTAssertTrue(store.state.memories.isEmpty)
         disk.failWrite = false
-        XCTAssertTrue(store.saveMemory(title: "Name", content: "Mira"))
+        let result2 = await store.saveMemory(title: "Name", content: "Mira")
+        XCTAssertTrue(result2)
         XCTAssertNil(store.errorMessage)
         disk.failWrite = true
-        XCTAssertFalse(store.saveMemory(title: "Name", content: "Leena"))
+        let result3 = await store.saveMemory(title: "Name", content: "Leena")
+        XCTAssertFalse(result3)
         XCTAssertEqual(store.state.memories.first?.content, "Mira")
         XCTAssertEqual(try disk.load().memories.first?.content, "Mira")
         disk.failWrite = false
-        XCTAssertTrue(store.saveMemory(title: "Name", content: "Leena"))
+        let result4 = await store.saveMemory(title: "Name", content: "Leena")
+        XCTAssertTrue(result4)
         XCTAssertEqual(store.state.memories.count, 1)
         XCTAssertEqual(try disk.load().memories.first?.content, "Leena")
-        store.processReminders(); store.processReminders()
+        await store.processReminders(); await store.processReminders()
         XCTAssertEqual(store.state.chat.count, 1)
         XCTAssertNotNil(try disk.load().tasks[0].notifiedAt)
     }
@@ -141,10 +171,11 @@ private actor ReminderModel: HTTPTransport {
     func testNewConversationRejectsLateReplyEvenWhenTransportIgnoresCancellation() async throws {
         let (store, _, transport, _) = fixture()
         await store.start(); await transport.setDelay()
-        store.ask("Explain binary search")
-        while await transport.requests.filter({ $0.url?.path == "/v1/chat/completions" }).isEmpty { await Task.yield() }
-        store.clearChat()
-        try await Task.sleep(for: .milliseconds(140))
+        await store.ask("Explain binary search")
+        await fulfillment(of: [transport.gate.entered], timeout: 5)
+        let turn = store.aiTask
+        await store.clearChat()
+        await transport.gate.release(); await turn?.value
         XCTAssertTrue(store.state.chat.isEmpty)
         XCTAssertEqual(store.state.conversations.count, 1)
         XCTAssertTrue(store.streamingReply.isEmpty)
@@ -155,12 +186,14 @@ private actor ReminderModel: HTTPTransport {
         let (store, disk, transport, _) = fixture()
         await store.start()
         disk.failWrite = true
-        XCTAssertFalse(store.ask("Retain this synthetic draft until it can be saved"))
+        let result5 = await store.ask("Retain this synthetic draft until it can be saved")
+        XCTAssertFalse(result5)
         XCTAssertFalse(store.isThinking); XCTAssertTrue(store.state.chat.isEmpty)
         let requests = await transport.requests
         XCTAssertFalse(requests.contains { $0.url?.path == "/v1/chat/completions" })
         disk.failWrite = false
-        XCTAssertTrue(store.ask("Retain this synthetic draft until it can be saved"))
+        let result6 = await store.ask("Retain this synthetic draft until it can be saved")
+        XCTAssertTrue(result6)
         await waitUntil { !store.isThinking }
         XCTAssertEqual(store.state.chat.first?.content, "Retain this synthetic draft until it can be saved")
         XCTAssertEqual(store.state.chat.count, 2)
@@ -170,15 +203,15 @@ private actor ReminderModel: HTTPTransport {
     func testLearningToggleRemovesToolAndTaskEditingPersists() async throws {
         let (store, disk, _, scheduler) = fixture()
         await store.start()
-        store.setAutomaticLearning(false)
+        await store.setAutomaticLearning(false)
         XCTAssertFalse(store.availableTools.contains(.remember))
-        store.addTask(title: "Original", dueAt: nil)
+        await store.addTask(title: "Original", dueAt: nil)
         let id = store.state.tasks[0].id
-        store.updateTask(id, title: "Changed", dueAt: Date().addingTimeInterval(600))
-        store.snoozeTask(id)
+        await store.updateTask(id, title: "Changed", dueAt: Date().addingTimeInterval(600))
+        await store.snoozeTask(id)
         XCTAssertEqual(try disk.load().tasks[0].title, "Changed")
         XCTAssertNotNil(store.state.tasks[0].dueAt)
-        store.deleteTask(id)
+        await store.deleteTask(id)
         await Task.yield()
         XCTAssertTrue(try disk.load().tasks.isEmpty)
         XCTAssertTrue(scheduler.tasks.isEmpty)
@@ -188,14 +221,14 @@ private actor ReminderModel: HTTPTransport {
         let model = ReminderModel(), disk = TestDisk()
         let store = PuddleStore(cache: disk, secrets: TestSecrets(), transport: model, reminderScheduler: TestScheduler())
         await store.start()
-        store.ask("Remind me to take a break")
+        await store.ask("Remind me to take a break")
         await waitUntil { store.pendingApproval != nil }
         store.resolveApproval(true)
         await waitUntil { !store.isThinking }
         XCTAssertEqual(store.state.tasks.count, 1)
         XCTAssertEqual(store.state.chat.first?.receipts?.first?.status, "completed")
-        store.addTask(title: "Unrelated due reminder", dueAt: .distantPast); store.processReminders()
-        store.retryLastQuestion()
+        await store.addTask(title: "Unrelated due reminder", dueAt: .distantPast); await store.processReminders()
+        await store.retryLastQuestion()
         await waitUntil { !store.isThinking }
         XCTAssertEqual(store.state.tasks.count, 2)
         XCTAssertNil(store.pendingApproval)
@@ -209,22 +242,22 @@ private actor ReminderModel: HTTPTransport {
 
     func testStoppingApprovalCreatesNoTask() async throws {
         let store = PuddleStore(cache: TestDisk(), secrets: TestSecrets(), transport: ReminderModel(), reminderScheduler: TestScheduler())
-        await store.start(); store.ask("Remind me to take a break")
+        await store.start(); await store.ask("Remind me to take a break")
         await waitUntil { store.pendingApproval != nil }
-        store.stopAI()
+        await store.stopAI()
         await Task.yield()
         XCTAssertNil(store.pendingApproval); XCTAssertTrue(store.state.tasks.isEmpty)
     }
 
     func testDemoRetryAlsoPreservesReminderWithoutNewApproval() async throws {
         let (store, _, _, _) = fixture()
-        store.enterDemo()
-        store.ask("Remind me to take a break")
+        await store.enterDemo()
+        await store.ask("Remind me to take a break")
         await waitUntil { store.pendingApproval != nil }
         store.resolveApproval(true)
         await waitUntil { !store.isThinking }
         XCTAssertEqual(store.state.tasks.count, 2)
-        store.retryLastQuestion()
+        await store.retryLastQuestion()
         await waitUntil { !store.isThinking }
         XCTAssertNil(store.pendingApproval)
         XCTAssertEqual(store.state.tasks.count, 2)
@@ -241,13 +274,13 @@ private actor ReminderModel: HTTPTransport {
         XCTAssertEqual(store.state.conversationHistory.count, 1)
         XCTAssertTrue(store.state.conversations.isEmpty)
         let id = store.state.currentConversationID
-        store.section = .history; store.openConversation(id)
+        store.section = .history; await store.openConversation(id)
         XCTAssertEqual(store.section, .chat)
         XCTAssertEqual(store.state.chat, saved.chat)
         XCTAssertTrue(store.state.conversations.isEmpty)
-        store.clearChat()
+        await store.clearChat()
         XCTAssertEqual(store.state.conversationHistory.first?.id, id)
-        store.openConversation(id)
+        await store.openConversation(id)
         let (restarted, _, _, _) = fixture(disk)
         await restarted.start()
         XCTAssertEqual(restarted.state.currentConversationID, id)
@@ -258,13 +291,14 @@ private actor ReminderModel: HTTPTransport {
     func testOpeningCurrentFromHistoryDoesNotCancelReply() async throws {
         let (store, _, transport, _) = fixture()
         await store.start(); await transport.setDelay()
-        store.ask("Explain binary search")
+        await store.ask("Explain binary search")
         store.section = .history
         let id = try XCTUnwrap(store.state.conversationHistory.first?.id)
-        store.openConversation(id)
+        await store.openConversation(id)
         XCTAssertTrue(store.isThinking)
         XCTAssertEqual(store.section, .chat)
-        await waitUntil { !store.isThinking }
+        await fulfillment(of: [transport.gate.entered], timeout: 5)
+        await transport.gate.release(); await store.aiTask?.value
         XCTAssertEqual(store.state.chat.last?.content, "Fixture answer")
         XCTAssertTrue(store.state.conversations.isEmpty)
     }

@@ -8,7 +8,7 @@ struct KnowledgeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HStack { Text("Knowledge").font(.largeTitle.bold()); Spacer(); Button("Add Files or Folder…") { store.chooseKnowledgeSources() }.disabled(store.knowledgeTask != nil || store.privateSession) }
+                HStack { Text(L10n.text("Knowledge")).font(.largeTitle.bold()); Spacer(); Button("Add Files or Folder…") { Task { await store.chooseKnowledgeSources() } }.disabled(store.knowledgeTask != nil || store.privateSession) }
                 Text("Search selected local text, PDF, and DOCX documents. Indexing runs on this Mac without an AI model. Files stay read-only; imported text is reference material. Scanned PDFs need selectable text; OCR is not included.").font(.callout).foregroundStyle(.secondary)
                 ForEach(store.state.knowledgeSources) { source in
                     HStack {
@@ -18,14 +18,14 @@ struct KnowledgeView: View {
                         Button("Remove…", role: .destructive) { removing = source }
                     }.padding(14).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 10))
                 }
-                if store.knowledgeTask != nil { HStack { ProgressView("Indexing local documents…").controlSize(.small); Button("Cancel") { store.knowledgeTask?.cancel() } } }
+                if store.knowledgeTask != nil { HStack { ProgressView("Indexing local documents…").controlSize(.small); Button(L10n.text("Cancel")) { store.knowledgeTask?.cancel() } } }
                 TextField("Search your documents", text: $store.knowledgeSearchQuery).textFieldStyle(.roundedBorder)
                 HStack {
                     Text("\(store.state.knowledgeDocuments.count) indexed documents · Up to 20 matching passages").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("Ask Puddle About Results") {
-                        store.askReference(question: "Answer this question using the cited document passages: \(store.knowledgeSearchQuery)", reference: matches.map { "Source: \($0.title), line \($0.line) · \($0.url.path)\n\($0.quote)" }.joined(separator: "\n\n"), references: matches.map { SourceReference(title: "\($0.title):\($0.line)", url: $0.url) })
-                    }.disabled(matches.isEmpty || store.isThinking)
+                    Button("Ask Puddle About Results") { Task {
+                        await store.askReference(question: "Answer this question using the cited document passages: \(store.knowledgeSearchQuery)", reference: matches.map { "Source: \($0.title), line \($0.line) · \($0.url.path)\n\($0.quote)" }.joined(separator: "\n\n"), references: matches.map { SourceReference(title: "\($0.title):\($0.line)", url: $0.url) })
+                    } }.disabled(matches.isEmpty || store.isThinking)
                 }
                 ForEach(matches) { match in
                     VStack(alignment: .leading, spacing: 8) {
@@ -46,13 +46,13 @@ struct KnowledgeView: View {
             let found = await Task.detached(priority: .userInitiated) { LocalKnowledge.search(query, documents: documents) }.value
             if !Task.isCancelled { matches = found }
         }.confirmationDialog("Remove this source and its indexed text?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
-            Button("Remove Source", role: .destructive) { if let source = removing { store.removeKnowledgeSource(source.id) }; removing = nil }
+            Button("Remove Source", role: .destructive) { Task { if let source = removing { await store.removeKnowledgeSource(source.id) }; removing = nil } }
         }
     }
 }
 
 extension PuddleStore {
-    func chooseKnowledgeSources() {
+    func chooseKnowledgeSources() async {
         guard !privateSession, !isLocked else { return }
         let panel = NSOpenPanel(); panel.canChooseFiles = true; panel.canChooseDirectories = true; panel.allowsMultipleSelection = true
         panel.message = "Choose local text, PDF, or DOCX files, or a folder to index. Hidden files and symbolic links are excluded."
@@ -60,7 +60,7 @@ extension PuddleStore {
         do {
             let sources = try panel.urls.prefix(10).map(KnowledgeSource.init)
             guard state.knowledgeSources.count + sources.count <= 20 else { throw PuddleError("Connect up to 20 local sources.") }
-            try commit { $0.knowledgeSources += sources }
+            try await commit { $0.knowledgeSources += sources }
             refreshKnowledgeSources(sources.map(\.id))
         } catch { fail(error) }
     }
@@ -79,7 +79,7 @@ extension PuddleStore {
                 do {
                     let (updated, documents) = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                     try Task.checkCancellation(); guard !privateSession, !isLocked else { return }
-                    try commit { next in
+                    try await commit { next in
                         if let index = next.knowledgeSources.firstIndex(where: { $0.id == source.id }) {
                             next.knowledgeSources[index] = updated; next.knowledgeDocuments.removeAll { $0.sourceID == source.id }; next.knowledgeDocuments += documents
                         }
@@ -88,8 +88,8 @@ extension PuddleStore {
             }
         }
     }
-    func removeKnowledgeSource(_ id: UUID) {
+    func removeKnowledgeSource(_ id: UUID) async {
         knowledgeTask?.cancel()
-        do { try commit { $0.knowledgeSources.removeAll { $0.id == id }; $0.knowledgeDocuments.removeAll { $0.sourceID == id } } } catch { fail(error) }
+        do { try await commit { $0.knowledgeSources.removeAll { $0.id == id }; $0.knowledgeDocuments.removeAll { $0.sourceID == id } } } catch { fail(error) }
     }
 }

@@ -29,7 +29,7 @@ struct MailView: View {
             header
             Divider()
             if !store.mailConnected, store.state.settings.mailProvider == .outlook {
-                ContentUnavailableView { Label("Connect Outlook", systemImage: "envelope") } description: { Text("Add your Microsoft account in Connections.") } actions: { Button("Connections") { store.section = .connections } }
+                ContentUnavailableView { Label("Connect Outlook", systemImage: "envelope") } description: { Text("Add your Microsoft account in Connections.") } actions: { Button(L10n.text("Connections")) { store.section = .connections } }
             } else if !store.mailConnected {
                 GoogleWorkspaceConnectionView(store: store, title: "Mail", icon: "envelope",
                     detail: "Read recent Gmail messages, summarize a conversation, and turn an email into a local task.")
@@ -65,7 +65,7 @@ struct MailView: View {
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Mail").font(.system(size: 29, weight: .semibold, design: .rounded))
+            Text(L10n.text("Mail")).font(.system(size: 29, weight: .semibold, design: .rounded))
                 .foregroundStyle(PuddleStyle.ink).accessibilityAddTraits(.isHeader)
             Text("Your recent inbox, with room to focus.").font(.callout).foregroundStyle(PuddleStyle.muted)
             if store.mailConnected {
@@ -77,7 +77,7 @@ struct MailView: View {
 
     private var headerActions: some View {
         HStack(spacing: 10) {
-            Picker("Mail provider", selection: Binding(get: { store.state.settings.mailProvider }, set: { store.selectMailProvider($0) })) {
+            Picker("Mail provider", selection: Binding(get: { store.state.settings.mailProvider }, set: { value in Task { await store.selectMailProvider(value) } })) {
                 Text("Gmail").tag(MailProvider.google); Text("Outlook").tag(MailProvider.outlook)
             }.labelsHidden().accessibilityLabel("Mail provider").frame(width: 115).disabled(store.isSyncing)
             if store.mailConnected {
@@ -167,30 +167,30 @@ struct MailView: View {
         Button("Thread & Attachments") { inspecting = message }
         Button("Reply") { store.composeMail(replyTo: message) }
         Menu("More") {
-            Button("Snooze in Puddle for 1 hour") { store.snoozeMail(message, until: Date().addingTimeInterval(3600)) }
-            Button("Snooze in Puddle for 24 hours") { store.snoozeMail(message, until: Date().addingTimeInterval(86400)) }
-            if showSnoozed { Button("Bring Back Now") { store.unsnoozeMail(message.id) } }
+            Button("Snooze in Puddle for 1 hour") { Task { await store.snoozeMail(message, until: Date().addingTimeInterval(3600)) } }
+            Button("Snooze in Puddle for 24 hours") { Task { await store.snoozeMail(message, until: Date().addingTimeInterval(86400)) } }
+            if showSnoozed { Button("Bring Back Now") { Task { await store.unsnoozeMail(message.id) } } }
             Button("Sender Context / VIP…") { store.addSenderContext(message) }
             Button("Forward") { store.composeMail(replyTo: message, forward: true) }
             Button("Archive…") { store.proposeLabels(message, remove: ["INBOX"]) }
             Button(message.isUnread ? "Mark read…" : "Mark unread…") { store.proposeLabels(message, add: message.isUnread ? [] : ["UNREAD"], remove: message.isUnread ? ["UNREAD"] : []) }
             Button("Star…") { store.proposeLabels(message, add: ["STARRED"]) }
         }.fixedSize()
-        Button(message.summary == nil ? "Summarize" : "Summarize again") { store.summarize(message.id) }
+        Button(message.summary == nil ? "Summarize" : "Summarize again") { Task { await store.summarize(message.id) } }
             .disabled(store.isThinking)
-        Button("Ask Puddle") { store.askAboutMail(message.id) }.disabled(store.isThinking)
+        Button("Ask Puddle") { Task { await store.askAboutMail(message.id) } }.disabled(store.isThinking)
         Button("Create task…") { taskSource = message }
     }
 }
 
 extension PuddleStore {
-    func snoozeMail(_ message: MailMessage, until: Date) {
+    func snoozeMail(_ message: MailMessage, until: Date) async {
         guard let account = mailAccount, until > Date() else { return }
         do {
             var task = AssistantTask(title: "Review email: \(String(message.subject.prefix(250)))", dueAt: until)
             task.notes = "Local mail snooze. Provider inbox stays unchanged.\n" + message.sourceURL.absoluteString
             let snooze = MailSnooze(messageID: message.id, provider: message.provider ?? .google, account: account, until: until, reminderID: task.id)
-            try commit { next in
+            try await commit { next in
                 let replaced = next.mailSnoozes.filter { $0.messageID == message.id && $0.account == account && $0.provider == snooze.provider }
                 let ids = Set(replaced.map(\.reminderID)); next.tasks.removeAll { ids.contains($0.id) }
                 next.mailSnoozes.removeAll { $0.messageID == message.id && $0.account == account && $0.provider == snooze.provider }
@@ -198,8 +198,8 @@ extension PuddleStore {
             }; scheduleReminders()
         } catch { fail(error) }
     }
-    func unsnoozeMail(_ id: String) {
-        do { try commit { next in
+    func unsnoozeMail(_ id: String) async {
+        do { try await commit { next in
             let ids = Set(next.mailSnoozes.filter { $0.messageID == id && $0.account == mailAccount && $0.provider == next.settings.mailProvider }.map(\.reminderID))
             next.mailSnoozes.removeAll { $0.messageID == id && $0.account == mailAccount && $0.provider == next.settings.mailProvider }
             next.tasks.removeAll { ids.contains($0.id) }

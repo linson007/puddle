@@ -61,9 +61,9 @@ including bugs fixed and rechecked in the rebuilt app. Live audio and
 permission-dependent browser checks remain pending by the user's choice; live
 providers were restricted to read/draft/review. Build/script evidence is in
 [development-log.md](development-log.md). Local final logs:
-`/tmp/puddle-cua-regression-final.log`, `/tmp/puddle-cua-release-build.log`.
-Meet follow-up: `/tmp/puddle-meet-command-regression.log` and
-`/tmp/puddle-meet-command-release.log`. That fix adds command-specific errors,
+[regenerable fixture evidence](testing.md#reproducible-evidence), [regenerable fixture evidence](testing.md#reproducible-evidence).
+Meet follow-up: [regenerable fixture evidence](testing.md#reproducible-evidence) and
+[regenerable fixture evidence](testing.md#reproducible-evidence). That fix adds command-specific errors,
 verified tab cleanup and a blank-page setup check. Computer Use did not approve
 the separate review app, so its native Chrome check remains pending. The fixed
 release is staged as `build/Puddle Meet Fix.app` without replacing the running

@@ -25,14 +25,14 @@ struct CommandPaletteView: View {
                 values.append(Item(id: id, title: title, icon: icon, result: nil, action: action))
             }
         }
-        command("new", "New conversation", "new conversation", "square.and.pencil") { store.clearChat(); store.section = .chat }
+        command("new", "New conversation", "new conversation", "square.and.pencil") { Task { await store.clearChat(); store.section = .chat } }
         command("capture", "Capture a commitment", "capture commitment", "plus") { store.showQuickCapture = true }
         command("setup", "Set up local AI", "local ai setup inference ollama lm studio llama client", "desktopcomputer") { store.showLocalSetup = true }
         values += sections.map { section in
             Item(id: "section-" + section.rawValue, title: "Open " + section.rawValue, icon: section.icon, result: nil) { store.section = section }
         }
         values += matches.map { result in
-            Item(id: "result-" + result.id, title: result.title, icon: nil, result: result) { store.openSearchResult(result) }
+            Item(id: "result-" + result.id, title: result.title, icon: nil, result: result) { Task { await store.openSearchResult(result) } }
         }
         return values
     }
@@ -68,7 +68,7 @@ struct CommandPaletteView: View {
                     if !query.isEmpty, items.isEmpty { Text("No matches. Mail and calendar search here covers the local cache.").foregroundStyle(.secondary).padding() }
                 }
             }.onChange(of: selectedIndex) { _, index in if items.indices.contains(index) { proxy.scrollTo(items[index].id) } } }
-            HStack { Spacer(); Button("Close") { dismiss() }.keyboardShortcut(.cancelAction) }
+            HStack { Spacer(); Button(L10n.text("Close")) { dismiss() }.keyboardShortcut(.cancelAction) }
         }.padding(20).frame(width: 650, height: 540).onAppear { focused = true }
             .onChange(of: query) { _, _ in selectedIndex = 0; matches = [] }
             .task(id: query) {
@@ -94,9 +94,9 @@ struct CommandPaletteView: View {
 }
 
 extension PuddleStore {
-    func openSearchResult(_ result: WorkspaceSearchResult) {
+    func openSearchResult(_ result: WorkspaceSearchResult) async {
         switch result.kind {
-        case .conversation: if let id = UUID(uuidString: result.locator) { openConversation(id) }
+        case .conversation: if let id = UUID(uuidString: result.locator) { await openConversation(id) }
         case .task: section = .tasks; editingCommitment = state.tasks.first { $0.id.uuidString == result.locator }
         case .meeting: section = .meetings; meetingWorkspace.selectedID = UUID(uuidString: result.locator)
         case .email: section = .mail; selectedID = result.locator

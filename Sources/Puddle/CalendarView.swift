@@ -49,7 +49,7 @@ struct CalendarView: View {
 
     private var heading: some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text("Calendar").font(.system(size: 29, weight: .semibold, design: .rounded))
+            Text(L10n.text("Calendar")).font(.system(size: 29, weight: .semibold, design: .rounded))
                 .foregroundStyle(PuddleStyle.ink).accessibilityAddTraits(.isHeader)
             Text("Your agenda and the context for what’s next.").font(.callout).foregroundStyle(PuddleStyle.muted)
             if store.calendarConnected {
@@ -155,10 +155,10 @@ struct CalendarView: View {
     @ViewBuilder private func eventActions(_ event: CalendarEvent) -> some View {
         if event.etag != nil { Button("Edit Event…") { store.proposeEvent(event) } }
         if let link = event.joinLinks.first {
-            Button("Join meeting") { store.openMeetingLink(link.url.absoluteString) }.disabled(store.demo)
+            Button("Join meeting") { Task { await store.openMeetingLink(link.url.absoluteString) } }.disabled(store.demo)
         }
         Button("Prepare") { preparing = event }
-        Button("Meeting notes") { store.createMeetingNote(event: event) }
+        Button("Meeting notes") { Task { await store.createMeetingNote(event: event) } }
     }
 
     private func eventDate(_ value: String) -> String {

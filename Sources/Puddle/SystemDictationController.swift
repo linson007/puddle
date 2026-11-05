@@ -1,5 +1,5 @@
 import AppKit
-import ApplicationServices
+@preconcurrency import ApplicationServices
 import Carbon
 import Combine
 import SwiftUI
@@ -20,7 +20,7 @@ import PuddleCore
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(), kAXFocusedUIElementAttribute as CFString, &value) == .success,
               let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { throw PuddleError("Focus an editable text field first.") }
-        let element = unsafeBitCast(value, to: AXUIElement.self)
+        let element = unsafeDowncast(value, to: AXUIElement.self)
         var role: CFTypeRef?
         _ = AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &role)
         guard role as? String != kAXSecureTextFieldSubrole else { throw PuddleError("Dictation is disabled in password fields.") }
@@ -126,7 +126,7 @@ private struct SystemDictationOverlay: View {
             HStack {
                 if voice.isActive { Button("Finish") { controller.release() } }
                 if !controller.retainedText.isEmpty { Button("Copy Transcript") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(controller.retainedText, forType: .string) } }
-                Spacer(); Button("Dismiss") { controller.cancel() }
+                Spacer(); Button(L10n.text("Dismiss")) { controller.cancel() }
             }
         }.padding(16).frame(width: 440)
     }

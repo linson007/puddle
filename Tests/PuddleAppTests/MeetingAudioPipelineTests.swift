@@ -13,15 +13,31 @@ private final class AudioFailures: @unchecked Sendable {
 }
 
 final class MeetingAudioPipelineTests: XCTestCase {
-    private func format() throws -> AVAudioFormat { try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1)) }
+    @available(macOS 26, *)
+    private func format() async throws -> AVAudioFormat {
+        let module = SpeechTranscriber(locale: Locale(identifier: "en-US"), preset: .timeIndexedProgressiveTranscription)
+        if let selected = try? await AnalyzerAudioTrack.compatibleFormat(for: module) { return selected }
+        // CI has no installed speech assets. Exercise the buffer/clock pipeline
+        // with Speech's portable Int16 representation without downloading a model.
+        return try XCTUnwrap(AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16_000, channels: 1, interleaved: false))
+    }
     private func pcm(_ format: AVAudioFormat) throws -> AVAudioPCMBuffer {
         let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 100)); buffer.frameLength = 100
-        for index in 0..<100 { buffer.floatChannelData![0][index] = Float(index) / 100 }
+        if let samples = buffer.floatChannelData {
+            for index in 0..<100 { samples[0][index] = Float(index) / 100 }
+        } else if let samples = buffer.int16ChannelData {
+            for index in 0..<100 { samples[0][index] = Int16(Float(index) / 100 * Float(Int16.max)) }
+        } else { throw PuddleError("Unsupported synthetic PCM format: \(format)") }
         return buffer
+    }
+    private func sample(_ buffer: AVAudioPCMBuffer, at index: Int) throws -> Float {
+        if let samples = buffer.floatChannelData { return samples[0][index] }
+        if let samples = buffer.int16ChannelData { return Float(samples[0][index]) / Float(Int16.max) }
+        throw PuddleError("Unsupported synthetic PCM format.")
     }
     func testBoundedQueueStopsOnOverloadAndRetainsAlreadyQueuedAudio() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer requires macOS 26") }
-        let format = try format(), failure = AudioFailures()
+        let format = try await format(), failure = AudioFailures()
         let (sequence, builder) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(1))
         let sink = AnalyzerAudioSink(format: format, builder: builder, origin: 100) { failure.append($0) }
         let input = try pcm(format)
@@ -29,15 +45,15 @@ final class MeetingAudioPipelineTests: XCTestCase {
         XCTAssertEqual(failure.count, 1)
         var times: [Double] = []
         for await input in sequence {
-            times.append(input.bufferStartTime!.seconds)
-            XCTAssertEqual(input.buffer.floatChannelData![0][75], 0.75, accuracy: 0.0001)
+            times.append(try XCTUnwrap(input.bufferStartTime).seconds)
+            XCTAssertEqual(try self.sample(input.buffer, at: 75), 0.75, accuracy: 0.0001)
         }
         XCTAssertEqual(times, [3.5])
         sink.finish(); sink.receive(input); XCTAssertEqual(failure.count, 1)
     }
     func testScreenAudioSampleIsConvertedWithinItsBufferLifetimeAndUsesSharedClock() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer requires macOS 26") }
-        let format = try format(), failure = AudioFailures()
+        let format = try await format(), failure = AudioFailures()
         let (sequence, builder) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(8))
         let sink = AnalyzerAudioSink(format: format, builder: builder, origin: 100) { failure.append($0) }
         let sample = try sampleBuffer(pcm(format), at: 105.25)
@@ -46,15 +62,15 @@ final class MeetingAudioPipelineTests: XCTestCase {
         sink.finish()
         var times: [Double] = []
         for await input in sequence {
-            times.append(input.bufferStartTime!.seconds)
-            XCTAssertEqual(input.buffer.floatChannelData![0][75], 0.75, accuracy: 0.0001)
+            times.append(try XCTUnwrap(input.bufferStartTime).seconds)
+            XCTAssertEqual(try self.sample(input.buffer, at: 75), 0.75, accuracy: 0.0001)
         }
         XCTAssertEqual(times, [5.25]); XCTAssertEqual(failure.count, 0)
         XCTAssertThrowsError(try MeetingStreamOutput.consume(sample, into: sink))
     }
     func testInvalidClockStopsWithoutUnsafeTimestampConversion() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer requires macOS 26") }
-        let format = try format(), failure = AudioFailures()
+        let format = try await format(), failure = AudioFailures()
         let (_, builder) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(1))
         let sink = AnalyzerAudioSink(format: format, builder: builder, origin: 100) { failure.append($0) }
         sink.receive(try pcm(format), hostSeconds: Double.infinity)
@@ -62,7 +78,7 @@ final class MeetingAudioPipelineTests: XCTestCase {
     }
     func testScreenAudioResamplingPreservesSignalAfterSampleInvalidation() async throws {
         guard #available(macOS 26, *) else { throw XCTSkip("SpeechAnalyzer requires macOS 26") }
-        let output = try format(), failure = AudioFailures()
+        let output = try await format(), failure = AudioFailures()
         let (sequence, builder) = AsyncStream<AnalyzerInput>.makeStream(bufferingPolicy: .bufferingOldest(8))
         let sink = AnalyzerAudioSink(format: output, builder: builder, origin: 100) { failure.append($0) }
         let sourceFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
@@ -72,7 +88,7 @@ final class MeetingAudioPipelineTests: XCTestCase {
         var peak: Float = 0
         for await input in sequence {
             XCTAssertGreaterThan(input.buffer.frameLength, 0)
-            for frame in 0..<Int(input.buffer.frameLength) { peak = max(peak, abs(input.buffer.floatChannelData![0][frame])) }
+            for frame in 0..<Int(input.buffer.frameLength) { peak = max(peak, abs(try self.sample(input.buffer, at: frame))) }
         }
         XCTAssertGreaterThan(peak, 0.5); XCTAssertEqual(failure.count, 0)
     }

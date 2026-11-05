@@ -69,7 +69,7 @@ private actor WorkAppHTTP: HTTPTransport {
         let app = store(secrets: secrets, http: http, disk: disk); await app.start()
         let connected = await app.connectGitHub(token: "github-secret", repositories: ["acme/app"]); XCTAssertTrue(connected)
         XCTAssertTrue(app.availableTools.contains(.searchConnectedWork)); XCTAssertTrue(app.availableTools.contains(.readConnectedWork))
-        app.chooseDeveloperProfile(); app.ask("What needs fixing for timeout?")
+        await app.chooseDeveloperProfile(); await app.ask("What needs fixing for timeout?")
         try await wait { !app.isThinking }
         XCTAssertTrue(app.state.chat.last?.content.contains("cancellation") == true)
         let receipts = try XCTUnwrap(app.state.chat.first { $0.role == "user" }?.receipts)
@@ -92,7 +92,7 @@ private actor WorkAppHTTP: HTTPTransport {
         do { _ = try await app.searchConnectedWork("", service: "all", syntax: "text"); XCTFail("All-failed search reported success") }
         catch { XCTAssertTrue(error.localizedDescription.contains("search failed")); XCTAssertFalse(error.localizedDescription.contains("secret-provider-details")) }
         let count = await http.requests.count
-        app.enterDemo()
+        await app.enterDemo()
         XCTAssertFalse(app.availableTools.contains(.searchConnectedWork)); XCTAssertFalse(app.availableTools.contains(.readConnectedWork))
         do { _ = try await app.readConnectedWork(service: "github", locator: "acme/app#7", view: "details"); XCTFail("Demo accessed an account") } catch {}
         let after = await http.requests.count; XCTAssertEqual(count, after)

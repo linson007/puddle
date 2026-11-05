@@ -1,3 +1,4 @@
+import PuddleCore
 import SwiftUI
 
 struct PuddleSidebar: View {
@@ -49,7 +50,7 @@ struct PuddleSidebar: View {
             HStack(spacing: 10) {
                 SidebarActivity(store: store, voice: store.voiceInput)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Puddle").font(.system(size: 22, weight: .semibold, design: .rounded)).foregroundStyle(PuddleStyle.ink)
+                    Text(L10n.text("Puddle")).font(.system(size: 22, weight: .semibold, design: .rounded)).foregroundStyle(PuddleStyle.ink)
                     Text("Your personal AI.").font(.caption).foregroundStyle(PuddleStyle.muted)
                 }
             }.padding(.horizontal, 18).padding(.top, 18)
@@ -57,7 +58,7 @@ struct PuddleSidebar: View {
             Button { store.showCommands = true } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
-                    Text("Search anything").font(.system(size: 12))
+                    Text(L10n.text("Search anything")).font(.system(size: 12))
                     Spacer(minLength: 0)
                     Text("⌘K").font(.system(size: 10, weight: .medium))
                         .padding(.horizontal, 5).padding(.vertical, 3)
@@ -65,7 +66,7 @@ struct PuddleSidebar: View {
                 }.foregroundStyle(PuddleStyle.muted).padding(9)
                     .background(PuddleStyle.panel.opacity(0.7), in: RoundedRectangle(cornerRadius: 8))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(PuddleStyle.line))
-            }.buttonStyle(.plain).padding(.horizontal, 14).accessibilityLabel("Search workspace and commands")
+            }.buttonStyle(.plain).padding(.horizontal, 14).accessibilityLabel(L10n.text("Search workspace and commands"))
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -79,7 +80,7 @@ struct PuddleSidebar: View {
                                     let sections = additionalSections(in: group)
                                     if !sections.isEmpty {
                                         VStack(alignment: .leading, spacing: 3) {
-                                            Text(group.rawValue.uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.3).foregroundStyle(PuddleStyle.muted)
+                                            Text(L10n.text(group.rawValue).uppercased()).font(.system(size: 9, weight: .semibold)).tracking(1.3).foregroundStyle(PuddleStyle.muted)
                                                 .padding(.horizontal, 11).padding(.bottom, 4)
                                                 .accessibilityAddTraits(.isHeader)
                                             ForEach(sections, id: \.self) { navigationRow($0) }
@@ -88,7 +89,7 @@ struct PuddleSidebar: View {
                                 }
                             }.padding(.top, 10)
                         } label: {
-                            Label("More", systemImage: "ellipsis.circle")
+                            Label(L10n.text("More"), systemImage: "ellipsis.circle")
                                 .font(.system(size: 13, weight: .medium)).foregroundStyle(PuddleStyle.muted)
                                 .padding(.vertical, 8)
                                 .help("Optional workspaces. Use the pin buttons to keep favorites in the main sidebar.")
@@ -100,19 +101,19 @@ struct PuddleSidebar: View {
                 Divider().padding(.bottom, 8)
                 navigationRow(.connections)
                 SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
+                    Label(L10n.text("Settings"), systemImage: "gearshape")
                         .font(.system(size: 13, weight: .medium))
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 10).padding(.vertical, 8)
                         .contentShape(Rectangle())
                 }.buttonStyle(.plain)
                 VStack(alignment: .leading, spacing: 7) {
-                    Label("Private by default", systemImage: "lock.shield")
+                    Label(L10n.text("Private by default"), systemImage: "lock.shield")
                     HStack(spacing: 6) {
-                        Circle().fill(store.inferenceModel != nil ? PuddleStyle.teal : Color.secondary).frame(width: 6, height: 6)
+                        Circle().fill(store.inferenceModel != nil ? PuddleStyle.teal : Color.secondary).frame(width: 6, height: 6).accessibilityHidden(true)
                         Text(store.demo ? "Demo mode" : store.inferenceModel != nil ? "Local AI connected" : "Connect local AI")
                             .lineLimit(1)
                     }
-                    if store.demo { Button("Exit demo") { store.leaveDemo() }.buttonStyle(PuddleTextButtonStyle()) }
+                    if store.demo { Button(L10n.text("Exit demo")) { Task { await store.leaveDemo() } }.buttonStyle(PuddleTextButtonStyle()) }
                 }.font(.system(size: 10)).foregroundStyle(PuddleStyle.muted).padding(.horizontal, 10).padding(.top, 8)
             }.padding(.horizontal, 12).padding(.bottom, 18)
         }.background(PuddleStyle.sidebar)
@@ -130,7 +131,7 @@ struct PuddleSidebar: View {
             Button { store.section = section } label: {
                 HStack(spacing: 10) {
                     Image(systemName: section.icon).font(.system(size: 14)).frame(width: 18)
-                    Text(section.rawValue).font(.system(size: 13, weight: .medium))
+                    Text(L10n.text(section.rawValue)).font(.system(size: 13, weight: .medium))
                     Spacer()
                     if section == .tasks || section == .actions {
                         let count = section == .tasks ? store.state.tasks.filter { !$0.completed }.count : actionsNeedingReview
@@ -142,6 +143,10 @@ struct PuddleSidebar: View {
                     }
                 }.padding(.horizontal, 10).padding(.vertical, 8).contentShape(Rectangle())
             }.buttonStyle(.plain)
+                .accessibilityLabel(L10n.text(section.rawValue))
+                .accessibilityValue(store.section == section ? "Selected" : "")
+                .accessibilityHint("Opens this workspace")
+                .accessibilityIdentifier("navigation.\(section.nameForAccessibility)")
                 .accessibilityAddTraits(store.section == section ? .isSelected : [])
             if pinnableSections.contains(section) {
                 Button { togglePin(section) } label: {

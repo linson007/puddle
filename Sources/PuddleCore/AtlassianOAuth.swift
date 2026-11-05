@@ -136,8 +136,9 @@ actor AtlassianAuthorization {
     func exchange(_ attempt: AtlassianOAuthAttempt, code: String) async throws -> AtlassianCredentials {
         let result = try await tokens(parameters: ["grant_type": "authorization_code", "client_id": attempt.clientID, "code": code,
             "redirect_uri": attempt.redirect.absoluteString, "code_verifier": attempt.verifier, "resource": Self.resource.absoluteString], endpoints: attempt.endpoints)
-        return AtlassianCredentials(accessToken: result["access_token"]!.string!, refreshToken: result["refresh_token"]?.string,
-            expiresAt: Date().addingTimeInterval(result["expires_in"]!.number!), clientID: attempt.clientID,
+        guard let access = result["access_token"]?.string, let expires = result["expires_in"]?.number else { throw PuddleError("Atlassian returned incomplete credentials.") }
+        return AtlassianCredentials(accessToken: access, refreshToken: result["refresh_token"]?.string,
+            expiresAt: Date().addingTimeInterval(expires), clientID: attempt.clientID,
             endpoints: attempt.endpoints, scopes: attempt.scopes, services: attempt.services)
     }
     func token() async throws -> String {
@@ -151,9 +152,10 @@ actor AtlassianAuthorization {
                 "resource": Self.resource.absoluteString], endpoints: value.endpoints)
             try Task.checkCancellation()
             guard revision == expected else { throw CancellationError() }
-            var updated = value; updated.accessToken = response["access_token"]!.string!
+            guard let access = response["access_token"]?.string, let expires = response["expires_in"]?.number else { throw PuddleError("Atlassian returned incomplete refreshed credentials.") }
+            var updated = value; updated.accessToken = access
             updated.refreshToken = response["refresh_token"]?.string ?? refresh
-            updated.expiresAt = Date().addingTimeInterval(response["expires_in"]!.number!)
+            updated.expiresAt = Date().addingTimeInterval(expires)
             try save(updated); return updated
         }
         refreshing = worker

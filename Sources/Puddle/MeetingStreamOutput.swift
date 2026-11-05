@@ -6,6 +6,8 @@ import PuddleCore
 
 /// Receives audio only; no screen/video output is registered or stored.
 @available(macOS 26, *)
+// Sendable invariant: immutable sinks synchronize internally; sample callbacks
+// (including DEBUG counters) run on the single audio queue registered at startup.
 final class MeetingStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     let audio: AnalyzerAudioSink
     let microphone: AnalyzerAudioSink?

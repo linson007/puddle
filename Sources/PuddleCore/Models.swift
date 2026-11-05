@@ -3,7 +3,7 @@ import Foundation
 public struct PuddleError: LocalizedError, Sendable {
     public let message: String
     public init(_ message: String) { self.message = message }
-    public var errorDescription: String? { message }
+    public var errorDescription: String? { L10n.text(message) }
 }
 
 public struct MailMessage: Codable, Identifiable, Equatable, Sendable {
@@ -191,6 +191,7 @@ public struct AppSnapshot: Codable, Sendable {
     public var developmentSessions: [DevelopmentSession] = []
     public var actionProposals: [ActionProposal] = []
     public var meetingCaptureRecoveries: [MeetingCaptureRecovery] = []
+    public var meetingRecoveryDismissals: [UUID: Date] = [:]
     public var browserErrands: [BrowserErrand] = []
     public var routines: [AssistantRoutine] = []
     public var routineRuns: [RoutineRun] = []
@@ -209,7 +210,7 @@ public struct AppSnapshot: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, account, messages, chat, currentConversationID, currentConversationCreatedAt, conversations, activity, settings, lastSync, mailHistoryID, calendarHasMore
         case memories, tasks, meetings, calendarEvents, assistantInstructions, calendarLastSync, profileLibrary
-        case developerProjects, activeDeveloperProjectID, developmentSessions, actionProposals, meetingCaptureRecoveries
+        case developerProjects, activeDeveloperProjectID, developmentSessions, actionProposals, meetingCaptureRecoveries, meetingRecoveryDismissals
         case browserErrands
         case routines, routineRuns
         case outlookAccount, outlookMessages, outlookLastSync
@@ -250,6 +251,7 @@ public struct AppSnapshot: Codable, Sendable {
         developmentSessions = try values.decodeIfPresent([DevelopmentSession].self, forKey: .developmentSessions) ?? []
         actionProposals = try values.decodeIfPresent([ActionProposal].self, forKey: .actionProposals) ?? []
         meetingCaptureRecoveries = try values.decodeIfPresent([MeetingCaptureRecovery].self, forKey: .meetingCaptureRecoveries) ?? []
+        meetingRecoveryDismissals = try values.decodeIfPresent([UUID: Date].self, forKey: .meetingRecoveryDismissals) ?? [:]
         browserErrands = try values.decodeIfPresent([BrowserErrand].self, forKey: .browserErrands) ?? []
         routines = try values.decodeIfPresent([AssistantRoutine].self, forKey: .routines) ?? []
         routineRuns = try values.decodeIfPresent([RoutineRun].self, forKey: .routineRuns) ?? []
@@ -367,6 +369,8 @@ public protocol SnapshotPersistence: Sendable {
     func load() throws -> AppSnapshot
     func loadResult() throws -> SnapshotLoadResult
     func save(_ state: AppSnapshot) throws
+    func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery]
+    func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws
 }
 
 public struct SnapshotLoadResult: Sendable {
@@ -376,6 +380,12 @@ public struct SnapshotLoadResult: Sendable {
 }
 
 extension SnapshotPersistence {
+    // Legacy/in-memory stores retain their existing persistence contract. The
+    // production encrypted store overrides these with a separate recovery file.
+    public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] { try load().meetingCaptureRecoveries }
+    public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws {
+        var snapshot = try load(); snapshot.meetingCaptureRecoveries = values; try save(snapshot)
+    }
     public func loadResult() throws -> SnapshotLoadResult { SnapshotLoadResult(snapshot: try load()) }
 }
 

@@ -139,8 +139,9 @@ public enum WorkspaceBackup {
             var decoded = Data(count: size + 1)
             let count = decoded.withUnsafeMutableBytes { output in
                 envelope.payload.withUnsafeBytes { input in
-                    compression_decode_buffer(output.bindMemory(to: UInt8.self).baseAddress!, size + 1,
-                        input.bindMemory(to: UInt8.self).baseAddress!, input.count, nil, COMPRESSION_LZFSE)
+                    guard let destination = output.bindMemory(to: UInt8.self).baseAddress,
+                          let source = input.bindMemory(to: UInt8.self).baseAddress else { return 0 }
+                    return compression_decode_buffer(destination, size + 1, source, input.count, nil, COMPRESSION_LZFSE)
                 }
             }
             guard count == size else { throw PuddleError("The compressed backup is damaged or has an invalid decoded size.") }

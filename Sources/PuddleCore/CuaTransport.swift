@@ -7,6 +7,8 @@ public protocol CuaRPCTransport: Sendable {
 }
 
 /// One persistent, newline-delimited MCP connection. Never launches a shell.
+// Sendable invariant: requests and buffer use queue; lock protects process,
+// file handles and closed state shared with cancellation/shutdown.
 public final class CuaStdioTransport: CuaRPCTransport, @unchecked Sendable {
     private let executable: URL
     private let queue = DispatchQueue(label: "app.puddle.cua-mcp")

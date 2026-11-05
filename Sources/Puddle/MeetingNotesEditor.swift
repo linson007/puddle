@@ -18,7 +18,7 @@ struct MeetingNotesEditor: View {
                 Button("Companion") { store.companionNoteID = note.id; openWindow(id: "meeting-companion") }
                 Button("Export…") { exporting = true }
                 Text(workspace.isDirty(note) ? "Unsaved changes" : "Saved locally").font(.caption).foregroundStyle(.secondary)
-                Button("Save") { store.saveMeetingNote(note.id) }.buttonStyle(.borderedProminent).disabled(!workspace.isDirty(note))
+                Button(L10n.text("Save")) { Task { await store.saveMeetingNote(note.id) } }.buttonStyle(.borderedProminent).disabled(!workspace.isDirty(note))
                 if workspace.isDirty(note) { Button("Discard changes") { workspace.discard(note.id) } }
             }
             TextField("Meeting title", text: text(\.title)).textFieldStyle(.roundedBorder)
@@ -32,7 +32,7 @@ struct MeetingNotesEditor: View {
                 HStack {
                     Text("Captured transcript available · \(recovery.updatedAt.formatted())").font(.caption)
                     Button("Review Recovery") { store.reviewMeetingCapture(note.id) }
-                    Button("Discard Recovery", role: .destructive) { store.discardMeetingCapture(note.id) }
+                    Button("Discard Recovery", role: .destructive) { Task { await store.discardMeetingCapture(note.id) } }
                 }
             }
             editor("Agenda", text: text(\.agenda), height: 80)
@@ -52,7 +52,7 @@ struct MeetingNotesEditor: View {
             }
             MeetingSummaryView(store: store, workspace: workspace, note: note)
             if let link = note.joinLink {
-                Button("Open \(link.provider.title) join screen") { store.openMeetingLink(link.url.absoluteString) }.disabled(store.demo)
+                Button("Open \(link.provider.title) join screen") { Task { await store.openMeetingLink(link.url.absoluteString) } }.disabled(store.demo)
             }
             Text("Save changes before quitting. Drafts remain available when switching notes during this session.")
                 .font(.caption).foregroundStyle(.secondary)

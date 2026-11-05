@@ -51,13 +51,13 @@ extension PuddleStore {
         let provider = message.provider ?? .google
         editingAction = ActionProposal(account: (provider == .outlook ? state.outlookAccount : state.account) ?? "", payload: .mailLabels(messageID: message.id, add: add, remove: remove), sourceURL: message.sourceURL, provider: provider)
     }
-    @discardableResult func saveAction(_ proposal: ActionProposal) -> Bool {
+    @discardableResult func saveAction(_ proposal: ActionProposal) async -> Bool {
         do {
             guard proposal.status == .draft else { throw PuddleError("Only drafts can be edited.") }
             if let existing = state.actionProposals.first(where: { $0.id == proposal.id }), existing.status != .draft {
                 throw PuddleError("This action was already attempted. Check its receipt before creating another.")
             }
-            try commit { next in
+            try await commit { next in
                 if let index = next.actionProposals.firstIndex(where: { $0.id == proposal.id }) { next.actionProposals[index] = proposal }
                 else { next.actionProposals.insert(proposal, at: 0) }
             }
@@ -94,10 +94,15 @@ extension PuddleStore {
             guard let current = state.actionProposals.first(where: { $0.id == id }), current.digest == reviewedDigest,
                   current.account == accountForAction(current), !isSigningIn, !isDisconnecting else { throw PuddleError("The proposal changed. Review it again.") }
             proposal = current; try proposal.authorize(digest: reviewedDigest)
-            try commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal } }
+            try await commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal } }
         } catch { fail(error); return }
         executingActions.insert(id); defer { executingActions.remove(id) }
         do {
+            try checkWorkspaceAccess(access)
+            guard !isSigningIn, !isDisconnecting, proposal.account == accountForAction(proposal),
+                  state.actionProposals.first(where: { $0.id == id })?.digest == proposal.digest else {
+                throw PuddleError("The account or proposal changed while saving. Review the action again.")
+            }
             let result: ActionResult
             if case .unsubscribe = proposal.payload { result = try await executeNewsletter(proposal, transport: actionTransport) }
             else if proposal.provider == .outlook { result = try await OutlookMailClient(session: outlook, transport: actionTransport).execute(proposal) }
@@ -106,7 +111,7 @@ extension PuddleStore {
             proposal.resultETag = result.etag
             proposal.detail = proposal.provider == .outlook ? "Microsoft accepted the request. For email, acceptance does not prove delivery; check Sent Items for processing status." : "Provider confirmed completion."
             if case .unsubscribe = proposal.payload { proposal.detail = "The sender accepted the one-click unsubscribe request. Check its subscription settings if further messages arrive." }
-            try commit { next in
+            try await commit { next in
                 if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal }
                 if case .email(let draft) = proposal.payload, let date = draft.followUpAt {
                     next.tasks.append(AssistantTask(title: "Follow up: \(draft.subject)", dueAt: date))
@@ -117,13 +122,13 @@ extension PuddleStore {
         } catch {
             proposal.status = .uncertain
             proposal.detail = "Execution could not be confirmed: \(error.localizedDescription). Check the source before attempting another action. This proposal cannot replay."
-            do { try commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal } } }
+            do { try await commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal } } }
             catch { fail(PuddleError("The provider may have completed the action, but its receipt could not be saved. Check the provider before retrying.")); return }
-            fail(PuddleError(proposal.detail!))
+            fail(PuddleError(proposal.detail ?? "The action failed. Review its status before retrying."))
         }
     }
-    func discardAction(_ id: UUID) {
-        do { try commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }), next.actionProposals[index].status == .draft { next.actionProposals[index].status = .declined } } }
+    func discardAction(_ id: UUID) async {
+        do { try await commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }), next.actionProposals[index].status == .draft { next.actionProposals[index].status = .declined } } }
         catch { fail(error) }
     }
     func proposeCalendarUndo(_ action: ActionProposal) {

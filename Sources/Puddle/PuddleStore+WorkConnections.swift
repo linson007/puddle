@@ -35,9 +35,9 @@ extension PuddleStore {
     func loadWorkConnections() async {
         guard !demo else { return }
         do { let info = try await githubConnector.info(); if !demo { githubConnection = info } }
-        catch { if !demo { workConnectionErrors[.github] = error.localizedDescription } }
+        catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[.github] = error.localizedDescription } }
         do { let info = try await atlassianConnector.info(); if !demo { atlassianConnection = info } }
-        catch { if !demo { workConnectionErrors[.jira] = error.localizedDescription; workConnectionErrors[.confluence] = error.localizedDescription } }
+        catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[.jira] = error.localizedDescription; workConnectionErrors[.confluence] = error.localizedDescription } }
     }
     @discardableResult func connectGitHub(token: String, repositoryText: String) async -> Bool {
         guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingGitHub else { return false }
@@ -45,7 +45,7 @@ extension PuddleStore {
             let repositories = try GitHubConnector.parseRepositories(repositoryText)
             return await connectGitHub(token: token, repositories: repositories)
         }
-        catch { workConnectionErrors[.github] = error.localizedDescription; return false }
+        catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); workConnectionErrors[.github] = error.localizedDescription; return false }
     }
     @discardableResult func connectGitHub(token: String, repositories: [String]) async -> Bool {
         guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingGitHub else { return false }
@@ -54,9 +54,9 @@ extension PuddleStore {
         do {
             let info = try await githubConnector.connect(token: token, repositories: repositories)
             guard !demo, !privateSession, !isLocked else { return false }
-            stopAI(); workSources.cancel(); githubConnection = info; return true
+            await stopAI(); workSources.cancel(); githubConnection = info; return true
         } catch is CancellationError { return false }
-        catch { if !demo { workConnectionErrors[.github] = error.localizedDescription }; return false }
+        catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[.github] = error.localizedDescription }; return false }
     }
     func beginAtlassianSignIn(services: Set<WorkService>) {
         guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingAtlassian else { return }
@@ -76,9 +76,9 @@ extension PuddleStore {
                 try Task.checkCancellation(); workAuthorizationStatus = "Verifying site access and read/search tools…"
                 let info = try await atlassianConnector.finish(attempt, code: code)
                 guard workOAuthRevision == expected, !demo else { return }
-                stopAI(); workSources.cancel(); atlassianConnection = info
+                await stopAI(); workSources.cancel(); atlassianConnection = info
             } catch is CancellationError {}
-            catch { if workOAuthRevision == expected, !demo { for service in services { workConnectionErrors[service] = error.localizedDescription } } }
+            catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if workOAuthRevision == expected, !demo { for service in services { workConnectionErrors[service] = error.localizedDescription } } }
         }
     }
     func cancelAtlassianSignIn() {
@@ -89,8 +89,8 @@ extension PuddleStore {
         guard !demo, !privateSession, !isLocked else { return }
         do {
             let info = try await atlassianConnector.selectSite(id)
-            stopAI(); workSources.cancel(); atlassianConnection = info
-        } catch { workConnectionErrors[.jira] = error.localizedDescription; workConnectionErrors[.confluence] = error.localizedDescription }
+            await stopAI(); workSources.cancel(); atlassianConnection = info
+        } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); workConnectionErrors[.jira] = error.localizedDescription; workConnectionErrors[.confluence] = error.localizedDescription }
     }
     func testWorkConnection(_ service: WorkService) async {
         guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !testingWorkConnections.contains(service) else { return }
@@ -99,17 +99,17 @@ extension PuddleStore {
         do {
             if service == .github { let info = try await githubConnector.test(); if !demo { githubConnection = info } }
             else { let info = try await atlassianConnector.test(); if !demo { atlassianConnection = info } }
-        } catch { if !demo { workConnectionErrors[service] = error.localizedDescription } }
+        } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[service] = error.localizedDescription } }
     }
     func disconnectWorkConnection(_ service: WorkService) async {
         guard !demo, !privateSession, !isLocked else { return }
-        stopAI(); workSources.cancel()
+        await stopAI(); workSources.cancel()
         if service != .github { cancelAtlassianSignIn() }
         do {
             if service == .github { try await githubConnector.disconnect(); githubConnection = nil }
             else { try await atlassianConnector.disconnect(); atlassianConnection = nil; workConnectionErrors[.jira] = nil; workConnectionErrors[.confluence] = nil }
             workConnectionErrors[service] = nil
-        } catch { workConnectionErrors[service] = error.localizedDescription }
+        } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); workConnectionErrors[service] = error.localizedDescription }
     }
     func searchConnectedWork(_ query: String, service: String, syntax: String) async throws -> ConnectedWorkSearch {
         let selected = service == "all" ? connectedWorkServices : connectedWorkServices.filter { $0.rawValue == service }
@@ -121,7 +121,7 @@ extension PuddleStore {
             for provider in selected { group.addTask {
                 do { return (provider, provider == .github ? try await github.search(query) : try await atlassian.search(query, service: provider, nativeQuery: syntax == "native"), nil) }
                 catch is CancellationError { return (provider, nil, nil) }
-                catch { return (provider, nil, error.localizedDescription) }
+                catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); return (provider, nil, error.localizedDescription) }
             } }
             for await (provider, result, error) in group {
                 if let result { results.append(result) }

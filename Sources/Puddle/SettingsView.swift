@@ -11,14 +11,7 @@ struct GoogleSetupView: View {
     @State private var editCalendar = false
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 14) {
-                PuddleMark(size: 48)
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Connect Google").font(.title2).fontWeight(.semibold)
-                    Text("Your inbox and calendar, ready when you need them.").foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
+            header
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     Text("Puddle works without connected accounts. Connect Google when you want it to help with your email or schedule.")
@@ -72,20 +65,7 @@ struct GoogleSetupView: View {
                 }
             }
             Divider()
-            HStack {
-                Spacer()
-                if store.isSigningIn {
-                    ProgressView().controlSize(.small)
-                    Text(store.googleSignInStatus).font(.caption).foregroundStyle(.secondary)
-                    Button("Cancel") { store.cancelSignIn() }
-                } else {
-                    Button("Close") { dismiss() }
-                    Button("Sign in with Google") {
-                        let scopes = (mail ? [OAuthFlow.scope] + (sendMail ? [OAuthFlow.mailSendScope] : []) + (organizeMail ? [OAuthFlow.mailModifyScope] : []) : []) + (calendar ? [OAuthFlow.calendarScope, OAuthFlow.calendarListScope] + (editCalendar ? [OAuthFlow.calendarWriteScope] : []) : [])
-                        store.connect(scopes: scopes)
-                    }.buttonStyle(.borderedProminent).disabled(!store.configured || (!mail && !calendar))
-                }
-            }
+            actions
         }.padding(28).frame(width: 620, height: store.configured ? 540 : 700).tint(PuddleStyle.teal)
             .onAppear {
                 if store.connected { mail = store.mailConnected; calendar = store.calendarConnected }
@@ -93,6 +73,44 @@ struct GoogleSetupView: View {
                 organizeMail = store.grantedScopes.contains(OAuthFlow.mailModifyScope)
                 editCalendar = store.grantedScopes.contains(OAuthFlow.calendarWriteScope)
             }
+    }
+    private var header: some View {
+        HStack(spacing: 14) {
+            PuddleMark(size: 48)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.text("Connect Google")).font(.title2).fontWeight(.semibold)
+                Text("Your inbox and calendar, ready when you need them.").foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+    }
+    private var actions: some View {
+        HStack {
+            Spacer()
+            if store.isSigningIn {
+                ProgressView().controlSize(.small)
+                Text(store.googleSignInStatus).font(.caption).foregroundStyle(.secondary)
+                Button(L10n.text("Cancel")) { store.cancelSignIn() }
+            } else {
+                Button(L10n.text("Close")) { dismiss() }
+                Button("Sign in with Google") { Task {
+                    await store.connect(scopes: requestedScopes)
+                } }.buttonStyle(.borderedProminent).disabled(!store.configured || (!mail && !calendar))
+            }
+        }
+    }
+    private var requestedScopes: [String] {
+        var scopes: [String] = []
+        if mail {
+            scopes.append(OAuthFlow.scope)
+            if sendMail { scopes.append(OAuthFlow.mailSendScope) }
+            if organizeMail { scopes.append(OAuthFlow.mailModifyScope) }
+        }
+        if calendar {
+            scopes += [OAuthFlow.calendarScope, OAuthFlow.calendarListScope]
+            if editCalendar { scopes.append(OAuthFlow.calendarWriteScope) }
+        }
+        return scopes
     }
     private func step(_ number: String, _ title: String, _ description: String) -> some View {
         HStack(alignment: .top, spacing: 14) {
@@ -144,11 +162,11 @@ struct PuddleSettingsView: View {
                 }
                 Section("Your assistant") {
                     Toggle("Automatically learn personal memories", isOn: Binding(
-                        get: { store.state.settings.automaticallyLearn }, set: { store.setAutomaticLearning($0) }))
+                        get: { store.state.settings.automaticallyLearn }, set: { value in Task { await store.setAutomaticLearning(value) } }))
                     Text("Tell Puddle how you like to work and how you want it to respond.").foregroundStyle(.secondary)
                     TextEditor(text: $persona).font(.body).frame(height: 110)
                         .accessibilityLabel("Assistant preferences")
-                    Button("Save Preferences") { store.savePersona(persona) }
+                    Button(L10n.text("Save Preferences")) { Task { await store.savePersona(persona) } }
                     Text("Saved memories and tasks carry across conversations. Manage them from the sidebar.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -159,13 +177,13 @@ struct PuddleSettingsView: View {
                     Text("macOS schedules enabled reminders even while Puddle is closed. Due reminders also appear in chat after launch.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Voice") {
-                    Toggle("Read new replies aloud", isOn: Binding(get: { store.state.settings.readRepliesAloud }, set: { store.setReadRepliesAloud($0) }))
-                    Picker("Voice language", selection: Binding(get: { store.state.settings.speechLanguage }, set: { store.setSpeechLanguage($0) })) {
+                Section(L10n.text("Voice")) {
+                    Toggle(L10n.text("Read new replies aloud"), isOn: Binding(get: { store.state.settings.readRepliesAloud }, set: { value in Task { await store.setReadRepliesAloud(value) } }))
+                    Picker(L10n.text("Voice language"), selection: Binding(get: { store.state.settings.speechLanguage }, set: { value in Task { await store.setSpeechLanguage(value) } })) {
                         Text("English (US)").tag("en-US"); Text("English (India)").tag("en-IN")
                         Text("English (UK)").tag("en-GB"); Text("Hindi").tag("hi-IN")
                     }
-                    Picker("Speaking speed", selection: Binding(get: { store.state.settings.speechSpeed }, set: { store.setSpeechSpeed($0) })) {
+                    Picker(L10n.text("Speaking speed"), selection: Binding(get: { store.state.settings.speechSpeed }, set: { value in Task { await store.setSpeechSpeed(value) } })) {
                         Text("Slower").tag(0.8); Text("Normal").tag(1.0); Text("Faster").tag(1.2)
                     }
                     Text("Uses an installed macOS voice. You can also read individual replies aloud from chat.").font(.caption).foregroundStyle(.secondary)
@@ -175,20 +193,20 @@ struct PuddleSettingsView: View {
                 SystemDictationSettingsView(store: store, controller: store.systemDictation)
                 StartupSettingsView()
                 Section("Local storage") {
-                    Button("Retry Loading State") { Task { await store.retryLoadingState() } }.disabled(store.demo)
+                    Button(L10n.text("Retry Loading State")) { Task { await store.retryLoadingState() } }.disabled(store.demo)
                     Text("Conversation, memory, tasks, and cached connection data stay in Application Support/Puddle. The cache has owner-only permissions. Credentials use Keychain.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("Assistant", systemImage: "bubble.left.and.bubble.right") }.tag("assistant")
+            }.formStyle(.grouped).tabItem { Label(L10n.text("Assistant"), systemImage: "bubble.left.and.bubble.right") }.tag("assistant")
 
             Form {
                 Section("Local AI server") {
                     Button("Guided Local AI Setup…") { store.showLocalSetup = true }
-                    Picker("Context budget", selection: Binding(get: { store.state.settings.contextTokens }, set: { store.setContextTokens($0) })) {
+                    Picker(L10n.text("Context budget"), selection: Binding(get: { store.state.settings.contextTokens }, set: { value in Task { await store.setContextTokens(value) } })) {
                         Text("4K tokens").tag(4096); Text("8K tokens").tag(8192); Text("16K tokens").tag(16384); Text("32K tokens").tag(32768)
                     }
                     TextField("Server address", text: $address).textFieldStyle(.roundedBorder)
-                    TextField("Model ID (optional)", text: $modelID).textFieldStyle(.roundedBorder)
+                    TextField(L10n.text("Model ID (optional)"), text: $modelID).textFieldStyle(.roundedBorder)
                     SecureField("API key (optional)", text: $key).textFieldStyle(.roundedBorder)
                     Text("Connect a local server with an OpenAI-compatible API, such as Ollama, LM Studio, llama.cpp or Splash. Leave Model ID blank to use the first model listed by the server. Guided setup can test replies and tool calling.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -207,7 +225,7 @@ struct PuddleSettingsView: View {
                     Text("AI requests are restricted to loopback addresses on this Mac. Memory learning follows your Assistant setting. Email and calendar reads supply reference material; optional sends and calendar changes require exact-content review. Reminders wait for your review.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("Local AI", systemImage: "desktopcomputer") }.tag("localAI")
+            }.formStyle(.grouped).tabItem { Label(L10n.text("Local AI"), systemImage: "desktopcomputer") }.tag("localAI")
 
             Form {
                 Section("Optional Google connection") {
@@ -219,16 +237,16 @@ struct PuddleSettingsView: View {
                         Text("\(store.mailConnected ? "Gmail" : "") \(store.calendarConnected ? "Calendar" : "") · read only")
                             .font(.caption).foregroundStyle(.secondary)
                         Button("Manage Permissions…") { showingGoogleSetup = true }
-                        Button("Disconnect Google") { store.disconnect() }
+                        Button(L10n.text("Disconnect Google")) { Task { await store.disconnect() } }
                     } else {
                         Text("Connect Gmail, Calendar, or both when you want Puddle to use them.").foregroundStyle(.secondary)
-                        Button(store.isSigningIn ? "Connecting Google…" : "Connect Google") {
-                            if store.configured { store.connect() } else { showingGoogleSetup = true }
-                        }
+                        Button(store.isSigningIn ? "Connecting Google…" : "Connect Google") { Task {
+                            if store.configured { await store.connect() } else { showingGoogleSetup = true }
+                        } }
                             .disabled(store.isSigningIn)
                         if store.isSigningIn {
                             Text(store.googleSignInStatus).font(.caption).foregroundStyle(.secondary)
-                            Button("Cancel") { store.cancelSignIn() }
+                            Button(L10n.text("Cancel")) { store.cancelSignIn() }
                         }
                     }
                 }
@@ -245,12 +263,12 @@ struct PuddleSettingsView: View {
                     Text("Mail checks use the 50 most recent inbox messages. Chat can search Gmail on demand. Calendar tools read up to 50 upcoming primary-calendar events over at most 14 days.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }.formStyle(.grouped).tabItem { Label("Connections", systemImage: "point.3.connected.trianglepath.dotted") }.tag("connections")
+            }.formStyle(.grouped).tabItem { Label(L10n.text("Connections"), systemImage: "point.3.connected.trianglepath.dotted") }.tag("connections")
 
             WorkspaceBackupView(store: store)
-                .tabItem { Label("Backups", systemImage: "externaldrive") }.tag("backups")
-            PrivacySettingsView(store: store).tabItem { Label("Privacy", systemImage: "lock.shield") }.tag("privacy")
-            ReleaseSettingsView(store: store).tabItem { Label("Updates", systemImage: "arrow.down.circle") }.tag("updates")
+                .tabItem { Label(L10n.text("Backups"), systemImage: "externaldrive") }.tag("backups")
+            PrivacySettingsView(store: store).tabItem { Label(L10n.text("Privacy"), systemImage: "lock.shield") }.tag("privacy")
+            ReleaseSettingsView(store: store).tabItem { Label(L10n.text("Updates"), systemImage: "arrow.down.circle") }.tag("updates")
 
             VStack(alignment: .leading, spacing: 16) {
                 Text("Recent activity").font(.title3).fontWeight(.semibold)

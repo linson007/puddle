@@ -25,9 +25,9 @@ struct GoogleWorkspaceConnectionView: View {
             Text(detail)
         } actions: {
             VStack(spacing: 12) {
-                Button(store.isSigningIn ? "Connecting Google…" : store.connected ? "Manage Google Permissions…" : "Connect Google") {
-                    store.requestGoogleConnection()
-                }.buttonStyle(.borderedProminent).disabled(store.isSigningIn || store.isDisconnecting)
+                Button(store.isSigningIn ? "Connecting Google…" : store.connected ? "Manage Google Permissions…" : "Connect Google") { Task {
+                    await store.requestGoogleConnection()
+                } }.buttonStyle(.borderedProminent).disabled(store.isSigningIn || store.isDisconnecting)
                 if store.isSigningIn {
                     ProgressView(store.googleSignInStatus).controlSize(.small)
                     Button("Cancel sign-in") { store.cancelSignIn() }

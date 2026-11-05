@@ -32,10 +32,10 @@ struct MeetingActionTaskSheet: View {
             if dated { DatePicker("Remind me", selection: $due, in: Date()...) }
             Text("Relative dates are not guessed. Review ownership and choose a time yourself. This creates a local task.").font(.caption).foregroundStyle(.secondary)
             HStack {
-                Spacer(); Button("Cancel") { dismiss() }
-                Button("Add task") {
-                    if store.createTaskFromMeeting(noteID: note.id, actionID: action.id, title: title, dueAt: dated ? due : nil, owner: owner, workflow: workflow) != nil { dismiss() }
-                }.buttonStyle(.borderedProminent).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 300)
+                Spacer(); Button(L10n.text("Cancel")) { dismiss() }
+                Button(L10n.text("Add task")) { Task {
+                    if await store.createTaskFromMeeting(noteID: note.id, actionID: action.id, title: title, dueAt: dated ? due : nil, owner: owner, workflow: workflow) != nil { dismiss() }
+                } }.buttonStyle(.borderedProminent).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 300)
             }
             if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
         }.padding(24).frame(width: 480)

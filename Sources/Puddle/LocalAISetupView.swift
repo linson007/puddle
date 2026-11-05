@@ -16,10 +16,10 @@ struct LocalAISetupView: View {
             HStack {
                 PuddleMark(size: 44)
                 VStack(alignment: .leading) {
-                    Text("Set up local AI").font(.title2.bold())
-                    Text("Connect your preferred local model server.").foregroundStyle(.secondary)
+                    Text(L10n.text("Set up local AI")).font(.title2.bold())
+                    Text(L10n.text("Connect your preferred local model server.")).foregroundStyle(.secondary)
                 }
-                Spacer(); Button("Close") { dismiss() }
+                Spacer(); Button(L10n.text("Close")) { dismiss() }
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 22) {
@@ -45,8 +45,8 @@ struct LocalAISetupView: View {
             Text("Common addresses: Ollama · localhost:11434, LM Studio · localhost:1234, llama.cpp · localhost:8080, Splash · localhost:8000. Include http://; /v1 is optional.").font(.caption).foregroundStyle(.secondary)
             Text("We suggest Splash, but you can use any compatible local provider.").font(.callout).foregroundStyle(.secondary)
             Link("Explore Splash", destination: URL(string: "https://github.com/incoai/splash")!).font(.caption)
-            TextField("Local server address", text: $address).textFieldStyle(.roundedBorder)
-            TextField("Model ID (optional)", text: $modelID).textFieldStyle(.roundedBorder)
+            TextField(L10n.text("Local server address"), text: $address).textFieldStyle(.roundedBorder)
+            TextField(L10n.text("Model ID (optional)"), text: $modelID).textFieldStyle(.roundedBorder)
             Text("Leave Model ID blank to use the first model in /v1/models. Tool use needs a model and server configured for function calling.").font(.caption).foregroundStyle(.secondary)
             SecureField("API key, if required", text: $key).textFieldStyle(.roundedBorder)
             HStack {
@@ -54,7 +54,7 @@ struct LocalAISetupView: View {
                     do { setup.verify(client: try store.setupClient(address: address, key: key, modelID: modelID)) }
                     catch { store.errorMessage = error.localizedDescription }
                 }.disabled(setup.isVerifying || store.demo)
-                if setup.isVerifying { ProgressView().controlSize(.small); Button("Cancel test") { setup.invalidateVerification() } }
+                if setup.isVerifying { ProgressView().controlSize(.small); Button(L10n.text("Cancel test")) { setup.invalidateVerification() } }
             }
             Text("Two synthetic prompts go to your local model. This doesn’t access mail, files, or tasks.").font(.caption).foregroundStyle(.secondary)
             if let result = setup.verification {
@@ -71,7 +71,7 @@ struct LocalAISetupView: View {
                         saving = false; saved = store.errorMessage == nil && store.inferenceModel != nil
                     }
                 }.buttonStyle(.borderedProminent).disabled(saving)
-                if saved { Label("Connection saved. You’re ready to talk to Puddle.", systemImage: "checkmark.circle.fill").foregroundStyle(PuddleStyle.teal) }
+                if saved { Label(L10n.text("Connection saved. You’re ready to talk to Puddle."), systemImage: "checkmark.circle.fill").foregroundStyle(PuddleStyle.teal) }
             }
         }
     }

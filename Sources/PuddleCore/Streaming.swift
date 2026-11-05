@@ -58,7 +58,7 @@ actor CompletionStream {
     func result() throws -> AgentStep {
         guard complete else { throw PuddleError("The model's response stream was incomplete. No pending tools were executed.") }
         let decoded = try calls.keys.sorted().map { index -> AgentToolCall in
-            let call = calls[index]!
+            guard let call = calls[index] else { throw PuddleError("The model returned a missing tool call.") }
             guard !call.id.isEmpty, call.type == "function", !call.name.isEmpty else {
                 throw PuddleError("The model's tool request was incomplete.")
             }

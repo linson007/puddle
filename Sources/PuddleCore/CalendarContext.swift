@@ -10,7 +10,9 @@ public enum CalendarContext {
     }
     public static func encode(_ page: CalendarPage, timezone: TimeZone = .current) throws -> String {
         let data = try JSONEncoder().encode(page)
-        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw PuddleError("Calendar context must encode as an object.")
+        }
         var events = object["events"] as? [[String: Any]] ?? []
         for index in events.indices {
             events[index]["local_start"] = localTime(events[index]["start"] as? String ?? "", timezone: timezone)

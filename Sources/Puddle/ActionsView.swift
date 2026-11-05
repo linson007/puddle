@@ -6,7 +6,7 @@ struct ActionsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Text("Actions").font(.largeTitle.bold())
+                Text(L10n.text("Actions")).font(.largeTitle.bold())
                 Text("Review drafts and inspect what happened. An interrupted action never replays automatically.").foregroundStyle(.secondary)
                 HStack { Button("Compose email") { store.composeMail() }; Button("Propose event") { store.proposeEvent() } }
                 if store.state.actionProposals.isEmpty { ContentUnavailableView("No actions yet", systemImage: "tray", description: Text("Compose an email or propose an event. You review the exact contents before anything changes.")) }
@@ -24,7 +24,7 @@ struct ActionsView: View {
                         HStack {
                             if action.status == .draft {
                                 Button("Edit & Review") { store.editingAction = action }
-                                Button("Discard draft", role: .destructive) { store.discardAction(action.id) }
+                                Button("Discard draft", role: .destructive) { Task { await store.discardAction(action.id) } }
                             }
                             if store.executingActions.contains(action.id) { ProgressView().controlSize(.small) }
                             if store.canUndoCalendarAction(action) { Button("Review Undo…") { store.proposeCalendarUndo(action) } }
@@ -82,18 +82,18 @@ struct ActionEditorView: View {
             if let message = store.errorMessage { Text(message).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             Divider()
             HStack {
-                Button("Cancel") { dismiss() }
-                if !reviewing { Button("Save Draft") { if store.saveAction(proposal) { dismiss() } } }
+                Button(L10n.text("Cancel")) { dismiss() }
+                if !reviewing { Button("Save Draft") { Task { if await store.saveAction(proposal) { dismiss() } } } }
                 Spacer()
                 if reviewing {
                     Button("Back to Edit") { reviewing = false }
-                    Button(executeTitle) {
+                    Button(executeTitle) { Task {
                         let reviewed = proposal
-                        if store.saveAction(reviewed) {
+                        if await store.saveAction(reviewed) {
                             dismiss(); store.section = .actions
                             Task { await store.executeAction(reviewed.id, reviewedDigest: reviewed.digest) }
                         }
-                    }.buttonStyle(.borderedProminent).disabled(store.demo || account.isEmpty)
+                    } }.buttonStyle(.borderedProminent).disabled(store.demo || account.isEmpty)
                 } else {
                     Button("Review Exact Contents") {
                         do { var candidate = proposal; try candidate.authorize(digest: candidate.digest); error = nil; reviewing = true }

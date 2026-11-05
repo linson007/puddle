@@ -24,13 +24,14 @@ private actor BrowserController: CuaBrowserControlling {
     var actions = 0
     var disconnected = false
     var delay = false
+    let gate = AsyncTestGate()
     var failAfterDispatch = false
     func configure(delay: Bool = false, failAfterDispatch: Bool = false) { self.delay = delay; self.failAfterDispatch = failAfterDispatch }
     func connect(executable: URL) async throws -> CuaBrowserPage { page() }
     func observe(tabID: String, query: String) async throws -> CuaBrowserPage { page() }
     func act(_ action: CuaBrowserAction) async throws -> CuaBrowserPage {
         actions += 1
-        if delay { try? await Task.sleep(for: .milliseconds(100)) }
+        if delay { await gate.pause() }
         if failAfterDispatch { throw PuddleError("Action may have happened; read before retrying") }
         return page()
     }
@@ -80,17 +81,17 @@ private actor BrowserModel: HTTPTransport {
         let disk = BrowserDisk(), controller = BrowserController(), store = store(disk, controller: controller)
         await store.start(); await store.browserWorkspace.connect(path: "/fixture/cua-driver")
         let job = BrowserErrand(goal: "Find the fixture")
-        try store.commit { $0.browserErrands = [job] }
+        try await store.commit { $0.browserErrands = [job] }
         await store.verifyBrowserErrand(job.id, quote: "Invented confirmation")
         XCTAssertEqual(store.state.browserErrands.first?.status, .ready)
         await store.verifyBrowserErrand(job.id, quote: "Fixture browser page")
         XCTAssertEqual(store.state.browserErrands.first?.status, .completed)
         XCTAssertEqual(store.state.browserErrands.first?.evidence, "Fixture browser page")
-        try store.commit { $0.browserErrands[0].status = .running }
+        try await store.commit { $0.browserErrands[0].status = .running }
         let restarted = self.store(disk, controller: BrowserController()); await restarted.start()
         XCTAssertEqual(restarted.state.browserErrands.first?.status, .paused)
         XCTAssertFalse(restarted.browserWorkspace.isConnected)
-        store.suspendConnectionWork(); restarted.suspendConnectionWork(); store.browserWorkspace.stop()
+        await store.suspendConnectionWork(); await restarted.suspendConnectionWork(); store.browserWorkspace.stop()
     }
 
     func testBrowserToolsRequireExplicitLiveSessionAndDemoRevokesIt() async throws {
@@ -100,7 +101,7 @@ private actor BrowserModel: HTTPTransport {
         XCTAssertTrue(store.availableTools.contains(.browserState)); XCTAssertTrue(store.availableTools.contains(.browserNavigate))
         XCTAssertTrue(store.availableTools.contains(.browserScroll))
         XCTAssertFalse(store.availableTools.contains(.browserClick)); XCTAssertFalse(store.availableTools.contains(.browserType))
-        store.enterDemo()
+        await store.enterDemo()
         XCTAssertFalse(store.availableTools.contains(.browserState)); XCTAssertFalse(store.browserWorkspace.isConnected)
         let restarted = self.store(controller: BrowserController()); await restarted.start()
         XCTAssertFalse(restarted.availableTools.contains(.browserState))
@@ -108,7 +109,7 @@ private actor BrowserModel: HTTPTransport {
     func testFailedErrandSaveRejectsRequestWithoutStartingModelAndCanRetry() async throws {
         let disk = BrowserDisk(), controller = BrowserController(), subject = store(disk, controller: controller)
         await subject.start(); await subject.browserWorkspace.connect(path: "/fixture/cua-driver")
-        defer { subject.stopAI(); subject.suspendConnectionWork(); subject.browserWorkspace.stop() }
+        defer { subject.browserWorkspace.stop(); Task { await subject.stopAI(); await subject.suspendConnectionWork() } }
         disk.failWrite = true
         let rejected = await subject.startBrowserErrand("Retain this synthetic browser goal")
         XCTAssertFalse(rejected); XCTAssertTrue(subject.state.browserErrands.isEmpty)
@@ -124,41 +125,41 @@ private actor BrowserModel: HTTPTransport {
     func testActionWaitsForApprovalAndRetryReadsInsteadOfRepeating() async throws {
         let controller = BrowserController(), store = store(controller: controller); await store.start()
         await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-        store.ask("Open a page in my browser")
+        await store.ask("Open a page in my browser")
         try await wait { store.pendingApproval != nil }
         let before = await controller.actions; XCTAssertEqual(before, 0)
         XCTAssertTrue(store.pendingApproval?.detail.contains("https://example.test/") == true)
         store.resolveApproval(true); try await wait { !store.isThinking }
         let after = await controller.actions; XCTAssertEqual(after, 1)
         XCTAssertEqual(store.state.chat.first(where: { $0.role == "user" })?.receipts?.first?.status, "completed")
-        store.retryLastQuestion(); try await wait { !store.isThinking }
+        await store.retryLastQuestion(); try await wait { !store.isThinking }
         let retried = await controller.actions; XCTAssertEqual(retried, 1)
         XCTAssertNil(store.pendingApproval)
         XCTAssertTrue(store.state.chat.first(where: { $0.role == "user" })?.receipts?.contains { $0.tool == "read_browser_page" } == true)
     }
     func testPausedErrandCannotReuseAnEarlierUnrelatedAssistantReply() async throws {
         let controller = BrowserController(), store = store(controller: controller); await store.start()
-        try store.commit { $0.chat = [ChatLine(role: "assistant", content: "Unrelated earlier daily brief")] }
+        try await store.commit { $0.chat = [ChatLine(role: "assistant", content: "Unrelated earlier daily brief")] }
         await store.browserWorkspace.connect(path: "/fixture/cua-driver")
         await store.startBrowserErrand("Open a synthetic page")
         try await wait { store.pendingApproval != nil }
-        store.stopAI()
+        await store.stopAI()
         let job = try XCTUnwrap(store.state.browserErrands.first)
         XCTAssertEqual(job.status, .paused)
         XCTAssertEqual(job.latestProgress, "Paused. Inspect the browser before continuing.")
         XCTAssertFalse(job.latestProgress.contains("daily brief"))
-        store.browserWorkspace.stop(); store.suspendConnectionWork()
+        store.browserWorkspace.stop(); await store.suspendConnectionWork()
     }
     func testGuessedBrowserTargetNeverReachesApprovalOrDispatch() async throws {
         for ref in ["textbox Test note", "p1:button"] {
         let controller = BrowserController(), model = BrowserModel(); await model.requestTyping(ref: ref)
         let store = store(controller: controller, model: model); await store.start()
         await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-        store.ask("Type into the test field"); try await wait { !store.isThinking }
+        await store.ask("Type into the test field"); try await wait { !store.isThinking }
         XCTAssertNil(store.pendingApproval)
         let actions = await controller.actions; XCTAssertEqual(actions, 0)
         XCTAssertFalse(store.state.chat.flatMap { $0.receipts ?? [] }.contains { $0.status == "pending" })
-        store.browserWorkspace.stop(); store.suspendConnectionWork()
+        store.browserWorkspace.stop(); await store.suspendConnectionWork()
         }
     }
     func testLegacyTypingErrandCannotReachApprovalOrDispatchOnContinueOrRetry() async throws {
@@ -170,7 +171,7 @@ private actor BrowserModel: HTTPTransport {
         XCTAssertEqual(store.state.chat.first { $0.role == "user" }?.visibleText, "Type a local test")
         let job = try XCTUnwrap(store.state.browserErrands.first)
         await store.continueBrowserErrand(job.id); try await wait { !store.isThinking }
-        store.retryLastQuestion(); try await wait { !store.isThinking }
+        await store.retryLastQuestion(); try await wait { !store.isThinking }
         XCTAssertNil(store.pendingApproval)
         let actions = await controller.actions; XCTAssertEqual(actions, 0)
         XCTAssertFalse(store.state.chat.flatMap { $0.receipts ?? [] }.contains { $0.status == "pending" })
@@ -181,14 +182,14 @@ private actor BrowserModel: HTTPTransport {
             let names = tools.compactMap { ($0["function"] as? [String: Any])?["name"] as? String }
             XCTAssertFalse(names.contains("click_browser_element")); XCTAssertFalse(names.contains("type_in_browser"))
         }
-        store.browserWorkspace.stop(); store.suspendConnectionWork()
+        store.browserWorkspace.stop(); await store.suspendConnectionWork()
     }
     func testHostileClickCallAndDirectWorkspaceWritesAreBlocked() async throws {
         for serialized in [false, true] {
         let controller = BrowserController(), model = BrowserModel(); await model.requestClick(ref: "p1:button", serialized: serialized)
         let store = store(controller: controller, model: model); await store.start()
         await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-        store.ask("Click the changed target"); try await wait { !store.isThinking }
+        await store.ask("Click the changed target"); try await wait { !store.isThinking }
         XCTAssertNil(store.pendingApproval)
         for action in [CuaBrowserAction.click("p1:button"), .type(ref: "p1:field", text: "synthetic password", replace: true)] {
             do { _ = try await store.browserWorkspace.act(action); XCTFail("Injected controller received a deferred action") }
@@ -200,7 +201,7 @@ private actor BrowserModel: HTTPTransport {
         _ = try await store.browserWorkspace.observe()
         _ = try await store.browserWorkspace.act(.navigate("https://example.test/"))
         let allowedCount = await controller.actions; XCTAssertEqual(allowedCount, 1)
-        store.browserWorkspace.stop(); store.suspendConnectionWork()
+        store.browserWorkspace.stop(); await store.suspendConnectionWork()
         }
     }
     func testHistoricalWriteReceiptsRemainReadableAndRetryOnlyReads() async throws {
@@ -211,19 +212,19 @@ private actor BrowserModel: HTTPTransport {
             disk.state.chat = [user]
             let store = store(disk, controller: controller); await store.start()
             await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-            store.retryLastQuestion(); try await wait { !store.isThinking }
+            await store.retryLastQuestion(); try await wait { !store.isThinking }
             XCTAssertNil(store.pendingApproval)
             let count = await controller.actions; XCTAssertEqual(count, 0)
             XCTAssertTrue(store.state.chat.first?.receipts?.contains { $0.id == "old-write" && $0.tool == tool.rawValue } == true)
             XCTAssertTrue(store.state.chat.first?.receipts?.contains { $0.tool == AgentTool.browserState.rawValue } == true)
-            store.browserWorkspace.stop(); store.suspendConnectionWork()
+            store.browserWorkspace.stop(); await store.suspendConnectionWork()
         }
     }
     func testDeclineAndFailedIntentSaveNeverOperateBrowser() async throws {
         for failSave in [false, true] {
             let disk = BrowserDisk(), controller = BrowserController(), store = store(disk, controller: controller); await store.start()
             await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-            store.ask("Open a page in my browser"); try await wait { store.pendingApproval != nil }
+            await store.ask("Open a page in my browser"); try await wait { store.pendingApproval != nil }
             disk.failWrite = failSave; store.resolveApproval(failSave)
             try await wait { !store.isThinking }
             let count = await controller.actions; XCTAssertEqual(count, 0)
@@ -233,26 +234,27 @@ private actor BrowserModel: HTTPTransport {
         let controller = BrowserController(); await controller.configure(failAfterDispatch: true)
         let store = store(controller: controller); await store.start()
         await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-        store.ask("Open a page in my browser"); try await wait { store.pendingApproval != nil }
+        await store.ask("Open a page in my browser"); try await wait { store.pendingApproval != nil }
         store.resolveApproval(true); try await wait { !store.isThinking }
         XCTAssertEqual(store.state.chat.first(where: { $0.role == "user" })?.receipts?.first?.status, "unverified")
-        store.retryLastQuestion(); try await wait { !store.isThinking }
+        await store.retryLastQuestion(); try await wait { !store.isThinking }
         let count = await controller.actions; XCTAssertEqual(count, 1); XCTAssertNil(store.pendingApproval)
     }
     func testStopAndProfileSwitchCancelApprovalAndLateBrowserResult() async throws {
         let controller = BrowserController(), store = store(controller: controller); await store.start()
         await store.browserWorkspace.connect(path: "/fixture/cua-driver")
-        store.ask("Open a page in my browser"); try await wait { store.pendingApproval != nil }
-        store.chooseDeveloperProfile()
+        await store.ask("Open a page in my browser"); try await wait { store.pendingApproval != nil }
+        await store.chooseDeveloperProfile()
         XCTAssertNil(store.pendingApproval)
         let before = await controller.actions; XCTAssertEqual(before, 0)
 
         await controller.configure(delay: true)
-        store.ask("Open a page now"); try await wait { store.pendingApproval != nil }
+        await store.ask("Open a page now"); try await wait { store.pendingApproval != nil }
         store.resolveApproval(true)
-        try await wait { store.browserWorkspace.isBusy }
-        store.stopAI(); store.browserWorkspace.stop()
-        try await Task.sleep(for: .milliseconds(140))
+        await fulfillment(of: [controller.gate.entered], timeout: 5)
+        let turn = store.aiTask
+        await store.stopAI(); store.browserWorkspace.stop()
+        await controller.gate.release(); await turn?.value
         XCTAssertFalse(store.browserWorkspace.isConnected); XCTAssertNil(store.browserWorkspace.page)
         XCTAssertFalse(store.isThinking)
         XCTAssertEqual(store.state.chat.last?.role, "user")

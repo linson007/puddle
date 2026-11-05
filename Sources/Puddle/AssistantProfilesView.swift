@@ -7,7 +7,7 @@ struct ProfileSwitcher: View {
     var body: some View {
         Menu {
             ForEach(store.state.profileLibrary.profiles) { profile in
-                Button { store.switchAssistantProfile(profile.id) } label: {
+                Button { Task { await store.switchAssistantProfile(profile.id) } } label: {
                     Label(profile.title, systemImage: profile.id == store.state.profileLibrary.activeID ? "checkmark" : profile.kind.icon)
                 }
             }
@@ -55,7 +55,7 @@ struct AssistantProfilesView: View {
                         Button { newProfile(kind) } label: { Label(kind.title, systemImage: kind.icon) }
                     }
                 }
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(L10n.text("Done")) { dismiss() }.keyboardShortcut(.cancelAction)
             }
             Text("Each profile has its own role, work context and guidance. Chats, memories, tasks, meetings and connections are shared. Switching stops the current reply.")
                 .font(.callout).foregroundStyle(.secondary)
@@ -76,12 +76,12 @@ struct AssistantProfilesView: View {
                                 }
                             }.frame(maxWidth: .infinity, alignment: .leading)
                             VStack(alignment: .trailing, spacing: 8) {
-                                Button(profile.id == store.state.profileLibrary.activeID ? "Selected" : "Use Profile") { store.switchAssistantProfile(profile.id) }
+                                Button(profile.id == store.state.profileLibrary.activeID ? "Selected" : "Use Profile") { Task { await store.switchAssistantProfile(profile.id) } }
                                     .disabled(profile.id == store.state.profileLibrary.activeID)
                                 HStack {
                                     Button("Edit") { editing = ProfileEditorRequest(profile: profile, isNew: false) }.buttonStyle(.link)
                                     Menu {
-                                        Button("Duplicate") { store.duplicateAssistantProfile(profile.id) }
+                                        Button("Duplicate") { Task { await store.duplicateAssistantProfile(profile.id) } }
                                         Button("Remove…", role: .destructive) { deleting = profile; confirmingDelete = true }
                                             .disabled(profile.id == store.state.profileLibrary.activeID || store.state.profileLibrary.profiles.count <= 1)
                                     } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 22)
@@ -98,8 +98,8 @@ struct AssistantProfilesView: View {
         }.padding(26).frame(width: 720, height: 610)
             .sheet(item: $editing) { request in AssistantProfileEditor(store: store, profile: request.profile, isNew: request.isNew) }
             .confirmationDialog("Remove \(deleting?.title ?? "this profile")?", isPresented: $confirmingDelete, titleVisibility: .visible) {
-                Button("Remove Profile", role: .destructive) { if let deleting { store.deleteAssistantProfile(deleting.id) } }
-                Button("Cancel", role: .cancel) {}
+                Button("Remove Profile", role: .destructive) { Task { if let deleting { await store.deleteAssistantProfile(deleting.id) } } }
+                Button(L10n.text("Cancel"), role: .cancel) {}
             } message: { Text("This removes only the role configuration. Shared chats, memories and work remain available.") }
     }
     private func newProfile(_ kind: AssistantProfileKind) {
@@ -139,10 +139,10 @@ struct AssistantProfileEditor: View {
             if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             HStack {
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button(isNew ? "Create & Use Profile" : "Save Profile") {
-                    if store.saveAssistantProfile(draft, isNew: isNew) { dismiss() }
-                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
+                Button(L10n.text("Cancel")) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button(isNew ? "Create & Use Profile" : "Save Profile") { Task {
+                    if await store.saveAssistantProfile(draft, isNew: isNew) { dismiss() }
+                } }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(26).frame(width: 590, height: 610)

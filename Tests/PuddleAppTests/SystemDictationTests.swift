@@ -39,7 +39,7 @@ import PuddleCore
         XCTAssertTrue(target.inserted.isEmpty); XCTAssertFalse(controller.retainedText.isEmpty)
         XCTAssertTrue(controller.status.contains("Focus changed")); controller.stop()
     }
-    func testUnavailablePermissionsAndCapturePolicyBlockRecording() {
+    func testUnavailablePermissionsAndCapturePolicyBlockRecording() async {
         let capture = DictationFixtureCapture(), target = DictationFixtureTarget(); target.isAuthorized = false
         let controller = SystemDictationController(capture: capture, target: target, displaysOverlay: false)
         var settings = PuddleSettings(); settings.systemDictationEnabled = true

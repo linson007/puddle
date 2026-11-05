@@ -51,7 +51,7 @@ private actor IncorrectBriefingHTTP: HTTPTransport {
         disk.snapshot.tasks = [AssistantTask(title: "Alex will review the release checklist by Friday.")]
         disk.snapshot.calendarEvents = [CalendarEvent(id: "review", title: "UI test review", start: "2026-10-30T14:00:00+05:30", end: "2026-10-30T14:30:00+05:30")]
         let store = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: http, reminderScheduler: Scheduler())
-        await store.start(); store.runRoutineNow(routine.id, now: now)
+        await store.start(); await store.runRoutineNow(routine.id, now: now)
         for _ in 0..<200 where store.routineTask != nil { try await Task.sleep(for: .milliseconds(5)) }
         let run = try XCTUnwrap(store.state.routineRuns.first)
         XCTAssertEqual(run.status, .completed)
@@ -71,7 +71,7 @@ private actor IncorrectBriefingHTTP: HTTPTransport {
         let disk = RoutineDisk(), http = RoutineHTTP(), now = Date()
         var routine = AssistantRoutine(); routine.enabled = true; routine.nextRunAt = now.addingTimeInterval(-60); disk.snapshot.routines = [routine]
         let store = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: http, reminderScheduler: Scheduler())
-        await store.start(); store.processRoutines(now: now); store.processRoutines(now: now)
+        await store.start(); await store.processRoutines(now: now); await store.processRoutines(now: now)
         for _ in 0..<200 where store.routineTask != nil { try await Task.sleep(for: .milliseconds(5)) }
         XCTAssertEqual(store.state.routineRuns.count, 1); XCTAssertEqual(store.state.routineRuns.first?.status, .completed)
         XCTAssertGreaterThan(store.state.routines[0].nextRunAt ?? .distantPast, now)
@@ -81,7 +81,7 @@ private actor IncorrectBriefingHTTP: HTTPTransport {
         let disk = RoutineDisk(), http = RoutineHTTP(), now = Date()
         var routine = AssistantRoutine(); routine.enabled = true; routine.nextRunAt = now.addingTimeInterval(-86400); disk.snapshot.routines = [routine]
         let store = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: http, reminderScheduler: Scheduler())
-        await store.start(); store.processRoutines(now: now)
+        await store.start(); await store.processRoutines(now: now)
         XCTAssertEqual(store.state.routineRuns.first?.status, .missed)
         let count = await http.generations; XCTAssertEqual(count, 0)
     }

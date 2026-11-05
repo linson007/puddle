@@ -26,7 +26,7 @@ final class LoopbackSignIn {
         self.flow = flow
         let redirect = try await start()
         timeout = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(180)) } catch { return }
+            do { try await Task.sleep(for: .seconds(180)) } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); return }
             self?.finish(.failure(PuddleError("Google sign-in timed out. Connect again when you’re ready.")))
         }
         defer { timeout?.cancel(); listener?.cancel(); listener = nil }
@@ -53,7 +53,7 @@ final class LoopbackSignIn {
             let configuration = NSWorkspace.OpenConfiguration()
             configuration.activates = true
             _ = try await NSWorkspace.shared.open([url], withApplicationAt: safari, configuration: configuration)
-        } catch {
+        } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error);
             throw PuddleError("Safari could not open Google sign-in. Please try again, or choose Default browser in Settings → Connections.")
         }
     }
@@ -121,7 +121,7 @@ final class LoopbackSignIn {
                     let code = try flow.code(from: url)
                     self.respond(connection, success: true)
                     self.finish(.success(code))
-                } catch {
+                } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error);
                     self.respond(connection, success: false)
                     self.finish(.failure(error))
                 }

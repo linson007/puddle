@@ -88,7 +88,8 @@ final class GoogleMeetCleanupTests: XCTestCase {
     func testCancellationWhileCreatingTabWaitsForIdentityAndClosesItWithoutNavigating() async throws {
         let chrome = CleanupChrome(); await chrome.pauseCreation()
         let session = GoogleMeetBrowserSession(connection: chrome)
-        let opening = Task { try await session.open(link: link()) }
+        let destination = try link()
+        let opening = Task { try await session.open(link: destination) }
         for _ in 0..<300 {
             if await chrome.creationGate != nil { break }
             try await Task.sleep(for: .milliseconds(2))

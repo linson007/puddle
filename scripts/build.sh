@@ -31,6 +31,11 @@ mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources"
 binary_stage="$app_bundle/Contents/MacOS/.Puddle.$$"
 install -m 755 "$binary_dir/Puddle" "$binary_stage"
 mv -f "$binary_stage" "$app_bundle/Contents/MacOS/Puddle"
+# SwiftPM localization bundles must travel with the app executable.
+for resources in "$binary_dir"/Puddle_*.bundle; do
+    [ -d "$resources" ] || continue
+    ditto "$resources" "$app_bundle/Contents/Resources/$(basename "$resources")"
+done
 cp "$repo_root/app/Info.plist" "$app_bundle/Contents/Info.plist"
 swift -module-cache-path "$repo_root/.build/module-cache" "$repo_root/scripts/ConfigureBundle.swift" "$app_bundle/Contents/Info.plist"
 if [ -n "$google_client" ]; then

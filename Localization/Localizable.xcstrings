@@ -1,0 +1,2165 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "30 days": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 days"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 gün"
+          }
+        }
+      }
+    },
+    "90 days": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90 days"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "90 gün"
+          }
+        }
+      }
+    },
+    "Account": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hesap"
+          }
+        }
+      }
+    },
+    "Actions": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actions"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İşlemler"
+          }
+        }
+      }
+    },
+    "Add task": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add task"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görev ekle"
+          }
+        }
+      }
+    },
+    "App lock": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App lock"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulama kilidi"
+          }
+        }
+      }
+    },
+    "Archive retention": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Archive retention"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arşiv saklama"
+          }
+        }
+      }
+    },
+    "Assistant": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Assistant"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asistan"
+          }
+        }
+      }
+    },
+    "Audio source": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Audio source"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses kaynağı"
+          }
+        }
+      }
+    },
+    "Authenticating…": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authenticating…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kimlik doğrulanıyor…"
+          }
+        }
+      }
+    },
+    "Availability": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Availability"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kullanılabilirlik"
+          }
+        }
+      }
+    },
+    "Backups": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backups"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yedekler"
+          }
+        }
+      }
+    },
+    "Browser": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarayıcı"
+          }
+        }
+      }
+    },
+    "Calendar": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calendar"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Takvim"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal"
+          }
+        }
+      }
+    },
+    "Cancel test": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cancel test"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Testi iptal et"
+          }
+        }
+      }
+    },
+    "Capture a commitment": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capture a commitment"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir taahhüt ekle"
+          }
+        }
+      }
+    },
+    "Choose meeting notes": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose meeting notes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toplantı notlarını seç"
+          }
+        }
+      }
+    },
+    "Close": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapat"
+          }
+        }
+      }
+    },
+    "Completed": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tamamlanan"
+          }
+        }
+      }
+    },
+    "Connect Google": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect Google"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google’a bağlan"
+          }
+        }
+      }
+    },
+    "Connect local AI": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect local AI"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel yapay zekâyı bağla"
+          }
+        }
+      }
+    },
+    "Connect your preferred local model server.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect your preferred local model server."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tercih ettiğiniz yerel model sunucusuna bağlanın."
+          }
+        }
+      }
+    },
+    "Connection saved. You’re ready to talk to Puddle.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection saved. You’re ready to talk to Puddle."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı kaydedildi. Puddle ile konuşmaya hazırsınız."
+          }
+        }
+      }
+    },
+    "Connections": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connections"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantılar"
+          }
+        }
+      }
+    },
+    "Context budget": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Context budget"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlam sınırı"
+          }
+        }
+      }
+    },
+    "Copy": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopyala"
+          }
+        }
+      }
+    },
+    "Delete": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sil"
+          }
+        }
+      }
+    },
+    "Delete…": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sil…"
+          }
+        }
+      }
+    },
+    "Demo mode": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo mode"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo modu"
+          }
+        }
+      }
+    },
+    "Developer": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Developer"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geliştirici"
+          }
+        }
+      }
+    },
+    "Disconnect Google": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnect Google"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google bağlantısını kes"
+          }
+        }
+      }
+    },
+    "Dismiss": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapat"
+          }
+        }
+      }
+    },
+    "Dismiss error": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dismiss error"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hatayı kapat"
+          }
+        }
+      }
+    },
+    "Done": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitti"
+          }
+        }
+      }
+    },
+    "Due date": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Due date"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son tarih"
+          }
+        }
+      }
+    },
+    "Edit…": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Düzenle…"
+          }
+        }
+      }
+    },
+    "End Private Session": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End Private Session"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gizli oturumu bitir"
+          }
+        }
+      }
+    },
+    "End Session": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End Session"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturumu bitir"
+          }
+        }
+      }
+    },
+    "Exit demo": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit demo"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demodan çık"
+          }
+        }
+      }
+    },
+    "External connections": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "External connections"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Harici bağlantılar"
+          }
+        }
+      }
+    },
+    "General": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genel"
+          }
+        }
+      }
+    },
+    "Generate Summary": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Generate Summary"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özet oluştur"
+          }
+        }
+      }
+    },
+    "Google account": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google account"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google hesabı"
+          }
+        }
+      }
+    },
+    "History": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "History"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geçmiş"
+          }
+        }
+      }
+    },
+    "Install speech language": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Install speech language"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma dilini yükle"
+          }
+        }
+      }
+    },
+    "Keep archived conversations": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep archived conversations"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arşivlenen sohbetleri sakla"
+          }
+        }
+      }
+    },
+    "Knowledge": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Knowledge"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilgi"
+          }
+        }
+      }
+    },
+    "Loading saved workspace…": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading saved workspace…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedilmiş çalışma alanı yükleniyor…"
+          }
+        }
+      }
+    },
+    "Local AI": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local AI"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel Yapay Zekâ"
+          }
+        }
+      }
+    },
+    "Local AI connected": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local AI connected"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel yapay zekâ bağlı"
+          }
+        }
+      }
+    },
+    "Local meeting notes": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local meeting notes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel toplantı notları"
+          }
+        }
+      }
+    },
+    "Local model": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local model"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel model"
+          }
+        }
+      }
+    },
+    "Local server address": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local server address"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel sunucu adresi"
+          }
+        }
+      }
+    },
+    "Lock Puddle": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lock Puddle"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle’ı kilitle"
+          }
+        }
+      }
+    },
+    "Mail": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mail"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Posta"
+          }
+        }
+      }
+    },
+    "Main": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Main"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ana"
+          }
+        }
+      }
+    },
+    "Meetings": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meetings"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toplantılar"
+          }
+        }
+      }
+    },
+    "Memory": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memory"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bellek"
+          }
+        }
+      }
+    },
+    "Message Puddle": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message Puddle"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle’a mesaj yaz"
+          }
+        }
+      }
+    },
+    "Message Puddle…": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Message Puddle…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle’a mesaj yaz…"
+          }
+        }
+      }
+    },
+    "Model ID (optional)": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model ID (optional)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model kimliği (isteğe bağlı)"
+          }
+        }
+      }
+    },
+    "More": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diğer"
+          }
+        }
+      }
+    },
+    "New conversation": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New conversation"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni sohbet"
+          }
+        }
+      }
+    },
+    "New task": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New task"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni görev"
+          }
+        }
+      }
+    },
+    "No compatible on-device audio format is available.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No compatible on-device audio format is available."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aygıtta uyumlu bir ses biçimi bulunamadı."
+          }
+        }
+      }
+    },
+    "No speech was detected.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No speech was detected."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma algılanmadı."
+          }
+        }
+      }
+    },
+    "Notes": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notlar"
+          }
+        }
+      }
+    },
+    "One year": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One year"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir yıl"
+          }
+        }
+      }
+    },
+    "Open": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Açık"
+          }
+        }
+      }
+    },
+    "Open Login Items": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Login Items"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giriş öğelerini aç"
+          }
+        }
+      }
+    },
+    "Open Puddle at login": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Puddle at login"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oturum açıldığında Puddle’ı aç"
+          }
+        }
+      }
+    },
+    "Owner": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Owner"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorumlu"
+          }
+        }
+      }
+    },
+    "Priority": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Priority"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Öncelik"
+          }
+        }
+      }
+    },
+    "Privacy": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gizlilik"
+          }
+        }
+      }
+    },
+    "Private by default": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private by default"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Varsayılan olarak gizli"
+          }
+        }
+      }
+    },
+    "Private session": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private session"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gizli oturum"
+          }
+        }
+      }
+    },
+    "Puddle": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle"
+          }
+        }
+      }
+    },
+    "Puddle is locked": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle is locked"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle kilitli"
+          }
+        }
+      }
+    },
+    "Quick meeting notes": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quick meeting notes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hızlı toplantı notları"
+          }
+        }
+      }
+    },
+    "Read aloud": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read aloud"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesli oku"
+          }
+        }
+      }
+    },
+    "Read new replies aloud": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Read new replies aloud"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni yanıtları sesli oku"
+          }
+        }
+      }
+    },
+    "Retry Loading State": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Loading State"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedilmiş verileri yeniden yükle"
+          }
+        }
+      }
+    },
+    "Retry last message": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry last message"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son mesajı yeniden dene"
+          }
+        }
+      }
+    },
+    "Review Recovered Transcript": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Recovered Transcript"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurtarılan metni incele"
+          }
+        }
+      }
+    },
+    "Routines": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Routines"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rutinler"
+          }
+        }
+      }
+    },
+    "Save": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydet"
+          }
+        }
+      }
+    },
+    "Save Notes": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Notes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notları kaydet"
+          }
+        }
+      }
+    },
+    "Save Preferences": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Preferences"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tercihleri kaydet"
+          }
+        }
+      }
+    },
+    "Save changes": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save changes"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Değişiklikleri kaydet"
+          }
+        }
+      }
+    },
+    "Save connection": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save connection"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı kaydet"
+          }
+        }
+      }
+    },
+    "Save task": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save task"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görevi kaydet"
+          }
+        }
+      }
+    },
+    "Saved state is unavailable. Retry loading it in Settings before making changes.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved state is unavailable. Retry loading it in Settings before making changes."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedilmiş veriler kullanılamıyor. Değişiklik yapmadan önce Ayarlar’dan yeniden yüklemeyi deneyin."
+          }
+        }
+      }
+    },
+    "Saved state is unavailable. Retry loading it in Settings.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved state is unavailable. Retry loading it in Settings."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedilmiş veriler kullanılamıyor. Ayarlar’dan yeniden yüklemeyi deneyin."
+          }
+        }
+      }
+    },
+    "Search": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ara"
+          }
+        }
+      }
+    },
+    "Search anything": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search anything"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Her yerde ara"
+          }
+        }
+      }
+    },
+    "Search tasks": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search tasks"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görevlerde ara"
+          }
+        }
+      }
+    },
+    "Search transcript": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search transcript"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma metninde ara"
+          }
+        }
+      }
+    },
+    "Search workspace and commands": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search workspace and commands"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışma alanında ve komutlarda ara"
+          }
+        }
+      }
+    },
+    "Send message": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send message"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mesajı gönder"
+          }
+        }
+      }
+    },
+    "Set up local AI": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up local AI"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel yapay zekâyı ayarla"
+          }
+        }
+      }
+    },
+    "Settings": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar"
+          }
+        }
+      }
+    },
+    "Speaking speed": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Speaking speed"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konuşma hızı"
+          }
+        }
+      }
+    },
+    "Start Local Transcription": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start Local Transcription"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yerel transkripsiyonu başlat"
+          }
+        }
+      }
+    },
+    "Start Private Session": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start Private Session"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gizli oturum başlat"
+          }
+        }
+      }
+    },
+    "Start voice input": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start voice input"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesli girişi başlat"
+          }
+        }
+      }
+    },
+    "Stop & Save Transcript": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop & Save Transcript"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durdur ve metni kaydet"
+          }
+        }
+      }
+    },
+    "Stop reading": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop reading"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Okumayı durdur"
+          }
+        }
+      }
+    },
+    "Stop voice input": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop voice input"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesli girişi durdur"
+          }
+        }
+      }
+    },
+    "Storage": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Storage"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Depolama"
+          }
+        }
+      }
+    },
+    "Tasks": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasks"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Görevler"
+          }
+        }
+      }
+    },
+    "Test connection": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Test connection"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı test et"
+          }
+        }
+      }
+    },
+    "The request has no valid host.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The request has no valid host."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İstek geçerli bir sunucu içermiyor."
+          }
+        }
+      }
+    },
+    "The service returned an unreadable response.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The service returned an unreadable response."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hizmet okunamayan bir yanıt döndürdü."
+          }
+        }
+      }
+    },
+    "The workspace key is missing from Keychain. Unlock your login keychain or restore a portable backup; encrypted files were preserved.": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The workspace key is missing from Keychain. Unlock your login keychain or restore a portable backup; encrypted files were preserved."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışma alanı anahtarı Anahtar Zinciri’nde bulunamadı. Oturum anahtar zincirinin kilidini açın veya taşınabilir bir yedeği geri yükleyin; şifrelenmiş dosyalar korundu."
+          }
+        }
+      }
+    },
+    "Title": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Title"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlık"
+          }
+        }
+      }
+    },
+    "Today": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Today"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bugün"
+          }
+        }
+      }
+    },
+    "Unlock with macOS": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock with macOS"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS ile kilidi aç"
+          }
+        }
+      }
+    },
+    "Until I delete them": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Until I delete them"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ben silene kadar"
+          }
+        }
+      }
+    },
+    "Updates": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Güncellemeler"
+          }
+        }
+      }
+    },
+    "Use as draft": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use as draft"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Taslak olarak kullan"
+          }
+        }
+      }
+    },
+    "Voice": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses"
+          }
+        }
+      }
+    },
+    "Voice language": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voice language"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ses dili"
+          }
+        }
+      }
+    },
+    "Waiting on": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting on"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekleyen"
+          }
+        }
+      }
+    },
+    "Work": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Work"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İş"
+          }
+        }
+      }
+    },
+    "Work Context": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Work Context"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İş Bağlamı"
+          }
+        }
+      }
+    },
+    "Workspace": {
+      "comment": "Primary interface or recovery message. English is the stable lookup key.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışma Alanı"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

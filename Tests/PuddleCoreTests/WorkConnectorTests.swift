@@ -71,7 +71,7 @@ private actor WorkHTTP: HTTPTransport {
             if String(decoding: request.httpBody!, as: UTF8.self).contains("grant_type=refresh_token") {
                 refreshStarted = true
                 if holdRefresh { await withCheckedContinuation { refreshWaiter = $0 } }
-                else { try await Task.sleep(for: .milliseconds(30)) }
+
                 return try response(request, ["access_token": "rotated-access", "refresh_token": "rotated-refresh", "token_type": "Bearer", "expires_in": 3600])
             }
             return try response(request, ["access_token": "fixture-access", "refresh_token": "fixture-refresh", "token_type": "Bearer", "expires_in": 3600])

@@ -6,7 +6,7 @@ public enum DictationCleanup {
         for key in replacements.keys.sorted(by: { $0.count > $1.count }) where !key.isEmpty {
             let pattern = "(?i)(?<![\\p{L}\\p{N}_])" + NSRegularExpression.escapedPattern(for: key) + "(?![\\p{L}\\p{N}_])"
             guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
-            result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: NSRegularExpression.escapedTemplate(for: replacements[key]!))
+            result = regex.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: NSRegularExpression.escapedTemplate(for: replacements[key, default: key]))
         }
         if punctuation, !result.isEmpty {
             result = result.prefix(1).uppercased() + result.dropFirst()

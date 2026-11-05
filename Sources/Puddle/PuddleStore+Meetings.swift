@@ -4,7 +4,7 @@ import PuddleCore
 import UniformTypeIdentifiers
 
 extension PuddleStore {
-    @discardableResult func createMeetingNote(event: CalendarEvent? = nil) -> UUID? {
+    @discardableResult func createMeetingNote(event: CalendarEvent? = nil) async -> UUID? {
         if let event, let existing = state.meetings.first(where: { $0.calendarEventID == event.id }) {
             meetingWorkspace.selectedID = existing.id; section = .meetings; return existing.id
         }
@@ -12,27 +12,30 @@ extension PuddleStore {
             meetingDate: event.flatMap { AssistantDates.calendarDate($0.start) } ?? Date(),
             calendarEventID: event?.id, joinLink: event?.joinLinks.first, calendarSeriesID: event?.seriesID)
         do {
-            try commit { $0.meetings.insert(note, at: 0) }
+            try await commit { $0.meetings.insert(note, at: 0) }
             meetingWorkspace.selectedID = note.id; section = .meetings; return note.id
         } catch { fail(error); return nil }
     }
 
-    @discardableResult func saveMeetingNote(_ id: UUID) -> Bool {
+    @discardableResult func saveMeetingNote(_ id: UUID) async -> Bool {
         guard let original = state.meetings.first(where: { $0.id == id }) else { return false }
         do {
             var next = try meetingWorkspace.draft(for: original).applying(to: original)
             if let project = next.projectID, !state.workProjects.contains(where: { $0.id == project }) { next.projectID = nil }
-            try commit { snapshot in
+            try await commit { snapshot in
                 if let index = snapshot.meetings.firstIndex(where: { $0.id == id }) { snapshot.meetings[index] = next }
-                snapshot.meetingCaptureRecoveries.removeAll { $0.noteID == id && next.transcript.contains($0.text) }
+                if snapshot.meetingCaptureRecoveries.contains(where: { $0.noteID == id && next.transcript.contains($0.text) }) {
+                    snapshot.meetingCaptureRecoveries.removeAll { $0.noteID == id }
+                    snapshot.meetingRecoveryDismissals[id] = Date()
+                }
             }
             meetingWorkspace.saved(id); errorMessage = nil; return true
         } catch { fail(error); return false }
     }
 
-    func deleteMeetingNote(_ id: UUID) {
+    func deleteMeetingNote(_ id: UUID) async {
         do {
-            try commit { $0.meetings.removeAll { $0.id == id }; $0.meetingCaptureRecoveries.removeAll { $0.noteID == id } }
+            try await commit { $0.meetings.removeAll { $0.id == id }; $0.meetingCaptureRecoveries.removeAll { $0.noteID == id } }
             if meetingWorkspace.summarizingID == id { cancelMeetingSummary() }
             if meetingCapture.noteID == id { meetingCapture.cancel() }
             if meetAttendance.noteID == id { meetAttendance.leave() }
@@ -74,18 +77,18 @@ extension PuddleStore {
         meetAttendance.checkBrowser()
     }
 
-    func joinGoogleMeet(_ link: MeetingJoinLink, noteID: UUID?, guestName: String) {
+    func joinGoogleMeet(_ link: MeetingJoinLink, noteID: UUID?, guestName: String) async {
         guard !privateSession, !isLocked, !state.settings.networkDisabled else { return }
         guard !demo, storageAvailable, link.provider == .googleMeet, !meetAttendance.isActive, !meetAttendance.mayStillBeInCall else { return }
         var selected = noteID
         if selected == nil {
             let note = MeetingNote(title: "Google Meet notes", joinLink: link)
-            do { try commit { $0.meetings.insert(note, at: 0) }; selected = note.id; meetingWorkspace.selectedID = note.id; section = .meetings }
+            do { try await commit { $0.meetings.insert(note, at: 0) }; selected = note.id; meetingWorkspace.selectedID = note.id; section = .meetings }
             catch { fail(error); return }
         }
         guard let selected, state.meetings.contains(where: { $0.id == selected }) else { return }
         if state.meetings.first(where: { $0.id == selected })?.joinLink == nil {
-            do { try commit { snapshot in if let index = snapshot.meetings.firstIndex(where: { $0.id == selected }) { snapshot.meetings[index].joinLink = link } } }
+            do { try await commit { snapshot in if let index = snapshot.meetings.firstIndex(where: { $0.id == selected }) { snapshot.meetings[index].joinLink = link } } }
             catch { fail(error); return }
         }
         meetAttendance.join(link: link, noteID: selected, guestName: guestName)
@@ -169,7 +172,7 @@ extension PuddleStore {
                 for index in summary.actions.indices {
                     summary.actions[index].taskID = taskForMeetingAction(noteID: id, action: summary.actions[index])?.id
                 }
-                try commit { snapshot in
+                try await commit { snapshot in
                     if let index = snapshot.meetings.firstIndex(where: { $0.id == id }) {
                         snapshot.meetings[index].summary = summary; snapshot.meetings[index].updatedAt = Date()
                     }
@@ -192,7 +195,7 @@ extension PuddleStore {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
-    @discardableResult func createTaskFromMeeting(noteID: UUID, actionID: UUID, title: String, dueAt: Date?, owner: String = "", workflow: TaskWorkflow = .active) -> UUID? {
+    @discardableResult func createTaskFromMeeting(noteID: UUID, actionID: UUID, title: String, dueAt: Date?, owner: String = "", workflow: TaskWorkflow = .active) async -> UUID? {
         guard let note = state.meetings.first(where: { $0.id == noteID }), let summary = note.summary,
               let action = summary.actions.first(where: { $0.id == actionID }) else { return nil }
         if let existing = taskForMeetingAction(noteID: noteID, action: action) { return existing.id }
@@ -211,7 +214,7 @@ extension PuddleStore {
         guard let noteIndex = state.meetings.firstIndex(where: { $0.id == noteID }),
               let actionIndex = state.meetings[noteIndex].summary?.actions.firstIndex(where: { $0.id == actionID }) else { return nil }
         do {
-            try commit { snapshot in
+            try await commit { snapshot in
                 snapshot.tasks.append(task)
                 snapshot.meetings[noteIndex].summary?.actions[actionIndex].taskID = task.id
             }

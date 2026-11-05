@@ -89,13 +89,16 @@ final class OAuthTests: XCTestCase {
         XCTAssertTrue(String(decoding: request.httpBody!, as: UTF8.self).contains("grant_type=refresh_token"))
     }
     func testConcurrentRefreshUsesOneTokenRequest() async throws {
+        let gate = AsyncTestGate()
         let transport = FixtureTransport { _ in
-            try await Task.sleep(for: .milliseconds(40))
+            await gate.pause()
             return (try json(["access_token": "updated", "expires_in": 3600]), 200)
         }
         let (google, _) = try session(transport: transport, expired: true)
         let tokens = try await withThrowingTaskGroup(of: String.self) { group in
             for _ in 0..<8 { group.addTask { try await google.accessToken() } }
+            try await waitForTestEvent("all refresh callers waiting") { await google.pendingTokenRequests == 8 }
+            await gate.release()
             var result: [String] = []
             for try await token in group { result.append(token) }
             return result
@@ -184,15 +187,15 @@ final class OAuthTests: XCTestCase {
         XCTAssertNil(try secrets.read("google-tokens"))
     }
     func testDisconnectDuringRefreshCannotRestoreTokens() async throws {
+        let gate = AsyncTestGate()
         let transport = FixtureTransport { _ in
-            // Ignore task cancellation, like a service that already completed.
-            try? await Task.sleep(for: .milliseconds(60))
+            await gate.pause()
             return (try json(["access_token": "updated", "expires_in": 3600]), 200)
         }
         let (google, secrets) = try session(transport: transport, expired: true)
         let refresh = Task { try await google.accessToken() }
-        try await Task.sleep(for: .milliseconds(10))
-        try await google.disconnect()
+        await fulfillment(of: [gate.entered], timeout: 5)
+        try await google.disconnect(); await gate.release()
         do { _ = try await refresh.value; XCTFail("Disconnected session must not return refreshed access") }
         catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertNil(try secrets.read("google-tokens"))
@@ -206,15 +209,15 @@ final class OAuthTests: XCTestCase {
     }
 
     func testDisconnectInvalidatesEverySharedRefreshWaiter() async throws {
+        let gate = AsyncTestGate()
         let transport = FixtureTransport { _ in
-            try? await Task.sleep(for: .milliseconds(100))
+            await gate.pause()
             return (try json(["access_token": "updated", "expires_in": 3600]), 200)
         }
         let (google, secrets) = try session(transport: transport, expired: true)
         let callers = (0..<8).map { _ in Task { try await google.accessToken() } }
-        while await transport.requests.isEmpty { await Task.yield() }
-        try await Task.sleep(for: .milliseconds(20))
-        try await google.disconnect()
+        try await waitForTestEvent("all refresh callers waiting") { await google.pendingTokenRequests == 8 }
+        try await google.disconnect(); await gate.release()
         for caller in callers {
             do { _ = try await caller.value; XCTFail("Disconnected callers must not receive tokens") }
             catch is CancellationError {} catch { XCTFail("Unexpected error: \(error)") }

@@ -2,32 +2,32 @@ import Foundation
 import PuddleCore
 
 extension PuddleStore {
-    @discardableResult func saveProfile(_ profile: ExecutiveProfile) -> Bool {
+    @discardableResult func saveProfile(_ profile: ExecutiveProfile) async -> Bool {
         do {
             let validated = try profile.validated()
-            try commit { $0.profile = validated }
-            stopAI()
+            try await commit { $0.profile = validated }
+            await stopAI()
             errorMessage = nil; return true
         } catch { fail(error); return false }
     }
 
-    @discardableResult func switchAssistantProfile(_ id: UUID) -> Bool {
+    @discardableResult func switchAssistantProfile(_ id: UUID) async -> Bool {
         guard id != state.profileLibrary.activeID else { return true }
         do {
             var library = state.profileLibrary; try library.activate(id)
-            try commit { $0.profileLibrary = library }
+            try await commit { $0.profileLibrary = library }
             updateProfileNavigation()
-            stopAI(); developerWorkspace.cancelInspection(); errorMessage = nil; return true
+            await stopAI(); developerWorkspace.cancelInspection(); errorMessage = nil; return true
         } catch { fail(error); return false }
     }
 
-    @discardableResult func saveAssistantProfile(_ profile: AssistantProfile, isNew: Bool) -> Bool {
+    @discardableResult func saveAssistantProfile(_ profile: AssistantProfile, isNew: Bool) async -> Bool {
         do {
             var library = state.profileLibrary
             if isNew { try library.add(profile) } else { try library.update(profile) }
-            try commit { $0.profileLibrary = library }
+            try await commit { $0.profileLibrary = library }
             updateProfileNavigation()
-            if isNew || profile.id == state.profileLibrary.activeID { stopAI(); developerWorkspace.cancelInspection() }
+            if isNew || profile.id == state.profileLibrary.activeID { await stopAI(); developerWorkspace.cancelInspection() }
             errorMessage = nil; return true
         } catch { fail(error); return false }
     }
@@ -36,22 +36,22 @@ extension PuddleStore {
         if section == .developer, state.profileLibrary.active.kind != .developer { section = .today }
     }
 
-    @discardableResult func duplicateAssistantProfile(_ id: UUID) -> Bool {
+    @discardableResult func duplicateAssistantProfile(_ id: UUID) async -> Bool {
         guard let source = state.profileLibrary.profiles.first(where: { $0.id == id }) else { return false }
         let copy = AssistantProfile(kind: source.kind, title: state.profileLibrary.availableTitle("\(source.title) copy"),
             context: source.context, additionalGuidance: source.additionalGuidance)
-        return saveAssistantProfile(copy, isNew: true)
+        return await saveAssistantProfile(copy, isNew: true)
     }
 
-    @discardableResult func deleteAssistantProfile(_ id: UUID) -> Bool {
+    @discardableResult func deleteAssistantProfile(_ id: UUID) async -> Bool {
         do {
             var library = state.profileLibrary; try library.remove(id)
-            try commit { $0.profileLibrary = library }
+            try await commit { $0.profileLibrary = library }
             errorMessage = nil; return true
         } catch { fail(error); return false }
     }
 
-    @discardableResult func saveCommitment(_ draft: TaskDraft, taskID: UUID? = nil) -> Bool {
+    @discardableResult func saveCommitment(_ draft: TaskDraft, taskID: UUID? = nil) async -> Bool {
         do {
             let original: AssistantTask
             if let taskID {
@@ -62,7 +62,7 @@ extension PuddleStore {
             } else { original = AssistantTask(title: draft.title) }
             var next = try draft.applying(to: original)
             if let id = next.projectID, !state.workProjects.contains(where: { $0.id == id }) { next.projectID = nil }
-            try commit { snapshot in
+            try await commit { snapshot in
                 if let index = snapshot.tasks.firstIndex(where: { $0.id == next.id }) { snapshot.tasks[index] = next }
                 else { snapshot.tasks.append(next) }
             }
@@ -70,11 +70,11 @@ extension PuddleStore {
         } catch { fail(error); return false }
     }
 
-    func setDailyPriority(_ id: UUID, enabled: Bool, now: Date = Date()) {
+    func setDailyPriority(_ id: UUID, enabled: Bool, now: Date = Date()) async {
         do {
             var next = state
             try next.setDailyPriority(id, enabled: enabled, now: now)
-            try commit { $0.tasks = next.tasks }
+            try await commit { $0.tasks = next.tasks }
             errorMessage = nil
         } catch { fail(error) }
     }

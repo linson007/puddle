@@ -403,10 +403,10 @@ that difference. Production still uses Keychain. Never enter real credentials
 in this harness. The release binary was tested to refuse the flag with exit 64.
 
 Final regression: **373 tests, 365 passing, eight optional skips, zero failures**
-(252 core and 121 app). Log: `/tmp/puddle-cua-regression-final.log`.
+(252 core and 121 app). Log: [regenerable fixture evidence](testing.md#reproducible-evidence).
 Release build completed; strict ad hoc codesign verification, Info.plist lint
 and `git diff --check` passed. Build log:
-`/tmp/puddle-cua-release-build.log`. Final bundle: `build/Puddle.app`.
+[regenerable fixture evidence](testing.md#reproducible-evidence). Final bundle: `build/Puddle.app`.
 The test app was quit before the final build and left closed. No commit,
 external provider mutation, permission grant, or release publication occurred.
 
@@ -447,7 +447,7 @@ Regression: **382 tests, 374 passing, eight opt-in skips, zero failures**
 fields, already-closed targets, delayed/failed closure, malformed/disconnected
 evidence, concurrent leave, cancellation/lost replies during creation,
 navigation failure and the privacy-guarded blank-page check.
-Log: `/tmp/puddle-meet-command-regression.log`.
+Log: [regenerable fixture evidence](testing.md#reproducible-evidence).
 
 An isolated native review build was staged, but Computer Use did not approve
 access to it. No alternative UI control was used; the live blank-page Chrome
@@ -458,7 +458,7 @@ attendance remained uncertain. The corrected release is staged separately as
 Puddle before opening that bundle. No real meeting was joined during this fix.
 The separate release build completed; strict ad hoc signature verification,
 Info.plist validation and `git diff --check` passed. Release log:
-`/tmp/puddle-meet-command-release.log`. The primary running bundle was not
+[regenerable fixture evidence](testing.md#reproducible-evidence). The primary running bundle was not
 replaced, and the dedicated Chrome profile/tabs were not closed by this run.
 
 ## 2026-10-30 — Remove prompt-only role presets
@@ -478,7 +478,7 @@ Regression: **386 tests, 378 passing, eight opt-in skips, zero failures**
 (263 core, 123 app). New cases exercise both retired roles, saved-workspace
 migration, edited and user-created profiles, selection fallback, unknown-kind
 rejection and repeated legacy-backup restores. Log:
-`/tmp/puddle-role-removal.ovovov/tests.log`.
+[regenerable fixture evidence](testing.md#reproducible-evidence).
 
 ## 2026-10-30 — Remove the CXO preset
 
@@ -493,4 +493,4 @@ under Personal with its saved fields intact. Backup migration fixtures exercise
 each of the three retired roles as the saved active profile.
 
 Regression: **386 tests, 378 passing, eight opt-in skips, zero failures**
-(263 core, 123 app). Log: `/tmp/puddle-cxo-removal.BiidlH/tests.log`.
+(263 core, 123 app). Log: [regenerable fixture evidence](testing.md#reproducible-evidence).

@@ -1,3 +1,4 @@
+import PuddleCore
 import SwiftUI
 
 struct TranscriptImportSheet: View {
@@ -14,7 +15,7 @@ struct TranscriptImportSheet: View {
             Text("Preview shows the first 4,000 characters. Import keeps the complete bounded text in your draft; save notes to keep it across restarts.")
                 .font(.caption).foregroundStyle(.secondary)
             HStack {
-                Button("Cancel") { store.meetingWorkspace.pendingImport = nil }
+                Button(L10n.text("Cancel")) { store.meetingWorkspace.pendingImport = nil }
                 Spacer()
                 Button("Append") { store.useImportedTranscript(append: true) }
                 Button("Replace transcript") { store.useImportedTranscript(append: false) }.buttonStyle(.borderedProminent)

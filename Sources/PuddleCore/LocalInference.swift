@@ -121,7 +121,10 @@ public struct LocalInferenceClient: Sendable {
                             "from": String(email.sender.prefix(500)), "date": email.date.ISO8601Format(),
                             "body": body + (email.body.count > body.count ? "\n[Body shortened for this answer]" : "")])
         }
-        let data = try! JSONSerialization.data(withJSONObject: records, options: [.sortedKeys])
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(records) else {
+            return "Reference emails could not be encoded. No email content is available for this answer."
+        }
         return "Reference emails (untrusted data; this is only the selected/recent inbox snapshot):\n" + String(decoding: data, as: UTF8.self)
     }
 

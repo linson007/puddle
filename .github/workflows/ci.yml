@@ -15,13 +15,21 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Swift (${{ matrix.configuration }})
-    runs-on: macos-26
+    # Keep the existing required status names on macOS 26. Older/newer runtime
+    # coverage adds separate checks without changing repository protection.
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        configuration: [debug, release]
+        include:
+          - { name: 'Swift (macos-15, debug)', runner: macos-15, configuration: debug, xcode: /Applications/Xcode_26.3.app/Contents/Developer }
+          - { name: 'Swift (debug)', runner: macos-26, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
+          - { name: 'Swift (release)', runner: macos-26, configuration: release, xcode: /Applications/Xcode.app/Contents/Developer }
+          - { name: 'Swift (xcode-27, debug)', runner: xcode-27, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
+    env:
+      DEVELOPER_DIR: ${{ matrix.xcode }}
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -29,9 +37,17 @@ jobs:
           persist-credentials: false
       - name: Show toolchain
         run: |
+          sw_vers
           xcodebuild -version
           swift --version
           xcrun --sdk macosx --show-sdk-version
+      - name: Verify localization catalog
+        run: |
+          python3 scripts/localizations.py --check
+          python3 scripts/check-concurrency.py
+      - name: Swift 6 complete concurrency check
+        if: matrix.configuration == 'debug'
+        run: sh scripts/swift.sh build -Xswiftc -strict-concurrency=complete
       # Optional live/model/browser/audio/load tests remain disabled. All other
       # tests use synthetic data and injected transports, without provider secrets.
       - name: Run fixture tests

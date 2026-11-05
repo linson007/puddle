@@ -7,43 +7,43 @@ struct PrivacySettingsView: View {
     @State private var confirmPurge = false
     var body: some View {
         Form {
-            Section("Private session") {
+            Section(L10n.text("Private session")) {
                 Text("New work stays in memory and is discarded when ended. External APIs, external actions, and memory learning pause. Starting ends the Cua browser session. Your saved workspace returns afterward.").font(.callout).foregroundStyle(.secondary)
-                Button(store.privateSession ? "End Private Session" : "Start Private Session") {
-                    if store.privateSession { store.endPrivateSession() } else { store.beginPrivateSession() }
-                }.disabled(store.demo || store.meetingCapture.isActive)
+                Button(store.privateSession ? "End Private Session" : "Start Private Session") { Task {
+                    if store.privateSession { await store.endPrivateSession() } else { await store.beginPrivateSession() }
+                } }.disabled(store.demo || store.meetingCapture.isActive)
             }
             if !store.privateSession {
-                Section("External connections") {
-                    Toggle("Pause Puddle’s external connections", isOn: Binding(get: { store.state.settings.networkDisabled }, set: { store.setExternalConnectionsPaused($0) }))
+                Section(L10n.text("External connections")) {
+                    Toggle("Pause Puddle’s external connections", isOn: Binding(get: { store.state.settings.networkDisabled }, set: { value in Task { await store.setExternalConnectionsPaused(value) } }))
                     Text("Loopback AI remains available. Google, Microsoft, GitHub and Atlassian API requests are blocked and older in-flight responses discarded. Managed browser sessions and speech-language downloads stop. Installed speech languages work offline. This does not change other apps or independently running servers.").font(.caption).foregroundStyle(.secondary)
                 }
-                Section("App lock") {
-                    Button("Lock Puddle") { store.lockWorkspace() }
-                    Toggle("Lock when Puddle leaves the foreground", isOn: Binding(get: { store.state.settings.lockOnBackground }, set: { enabled in
-                        do { try store.commit { $0.settings.lockOnBackground = enabled } } catch { store.fail(error) }
-                    }))
+                Section(L10n.text("App lock")) {
+                    Button(L10n.text("Lock Puddle")) { Task { await store.lockWorkspace() } }
+                    Toggle("Lock when Puddle leaves the foreground", isOn: Binding(get: { store.state.settings.lockOnBackground }, set: { enabled in Task {
+                        do { try await store.commit { $0.settings.lockOnBackground = enabled } } catch { store.fail(error) }
+                    } }))
                     Text("Unlock with your Mac’s authentication. Locking hides workspace content and stops assistant and browser activity.").font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Archive retention") {
-                    Picker("Keep archived conversations", selection: Binding(get: { store.state.settings.archiveRetentionDays }, set: { days in
-                        do { try store.commit { $0.settings.archiveRetentionDays = days } } catch { store.fail(error) }
-                    })) {
-                        Text("Until I delete them").tag(0); Text("30 days").tag(30); Text("90 days").tag(90); Text("One year").tag(365)
+                Section(L10n.text("Archive retention")) {
+                    Picker(L10n.text("Keep archived conversations"), selection: Binding(get: { store.state.settings.archiveRetentionDays }, set: { days in Task {
+                        do { try await store.commit { $0.settings.archiveRetentionDays = days } } catch { store.fail(error) }
+                    } })) {
+                        Text(L10n.text("Until I delete them")).tag(0); Text(L10n.text("30 days")).tag(30); Text(L10n.text("90 days")).tag(90); Text(L10n.text("One year")).tag(365)
                     }
                     Text("\(store.expiredArchiveIDs.count) older archives match. The current conversation is preserved. Apply explicitly after reviewing this policy.").font(.caption).foregroundStyle(.secondary)
                     Button("Apply Retention…", role: .destructive) { confirmPurge = true }.disabled(store.expiredArchiveIDs.isEmpty)
                     Text("The active state and rolling recovery copy are encrypted. Older encrypted migration/recovery files and exports can retain previous data; deleting here does not erase external backups.").font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Storage") {
+                Section(L10n.text("Storage")) {
                     Label("Encrypted on this Mac · AES-256-GCM", systemImage: "lock.shield")
                     Text(storageDescription).font(.caption).foregroundStyle(.secondary)
                 }
             }
             if let error = store.errorMessage { Text(error).font(.caption).foregroundStyle(.orange) }
         }.formStyle(.grouped).confirmationDialog("Delete \(store.expiredArchiveIDs.count) older archived conversations?", isPresented: $confirmPurge) {
-            Button("Delete Matching Archives", role: .destructive) { store.applyArchiveRetention() }
-            Button("Cancel", role: .cancel) {}
+            Button("Delete Matching Archives", role: .destructive) { Task { await store.applyArchiveRetention() } }
+            Button(L10n.text("Cancel"), role: .cancel) {}
         }
     }
     private var storageDescription: String {
@@ -61,7 +61,7 @@ struct PrivacyLockView: View {
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: "lock.shield").font(.system(size: 48)).foregroundStyle(PuddleStyle.teal)
-            Text("Puddle is locked").font(.title.bold())
+            Text(L10n.text("Puddle is locked")).font(.title.bold())
             Button(unlocking ? "Authenticating…" : "Unlock with macOS") {
                 unlocking = true
                 Task {
@@ -77,38 +77,40 @@ struct PrivacyLockView: View {
 }
 
 extension PuddleStore {
-    func beginPrivateSession() {
+    func beginPrivateSession() async {
+        await waitForPersistence()
         guard !demo, !privateSession, !meetingCapture.isActive, !isLocked, executingActions.isEmpty else { return }
-        stopAI(); cancelMeetingSummary(); suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); systemDictation.stop()
+        await stopAI(); cancelMeetingSummary(); await suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); systemDictation.stop()
         savedPrivateWorkspace = state; privateSession = true
         state.chat = []; state.conversations = []; state.actionProposals = []; state.currentConversationID = UUID()
         state.settings.automaticallyLearn = false; state.settings.automaticallyCheck = false
         networkPolicy.allowExternalConnections(false); section = .chat; errorMessage = nil
     }
-    func endPrivateSession() {
+    func endPrivateSession() async {
         guard privateSession, let saved = savedPrivateWorkspace else { return }
-        stopAI(); cancelMeetingSummary(); resetMeetingWorkspace()
+        await stopAI(); cancelMeetingSummary(); resetMeetingWorkspace()
         state = saved; savedPrivateWorkspace = nil; privateSession = false; errorMessage = nil
         networkPolicy.allowExternalConnections(!state.settings.networkDisabled && !isLocked); startPolling()
         if !isLocked { systemDictation.configure(state.settings) }
     }
-    func setExternalConnectionsPaused(_ paused: Bool) {
+    func setExternalConnectionsPaused(_ paused: Bool) async {
         guard !privateSession, !demo else { return }
         do {
-            try commit { $0.settings.networkDisabled = paused }
+            try await commit { $0.settings.networkDisabled = paused }
             networkPolicy.allowExternalConnections(!paused && !isLocked)
             if paused {
-                stopAI(); suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); localAISetup.invalidateVerification()
+                await stopAI(); await suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); localAISetup.invalidateVerification()
                 if meetingCapture.status == .installingLanguage { meetingCapture.cancel() }
             }
             else { startPolling() }
         } catch { fail(error) }
     }
-    func lockWorkspace() {
+    func lockWorkspace() async {
         guard !demo else { return }
-        stopAI(); cancelMeetingSummary(); suspendConnectionWork(); browserWorkspace.stop(); meetingCapture.stop(); meetAttendance.leave()
+        // Revoke access before cleanup can suspend for a durable checkpoint.
         isLocked = true; networkPolicy.allowExternalConnections(false)
         systemDictation.stop()
+        await stopAI(); cancelMeetingSummary(); await suspendConnectionWork(); browserWorkspace.stop(); meetingCapture.stop(); meetAttendance.leave()
     }
     func unlockWorkspace() {
         isLocked = false; networkPolicy.allowExternalConnections(!state.settings.networkDisabled && !privateSession)
@@ -120,11 +122,11 @@ extension PuddleStore {
         let cutoff = Date().addingTimeInterval(-Double(state.settings.archiveRetentionDays) * 86400)
         return Set(state.conversations.filter { $0.createdAt < cutoff }.map(\.id))
     }
-    func applyArchiveRetention() {
+    func applyArchiveRetention() async {
         let ids = expiredArchiveIDs
         do {
-            try commit { $0.conversations.removeAll { ids.contains($0.id) } }
-            try commit { _ in }; errorMessage = nil
+            try await commit { $0.conversations.removeAll { ids.contains($0.id) } }
+            try await commit { _ in }; errorMessage = nil
         } catch { fail(error) }
     }
 }

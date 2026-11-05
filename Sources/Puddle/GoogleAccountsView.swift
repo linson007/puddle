@@ -11,7 +11,7 @@ struct GoogleAccountsView: View {
                     ForEach(store.googleAccounts, id: \.id) { account in Text(account.email).tag(account.email) }
                 }.disabled(store.isSigningIn || store.isDisconnecting)
             }
-            Button("Add Google Account") { store.connect() }.disabled(store.isSigningIn || store.privateSession || store.state.settings.networkDisabled)
+            Button("Add Google Account") { Task { await store.connect() } }.disabled(store.isSigningIn || store.privateSession || store.state.settings.networkDisabled)
             Text("Switching selects this account for Gmail and Google Calendar. Each account’s tokens stay in Keychain. Cached views are cleared and refreshed; saved conversations and notes remain. Actions stay bound to the account you reviewed.").font(.caption).foregroundStyle(.secondary)
         }.task { await store.loadGoogleAccounts() }
     }
@@ -23,13 +23,13 @@ extension PuddleStore {
     }
     func switchGoogleAccount(_ email: String) async {
         guard !isSigningIn, !isDisconnecting, !privateSession, !isLocked, email != state.account else { return }
-        stopAI(); suspendConnectionWork(); isSigningIn = true
+        await stopAI(); await suspendConnectionWork(); isSigningIn = true
         defer { isSigningIn = false; startPolling() }
         do {
             try await google.selectAccount(email: email)
             guard try await google.account()?.email == email, !isDisconnecting else { throw CancellationError() }
             let scopes = try await google.grantedScopes()
-            try commit { next in
+            try await commit { next in
                 next.account = email; next.messages = []; next.calendarEvents = []
                 next.settings.mailProvider = .google
                 next.lastSync = nil; next.mailHistoryID = nil; next.calendarLastSync = nil; next.calendarHasMore = false

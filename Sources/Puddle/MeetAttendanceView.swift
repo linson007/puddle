@@ -44,7 +44,7 @@ struct MeetAttendanceView: View {
                 } else if attendance.mayStillBeInCall {
                     Button(attendance.checkingBrowser ? "I closed the test tab manually" : "I closed the Meet tab manually") { attendance.confirmClosedManually() }
                 } else {
-                    Button("Join Google Meet") { if let link { store.joinGoogleMeet(link, noteID: note?.id, guestName: guestName) } }
+                    Button("Join Google Meet") { Task { if let link { await store.joinGoogleMeet(link, noteID: note?.id, guestName: guestName) } } }
                         .buttonStyle(.borderedProminent).disabled(store.demo || link == nil || guestName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || guestName.count > 60)
                     Button("Check browser setup") { store.checkMeetBrowser() }.disabled(store.demo || store.privateSession || store.isLocked || store.state.settings.networkDisabled)
                         .help("Test Chrome commands on a blank page and verify cleanup without opening a meeting")
@@ -69,7 +69,7 @@ struct MeetAttendanceBanner: View {
                 Image(systemName: "video.fill").foregroundStyle(PuddleStyle.teal)
                 Text(attendance.message).font(.caption).textSelection(.enabled)
                 Spacer()
-                Button("Meetings") {
+                Button(L10n.text("Meetings")) {
                     if let id = attendance.noteID { store.meetingWorkspace.selectedID = id }
                     store.section = .meetings
                 }

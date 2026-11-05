@@ -17,7 +17,7 @@ struct MailInspectorView: View {
     @State private var attachmentMessageID = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack { Text("Conversation & attachments").font(.title2.bold()); Spacer(); Button("Close") { dismiss() } }
+            HStack { Text("Conversation & attachments").font(.title2.bold()); Spacer(); Button(L10n.text("Close")) { dismiss() } }
             Text(message.subject).font(.headline).textSelection(.enabled)
             if busy { ProgressView("Loading from your provider…").controlSize(.small) }
             if let error { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
@@ -49,7 +49,7 @@ struct MailInspectorView: View {
                         if let text = analysisText(data, selected) {
                             Button("Ask Puddle About Attachment") {
                                 dismiss()
-                                Task { @MainActor in await Task.yield(); store.askReference(question: "Summarize this attachment. List only explicit requested follow-ups; label any suggestions separately: \(selected.name)", reference: "Source: \(message.sourceURL.absoluteString)\nAttachment: \(selected.name)\nExtracted text (may be shortened):\n\(text)", references: [SourceReference(title: selected.name + " · source message", url: message.sourceURL)]) }
+                                Task { @MainActor in await Task.yield(); await store.askReference(question: "Summarize this attachment. List only explicit requested follow-ups; label any suggestions separately: \(selected.name)", reference: "Source: \(message.sourceURL.absoluteString)\nAttachment: \(selected.name)\nExtracted text (may be shortened):\n\(text)", references: [SourceReference(title: selected.name + " · source message", url: message.sourceURL)]) }
                             }.disabled(store.isThinking)
                         }
                         Button("Save Attachment…") { save(data, named: selected.name) }

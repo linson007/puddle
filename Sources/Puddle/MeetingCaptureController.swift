@@ -20,12 +20,14 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     private let capture: any MeetingAudioCapturing
     private let maximumSeconds: Double
     private let finishTimeout: Double
+    private let sleep: @Sendable (Duration) async throws -> Void
     private var generation = UUID()
-    private var work: Task<Void, Never>?
+    private(set) var work: Task<Void, Never>?
     private var deadline: Task<Void, Never>?
 
-    init(capture: any MeetingAudioCapturing, maximumSeconds: Double = 7200, finishTimeout: Double = 15) {
-        self.capture = capture; self.maximumSeconds = maximumSeconds; self.finishTimeout = finishTimeout
+    init(capture: any MeetingAudioCapturing, maximumSeconds: Double = 7200, finishTimeout: Double = 15,
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        self.capture = capture; self.maximumSeconds = maximumSeconds; self.finishTimeout = finishTimeout; self.sleep = sleep
     }
     func installLanguage(_ language: String) {
         guard !isActive else { return }
@@ -68,8 +70,8 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
                 guard generation == expected, status == .preparing else { return }
                 sourceDescription = capture.sourceDescription
                 status = .listening; startedAt = Date(); message = "Transcribing on this Mac."
-                deadline = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(self?.maximumSeconds ?? 7200)) } catch { return }
+                deadline = Task { [weak self, sleep, maximumSeconds] in
+                    do { try await sleep(.seconds(maximumSeconds)) } catch { return }
                     guard let self, self.generation == expected else { return }
                     self.stop(notice: "The two-hour capture limit was reached. Review and save this transcript, then start another session.")
                 }
@@ -89,8 +91,8 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
             catch is CancellationError { if generation == expected { complete(notice: "Finalization was cancelled. Review any provisional text.") } }
             catch { if generation == expected { complete(notice: [errorMessage, error.localizedDescription].compactMap { $0 }.joined(separator: " ")) } }
         }
-        deadline = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(self?.finishTimeout ?? 15)) } catch { return }
+        deadline = Task { [weak self, sleep, finishTimeout] in
+            do { try await sleep(.seconds(finishTimeout)) } catch { return }
             guard let self, self.generation == expected else { return }
             self.complete(notice: [self.errorMessage, "Finalization timed out. Any provisional text is labeled for review."].compactMap { $0 }.joined(separator: " "))
         }

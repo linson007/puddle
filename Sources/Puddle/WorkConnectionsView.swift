@@ -52,7 +52,7 @@ struct WorkConnectionsView: View {
                     }
                     if store.isConnectingAtlassian {
                         ProgressView().controlSize(.small)
-                        Button("Cancel") { store.cancelAtlassianSignIn() }
+                        Button(L10n.text("Cancel")) { store.cancelAtlassianSignIn() }
                     }
                 }
                 if !store.workAuthorizationStatus.isEmpty { Text(store.workAuthorizationStatus).font(.caption).foregroundStyle(.secondary) }
@@ -95,7 +95,7 @@ private struct GitHubConnectionSheet: View {
             if let error = store.workConnectionErrors[.github] { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             HStack {
                 if store.isConnectingGitHub { ProgressView().controlSize(.small); Text("Verifying account and repository access…").font(.caption) }
-                Spacer(); Button("Cancel") { task?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
+                Spacer(); Button(L10n.text("Cancel")) { task?.cancel(); dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Save & Test GitHub") {
                     let submittedToken = token, submittedRepositories = repositories
                     task = Task { if await store.connectGitHub(token: submittedToken, repositoryText: submittedRepositories) { token = ""; dismiss() } }
@@ -163,11 +163,11 @@ struct WorkSourcesView: View {
                         Text("All sources").tag("all")
                         ForEach(store.connectedWorkServices) { Text($0.title).tag($0.rawValue) }
                     }.labelsHidden().accessibilityLabel("Source").frame(width: 150)
-                    Button("Search") { search() }.disabled(workspace.isSearching || services.isEmpty)
+                    Button(L10n.text("Search")) { search() }.disabled(workspace.isSearching || services.isEmpty)
                 }
                 HStack {
                     Button("Open work & recent docs") { query = ""; search() }.disabled(workspace.isSearching || services.isEmpty)
-                    Button("Ask for my work brief") { store.ask("Search my connected work sources for open GitHub work, Jira issues assigned to me and recent Confluence documentation. Read relevant items before detailed claims. Summarize priorities, blockers and decisions with source links. State source limits and any errors; do not infer that all GitHub work is assigned to me.") }
+                    Button("Ask for my work brief") { Task { await store.ask("Search my connected work sources for open GitHub work, Jira issues assigned to me and recent Confluence documentation. Read relevant items before detailed claims. Summarize priorities, blockers and decisions with source links. State source limits and any errors; do not infer that all GitHub work is assigned to me.") } }
                         .disabled(store.isThinking || (!store.demo && store.inferenceModel == nil))
                     Spacer()
                     if workspace.isSearching { ProgressView().controlSize(.small); Button("Stop") { workspace.cancel() } }
@@ -213,7 +213,7 @@ private struct WorkItemDetailView: View {
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Text(item.title).font(.title2).lineLimit(3); Spacer(); Button("Done") { dismiss() } }
+            HStack { Text(item.title).font(.title2).lineLimit(3); Spacer(); Button(L10n.text("Done")) { dismiss() } }
             if item.service == .github && item.url.pathComponents.contains("pull") {
                 Picker("View", selection: $view) { Text("Details").tag("details"); Text("Patch excerpts").tag("diff"); Text("Reported CI checks").tag("checks") }.pickerStyle(.segmented)
             }
@@ -231,9 +231,9 @@ private struct WorkItemDetailView: View {
             HStack {
                 Link("Open original source", destination: item.url)
                 Spacer()
-                Button("Ask Puddle about this") {
-                    store.ask("Read this connected work item before answering: service=\(item.service.rawValue), locator=\(item.locator), view=\(view). Summarize its requirements, current state, risks and next steps. Cite the source and distinguish evidence from assumptions. Mention missing content; do not change anything."); dismiss()
-                }.buttonStyle(.borderedProminent).disabled(store.isThinking || store.inferenceModel == nil)
+                Button("Ask Puddle about this") { Task {
+                    await store.ask("Read this connected work item before answering: service=\(item.service.rawValue), locator=\(item.locator), view=\(view). Summarize its requirements, current state, risks and next steps. Cite the source and distinguish evidence from assumptions. Mention missing content; do not change anything."); dismiss()
+                } }.buttonStyle(.borderedProminent).disabled(store.isThinking || store.inferenceModel == nil)
             }
         }.padding(26).frame(width: 720, height: 640)
             .task(id: view) { workspace.read(item, view: view, github: store.githubConnector, atlassian: store.atlassianConnector) }

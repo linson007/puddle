@@ -1,3 +1,4 @@
+import PuddleCore
 import AppKit
 import SwiftUI
 
@@ -19,18 +20,18 @@ struct PuddleApp: App {
         WindowGroup("Puddle", id: "main") {
             AssistantWindow(store: store)
                 .frame(minWidth: 960, minHeight: 640)
-                .task { lifecycle.attendance = store.meetAttendance; lifecycle.systemDictation = store.systemDictation; await store.start() }
-                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in
-                    store.refresh()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-                    if store.state.settings.lockOnBackground { store.lockWorkspace() }
-                }
+                .task { lifecycle.store = store; lifecycle.attendance = store.meetAttendance; lifecycle.systemDictation = store.systemDictation; await store.start() }
+                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in Task {
+                    await store.refresh()
+                } }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in Task {
+                    if store.state.settings.lockOnBackground { await store.lockWorkspace() }
+                } }
         }
         .defaultSize(width: 1180, height: 820)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Conversation") { store.clearChat(); store.section = .chat }
+                Button("New Conversation") { Task { await store.clearChat(); store.section = .chat } }
                     .keyboardShortcut("n", modifiers: .command)
                     .disabled(store.isLocked)
             }
@@ -41,10 +42,10 @@ struct PuddleApp: App {
                     .disabled(store.section == .chat || store.isLocked)
                 Button("Guided Local AI Setup") { store.showLocalSetup = true }
                 Button("Review Actions") { store.section = .actions }.keyboardShortcut("a", modifiers: [.command, .shift])
-                Button("Lock Puddle") { store.lockWorkspace() }
-                Button(store.privateSession ? "End Private Session" : "Start Private Session") {
-                    if store.privateSession { store.endPrivateSession() } else { store.beginPrivateSession() }
-                }.disabled(store.isLocked || store.meetingCapture.isActive || !store.executingActions.isEmpty)
+                Button(L10n.text("Lock Puddle")) { Task { await store.lockWorkspace() } }
+                Button(store.privateSession ? "End Private Session" : "Start Private Session") { Task {
+                    if store.privateSession { await store.endPrivateSession() } else { await store.beginPrivateSession() }
+                } }.disabled(store.isLocked || store.meetingCapture.isActive || !store.executingActions.isEmpty)
             }
         }
         Settings { PuddleSettingsView(store: store) }
@@ -53,7 +54,7 @@ struct PuddleApp: App {
         }.defaultSize(width: 410, height: 580)
         MenuBarExtra {
             PuddleMenu(store: store)
-        } label: { Image(systemName: store.isThinking ? "drop.circle.fill" : "drop") }
+        } label: { Image(systemName: store.isThinking ? "drop.circle.fill" : "drop").accessibilityLabel("Puddle menu").accessibilityValue(store.isThinking ? "Thinking" : "Ready") }
     }
 }
 
@@ -63,7 +64,7 @@ private struct PuddleMenu: View {
     var body: some View {
         Group {
             if store.isLocked {
-                Text("Puddle is locked")
+                Text(L10n.text("Puddle is locked"))
                 Button("Open Puddle to Unlock") { openWindow(id: "main"); NSApplication.shared.activate(ignoringOtherApps: true) }
             } else { unlockedMenu }
         }
@@ -73,24 +74,24 @@ private struct PuddleMenu: View {
         Text("\(store.state.tasks.filter { !$0.completed }.count) open tasks · \(store.state.memories.count) memories")
         Menu("Profile: \(store.state.profileLibrary.active.title)") {
             ForEach(store.state.profileLibrary.profiles) { profile in
-                Button { store.switchAssistantProfile(profile.id) } label: {
+                Button { Task { await store.switchAssistantProfile(profile.id) } } label: {
                     Label(profile.title, systemImage: profile.id == store.state.profileLibrary.activeID ? "checkmark" : profile.kind.icon)
                 }
             }
         }
         Divider()
-        Button("Today") { show(.today) }
+        Button(L10n.text("Today")) { show(.today) }
         Button("Talk to Puddle") { show(.chat) }
-        Button("Browser") { show(.browser) }
+        Button(L10n.text("Browser")) { show(.browser) }
         if store.state.profileLibrary.active.kind == .developer {
             Button("Developer Workspace") { show(.developer) }
         }
         Button("Tasks & Reminders") { show(.tasks) }
-        Button("Calendar") { show(.calendar) }
-        Button("Mail") { show(.mail) }
+        Button(L10n.text("Calendar")) { show(.calendar) }
+        Button(L10n.text("Mail")) { show(.mail) }
         Button("Review Actions") { show(.actions) }
-        Button("Meetings") { show(.meetings) }
-        Button("Connections") { show(.connections) }
+        Button(L10n.text("Meetings")) { show(.meetings) }
+        Button(L10n.text("Connections")) { show(.connections) }
         SettingsLink { Text("Settings…") }
         Divider()
         Button("Quit Puddle") { NSApplication.shared.terminate(nil) }.keyboardShortcut("q")
