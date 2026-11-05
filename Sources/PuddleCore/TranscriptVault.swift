@@ -46,6 +46,7 @@ enum TranscriptVault {
         var garbageCandidates = Set<String>()
         var needsSweep = true
         var recoveredPages = false
+        var unreadableMeetingRecovery = false
     }
     struct Prepared {
         let data: Data

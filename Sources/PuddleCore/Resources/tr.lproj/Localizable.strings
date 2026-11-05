@@ -81,6 +81,7 @@
 "Quick meeting notes" = "Hızlı toplantı notları";
 "Read aloud" = "Sesli oku";
 "Read new replies aloud" = "Yeni yanıtları sesli oku";
+"Recovered meeting text could not be read; the file was preserved." = "Kurtarılan toplantı metni okunamadı; dosya korundu.";
 "Retry Loading State" = "Kaydedilmiş verileri yeniden yükle";
 "Retry last message" = "Son mesajı yeniden dene";
 "Review Recovered Transcript" = "Kurtarılan metni incele";

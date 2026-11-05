@@ -6,9 +6,11 @@ import XCTest
 actor AsyncTestGate {
     nonisolated let entered = XCTestExpectation(description: "Fixture reached controlled suspension")
     private var released = false
+    private var signaled = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
+    var waiterCount: Int { waiters.count }
     func pause() async {
-        entered.fulfill()
+        if !signaled { signaled = true; entered.fulfill() }
         if released { return }
         await withCheckedContinuation { waiters.append($0) }
     }

@@ -53,6 +53,7 @@ public actor ChromeDevTools: ChromeCommanding {
     private var sequence = 0
     private var closed = false
     private let timeout: Double
+    private let sleep: @Sendable (Duration) async throws -> Void
 
     public init(endpoint: URL, timeout: Double = 8) throws {
         guard endpoint.scheme == "ws", endpoint.host == "127.0.0.1", let port = endpoint.port, (1024...65535).contains(port),
@@ -61,8 +62,12 @@ public actor ChromeDevTools: ChromeCommanding {
             throw PuddleError("Browser control is limited to Puddle's local Meet browser.")
         }
         self.wire = BrowserWebSocket(endpoint: endpoint, timeout: timeout); self.timeout = timeout
+        self.sleep = { try await Task.sleep(for: $0) }
     }
-    public init(wire: any ChromeWire, timeout: Double = 8) { self.wire = wire; self.timeout = timeout }
+    public init(wire: any ChromeWire, timeout: Double = 8,
+                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        self.wire = wire; self.timeout = timeout; self.sleep = sleep
+    }
     public func command(_ method: String, parameters: Data = Data("{}".utf8), sessionID: String? = nil) async throws -> Data {
         try Task.checkCancellation()
         guard !closed else { throw PuddleError("The managed browser connection is closed.") }
@@ -76,8 +81,8 @@ public actor ChromeDevTools: ChromeCommanding {
             return try await withCheckedThrowingContinuation { continuation in
                 pending[id] = continuation
                 methods[id] = method
-                deadlines[id] = Task { [weak self] in
-                    do { try await Task.sleep(for: .seconds(self?.timeout ?? 8)) } catch { return }
+                deadlines[id] = Task { [weak self, sleep, timeout] in
+                    do { try await sleep(.seconds(timeout)) } catch { return }
                     await self?.fail(id, message: "The managed browser did not respond. Check its window and retry.")
                 }
                 Task { [weak self] in await self?.sendPending(id, message: message) }

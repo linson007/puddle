@@ -23,14 +23,26 @@ private actor FixtureChromeWire: ChromeWire {
     func close() { closed = true; waiting?.resume(throwing: CancellationError()); waiting = nil }
 }
 
+/// Each command deadline stays suspended until the test explicitly fires it.
+private actor FixtureChromeClock {
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    var pendingCount: Int { waiting.count }
+    func sleep(_ duration: Duration) async throws {
+        try Task.checkCancellation()
+        await withCheckedContinuation { waiting.append($0) }
+        try Task.checkCancellation()
+    }
+    func fireNext() { waiting.removeFirst().resume() }
+    func releaseAll() {
+        let pending = waiting; waiting = []
+        for continuation in pending { continuation.resume() }
+    }
+}
+
 final class ChromeDevToolsTests: XCTestCase {
     private func wait(_ wire: FixtureChromeWire, count: Int) async throws -> [[String: Any]] {
-        for _ in 0..<200 {
-            let sent = await wire.sent
-            if sent.count >= count { return try sent.map(ChromeJSON.object) }
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        XCTFail("Browser command fixture timed out"); return []
+        try await waitForTestEvent("Browser command \(count) was sent") { await wire.sent.count >= count }
+        return try await wire.sent.map(ChromeJSON.object)
     }
     func testOutOfOrderResponsesAndEventsAreMatchedToTheirCommand() async throws {
         let wire = FixtureChromeWire()
@@ -47,17 +59,31 @@ final class ChromeDevToolsTests: XCTestCase {
         XCTAssertEqual(try ChromeJSON.object(secondData)["value"] as? String, "second")
         await subject.close()
     }
-    func testTimeoutAndCancellationCompletePromptlyAndIgnoreLateResponses() async throws {
-        let wire = FixtureChromeWire()
-        let subject = ChromeDevTools(wire: wire, timeout: 0.02)
+    func testControlledTimeoutAndCancellationIgnoreLateResponsesAndKeepConnectionUsable() async throws {
+        let wire = FixtureChromeWire(), clock = FixtureChromeClock()
+        let subject = ChromeDevTools(wire: wire, sleep: { try await clock.sleep($0) })
+        defer { Task { await subject.close(); await clock.releaseAll() } }
         let timed = Task { try await subject.command("Timed") }
         let sent = try await wait(wire, count: 1)
+        try await waitForTestEvent("Timeout deadline registered") { await clock.pendingCount == 1 }
+        await clock.fireNext()
         do { _ = try await timed.value; XCTFail("Expected timeout") } catch { XCTAssertTrue(error.localizedDescription.contains("did not respond")) }
         try await wire.respond(["value": "late"], id: sent[0]["id"] as! Int)
         let cancelled = Task { try await subject.command("Cancelled") }
-        _ = try await wait(wire, count: 2); cancelled.cancel()
+        let cancelling = try await wait(wire, count: 2)
+        try await waitForTestEvent("Cancellation deadline registered") { await clock.pendingCount == 1 }
+        cancelled.cancel()
         do { _ = try await cancelled.value; XCTFail("Expected cancellation") } catch { XCTAssertTrue(error is CancellationError) }
-        await subject.close()
+        // Fire the cancelled deadline and deliver its late response. Neither
+        // may resolve the next command, which still uses the same connection.
+        await clock.fireNext()
+        try await wire.respond(["value": "also late"], id: cancelling[1]["id"] as! Int)
+        let next = Task { try await subject.command("Next") }
+        let commands = try await wait(wire, count: 3)
+        try await wire.respond(["value": "current"], id: commands[2]["id"] as! Int)
+        let data = try await next.value
+        XCTAssertEqual(try ChromeJSON.object(data)["value"] as? String, "current")
+        await subject.close(); await clock.releaseAll()
     }
     func testMalformedResponseAndCloseResolveAllWaitingCommands() async throws {
         let wire = FixtureChromeWire()

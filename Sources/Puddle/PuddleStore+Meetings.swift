@@ -29,6 +29,7 @@ extension PuddleStore {
                     snapshot.meetingRecoveryDismissals[id] = Date()
                 }
             }
+            try await removeObsoleteMeetingRecoveries()
             meetingWorkspace.saved(id); errorMessage = nil; return true
         } catch { fail(error); return false }
     }
@@ -40,6 +41,7 @@ extension PuddleStore {
             if meetingCapture.noteID == id { meetingCapture.cancel() }
             if meetAttendance.noteID == id { meetAttendance.leave() }
             meetingWorkspace.deleted(id)
+            try await removeObsoleteMeetingRecoveries()
         }
         catch { fail(error) }
     }

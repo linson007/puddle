@@ -24,8 +24,10 @@ public actor WorkspaceWriter {
     private var latestRevision: UInt64 = 0
     private var active: WorkspaceSave?
     private var activeWaiters: [CheckedContinuation<WorkspaceSave, Error>] = []
-    private var pendingEpoch: UUID?
-    private var rejectedEpochs = Set<UUID>()
+    private var pendingEpoch: UInt64?
+    // Callers advance the epoch after rollback. A watermark rejects every old
+    // epoch, including arbitrarily late arrivals, using constant space.
+    private(set) var rejectedThroughEpoch: UInt64?
     private var waiters: [CheckedContinuation<WorkspaceSave, Error>] = []
     private var running = false
     private var checkpointSave: MeetingRecoverySave?
@@ -36,14 +38,23 @@ public actor WorkspaceWriter {
         let persistence = persistence
         return try await Task.detached(priority: .utility) {
             let loaded = try persistence.loadResult()
-            let snapshot = loaded.snapshot.mergingMeetingRecoveries(try persistence.loadMeetingRecoveries())
-            return SnapshotLoadResult(snapshot: snapshot, notice: loaded.notice)
+            do {
+                let snapshot = loaded.snapshot.mergingMeetingRecoveries(try persistence.loadMeetingRecoveries())
+                return SnapshotLoadResult(snapshot: snapshot, notice: loaded.notice)
+            } catch {
+                PuddleDiagnostics.failure(.persistence, "Load meeting recovery", error)
+                do { try persistence.preserveUnreadableMeetingRecoveries() }
+                catch { PuddleDiagnostics.failure(.persistence, "Preserve unreadable meeting recovery", error) }
+                let notice = L10n.text("Recovered meeting text could not be read; the file was preserved.")
+                return SnapshotLoadResult(snapshot: loaded.snapshot, notice: [loaded.notice, notice].compactMap { $0 }.joined(separator: " "))
+            }
         }.value
     }
 
-    public func save(_ snapshot: AppSnapshot, revision: UInt64, epoch: UUID? = nil) async throws -> WorkspaceSave {
+    /// Non-nil epochs must increase after each failed batch.
+    public func save(_ snapshot: AppSnapshot, revision: UInt64, epoch: UInt64? = nil) async throws -> WorkspaceSave {
         try await withCheckedThrowingContinuation { continuation in
-            if let epoch, rejectedEpochs.contains(epoch) {
+            if let epoch, let rejectedThroughEpoch, epoch <= rejectedThroughEpoch {
                 continuation.resume(throwing: WorkspaceWriteFailure(underlying: PuddleError("A previous write failed; retry the edit after rollback."), lastSaved: lastSaved)); return
             }
             if revision > latestRevision {
@@ -66,7 +77,7 @@ public actor WorkspaceWriter {
     @discardableResult public func checkpoint(_ values: [MeetingCaptureRecovery], revision: UInt64 = 0) throws -> MeetingRecoverySave {
         if let checkpointSave, revision > 0, checkpointSave.revision >= revision { return checkpointSave }
         do {
-            try persistence.saveMeetingRecoveries(values)
+            if checkpointSave?.values != values { try persistence.saveMeetingRecoveries(values) }
             let saved = MeetingRecoverySave(values: values, revision: revision)
             checkpointSave = saved
             return saved
@@ -87,8 +98,9 @@ public actor WorkspaceWriter {
                 active = nil; activeWaiters = []
             } catch {
                 PuddleDiagnostics.failure(.persistence, "Save workspace", error)
-                if let epoch { rejectedEpochs.insert(epoch) }
-                if let pendingEpoch { rejectedEpochs.insert(pendingEpoch) }
+                for failed in [epoch, pendingEpoch].compactMap({ $0 }) {
+                    rejectedThroughEpoch = max(rejectedThroughEpoch ?? failed, failed)
+                }
                 let rejected = activeWaiters + waiters
                 active = nil; activeWaiters = []; pending = nil; pendingEpoch = nil; waiters = []; running = false
                 for waiter in rejected { waiter.resume(throwing: WorkspaceWriteFailure(underlying: error, lastSaved: lastSaved)) }

@@ -36,6 +36,13 @@ for resources in "$binary_dir"/Puddle_*.bundle; do
     [ -d "$resources" ] || continue
     ditto "$resources" "$app_bundle/Contents/Resources/$(basename "$resources")"
 done
+# SwiftUI LocalizedStringKey initializers look in Bundle.main. Ship the same
+# catalog exports there as well as in PuddleCore's Bundle.module.
+for locale in en tr; do
+    mkdir -p "$app_bundle/Contents/Resources/$locale.lproj"
+    cp "$repo_root/Sources/PuddleCore/Resources/$locale.lproj/Localizable.strings" \
+        "$app_bundle/Contents/Resources/$locale.lproj/Localizable.strings"
+done
 cp "$repo_root/app/Info.plist" "$app_bundle/Contents/Info.plist"
 swift -module-cache-path "$repo_root/.build/module-cache" "$repo_root/scripts/ConfigureBundle.swift" "$app_bundle/Contents/Info.plist"
 if [ -n "$google_client" ]; then
