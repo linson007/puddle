@@ -3,8 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleLocalizations</key><array><string>en</string><string>tr</string></array>
-    <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleDisplayName</key><string>Puddle</string>
     <key>CFBundleExecutable</key><string>Puddle</string>
     <key>CFBundleIdentifier</key><string>app.puddle.mac</string>

@@ -3,6 +3,10 @@ import XCTest
 import PuddleCore
 @testable import Puddle
 
+@MainActor private final class CancelledAttendanceLauncher: MeetBrowserLaunching {
+    func connect() async throws -> any ChromeCommanding { throw URLError(.cancelled) }
+}
+
 private actor AttendanceChrome: ChromeCommanding {
     var stage = GoogleMeetPageState.Stage.waiting
     var calls: [String] = []
@@ -43,6 +47,13 @@ private actor AttendanceChrome: ChromeCommanding {
 }
 
 @MainActor final class MeetAttendanceTests: XCTestCase {
+    func testURLSessionCancellationEndsAttendanceWithoutReportingFailure() async throws {
+        let controller = MeetAttendanceController(launcher: CancelledAttendanceLauncher())
+        controller.join(link: try MeetingJoinLink("https://meet.google.com/abc-defg-hij"), noteID: UUID(), guestName: "Fixture")
+        try await waitForTestEvent("Cancelled attendance ended") { await controller.status == .ended }
+        XCTAssertTrue(controller.message.contains("cancelled"))
+        XCTAssertFalse(controller.mayStillBeInCall)
+    }
     private func wait(_ predicate: () -> Bool) async {
         for _ in 0..<300 { if predicate() { return }; try? await Task.sleep(for: .milliseconds(2)) }
         XCTFail("Attendance fixture did not reach the expected state")

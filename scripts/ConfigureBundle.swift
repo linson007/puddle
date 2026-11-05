@@ -2,6 +2,8 @@ import Foundation
 
 let path = CommandLine.arguments[1], url = URL(fileURLWithPath: path), environment = ProcessInfo.processInfo.environment
 var info = try PropertyListSerialization.propertyList(from: Data(contentsOf: url), format: nil) as! [String: Any]
+let localesURL = URL(fileURLWithPath: CommandLine.arguments[2])
+info["CFBundleLocalizations"] = try JSONDecoder().decode([String].self, from: Data(contentsOf: localesURL))
 func fail(_ message: String) -> Never { FileHandle.standardError.write(Data((message + "\n").utf8)); exit(1) }
 if let version = environment["PUDDLE_VERSION"] {
     let parts = version.split(separator: ".", omittingEmptySubsequences: false)

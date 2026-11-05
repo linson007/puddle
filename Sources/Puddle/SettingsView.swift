@@ -193,7 +193,7 @@ struct PuddleSettingsView: View {
                 SystemDictationSettingsView(store: store, controller: store.systemDictation)
                 StartupSettingsView()
                 Section("Local storage") {
-                    Button(L10n.text("Retry Loading State")) { Task { await store.retryLoadingState() } }.disabled(store.demo)
+                    Button(L10n.text("Retry Loading State")) { Task { await store.retryLoadingState() } }.disabled(store.demo || store.isLoadingState)
                     Text("Conversation, memory, tasks, and cached connection data stay in Application Support/Puddle. The cache has owner-only permissions. Credentials use Keychain.")
                         .font(.caption).foregroundStyle(.secondary)
                 }

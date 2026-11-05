@@ -9,6 +9,7 @@ public enum PuddleDiagnostics {
     private static let network = Logger(subsystem: "app.puddle", category: "network")
     private static let speech = Logger(subsystem: "app.puddle", category: "speech")
     private static let oauth = Logger(subsystem: "app.puddle", category: "oauth")
+    static func meetingRecoveryPruned() { persistence.notice("Pruned obsolete unreadable meeting recovery") }
     public static func isCancellation(_ error: Error) -> Bool {
         if error is CancellationError { return true }
         let error = error as NSError

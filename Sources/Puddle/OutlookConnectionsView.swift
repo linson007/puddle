@@ -73,7 +73,7 @@ extension PuddleStore {
                 let code = try await callback.wait(for: attempt)
                 try await outlook.exchange(code: code, attempt: attempt); try Task.checkCancellation()
                 await loadOutlookConnection(); await selectMailProvider(.outlook); errorMessage = nil
-            } catch is CancellationError {} catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
+            } catch { reportOutlookError(error) }
         }
     }
     func cancelOutlookConnection() { outlookOAuthTask?.cancel(); outlookCallback?.cancel(); isConnectingOutlook = false }
@@ -105,7 +105,11 @@ extension PuddleStore {
                 next.outlookMessages = fetched.map { value in var copy = value; copy.summary = summaries[value.id] ?? nil; return copy }
                 next.outlookLastSync = Date()
             }
-        } catch is CancellationError {} catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
+        } catch { reportOutlookError(error) }
+    }
+    func reportOutlookError(_ error: Error) {
+        guard !PuddleDiagnostics.isCancellation(error) else { return }
+        PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error)
     }
     func searchCurrentMail(_ query: String) async throws -> [MailMessage] {
         if demo { return Array(mailInbox.prefix(10)) }

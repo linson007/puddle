@@ -76,4 +76,38 @@ private struct RecoveryOfflineTransport: HTTPTransport {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
         XCTAssertEqual(try disk.load().meetings.first?.transcript, "Apply these words")
     }
+    func testShortRecoveryIsNotMistakenForUnrelatedTextAndExplicitApplySurvivesReformatting() async throws {
+        let directory = try directory(), secrets = RecoverySecrets()
+        let disk = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        let store = PuddleStore(directory: directory, cache: disk, secrets: secrets)
+        store.storageAvailable = true
+        let created = await store.createMeetingNote(), id = try XCTUnwrap(created)
+        let note = try XCTUnwrap(store.state.meetings.first)
+        store.meetingWorkspace.edit(note) { $0.transcript = "Earlier unrelated OK phrase" }
+        let initialSaved = await store.saveMeetingNote(id); XCTAssertTrue(initialSaved)
+        await store.checkpointMeetingCapture(id, text: "OK")
+        store.meetingWorkspace.edit(store.state.meetings[0]) { $0.notes = "Unrelated edit" }
+        let unrelatedSaved = await store.saveMeetingNote(id); XCTAssertTrue(unrelatedSaved)
+        XCTAssertEqual(try disk.loadMeetingRecoveries().first?.text, "OK")
+        store.reviewMeetingCapture(id); XCTAssertTrue(store.useImportedTranscript(append: true))
+        store.meetingWorkspace.edit(store.state.meetings[0]) { $0.transcript = "Reviewed and reformatted recovery" }
+        let reviewedSaved = await store.saveMeetingNote(id); XCTAssertTrue(reviewedSaved)
+        XCTAssertTrue(try disk.loadMeetingRecoveries().isEmpty)
+    }
+    func testCheckpointCapturedBeforeDiscardCannotResurrectRecoveryOrOverwriteNewerCapture() async throws {
+        let directory = try directory(), secrets = RecoverySecrets()
+        let disk = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        let store = PuddleStore(directory: directory, cache: disk, secrets: secrets)
+        store.storageAvailable = true
+        let created = await store.createMeetingNote(), id = try XCTUnwrap(created)
+        let capturedAt = Date().addingTimeInterval(-60)
+        await store.checkpointMeetingCapture(id, text: "Old capture", capturedAt: capturedAt)
+        await store.discardMeetingCapture(id)
+        await store.checkpointMeetingCapture(id, text: "Late old capture", capturedAt: capturedAt)
+        XCTAssertTrue(store.state.meetingCaptureRecoveries.isEmpty)
+        XCTAssertTrue(try disk.loadMeetingRecoveries().isEmpty)
+        await store.checkpointMeetingCapture(id, text: "New capture", capturedAt: Date().addingTimeInterval(1))
+        await store.checkpointMeetingCapture(id, text: "Late old capture", capturedAt: capturedAt)
+        XCTAssertEqual(try disk.loadMeetingRecoveries().first?.text, "New capture")
+    }
 }

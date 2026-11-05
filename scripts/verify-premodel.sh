@@ -29,6 +29,7 @@ run() {
 git rev-parse HEAD > "$output/base-commit.txt"
 git diff --binary > "$output/working-tree.patch"
 git ls-files --cached --others --exclude-standard -z -- Sources Tests scripts app .github docs | xargs -0 shasum -a 256 > "$output/source-sha256.txt"
+run guards make guards
 run debug env PUDDLE_LOAD_RUN=debug sh scripts/swift.sh test
 run release env PUDDLE_LOAD_RUN=release sh scripts/swift.sh test -c release
 run heavy env PUDDLE_LOAD_RUN=release PUDDLE_LOAD_PROFILE=heavy sh scripts/swift.sh test -c release --filter WorkspaceLoadTests

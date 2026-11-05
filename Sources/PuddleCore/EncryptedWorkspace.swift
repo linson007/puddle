@@ -164,13 +164,25 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
     }
     public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] {
         cache.lock.lock(); defer { cache.lock.unlock() }
+        if FileManager.default.fileExists(atPath: directory.path) {
+            do { try pruneMeetingRecoveryQuarantine() }
+            catch { PuddleDiagnostics.failure(.persistence, "Prune meeting recovery quarantine", error) }
+        }
         let url = directory.appendingPathComponent("meeting-recovery.vault")
+        try TranscriptVault.rejectNonregular(url)
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-        return try JSONDecoder().decode([MeetingCaptureRecovery].self, from: open(Data(contentsOf: url), key: key(create: false)))
+        guard try TranscriptVault.fingerprint(url).bytes <= MeetingRecoveryLimits.maximumBytes + 64 else {
+            throw PuddleError("The meeting recovery file exceeds its size limit. It was preserved.")
+        }
+        let values = try JSONDecoder().decode([MeetingCaptureRecovery].self, from: open(Data(contentsOf: url), key: key(create: false)))
+        try MeetingRecoveryLimits.validate(values)
+        return values
     }
     public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws {
         cache.lock.lock(); defer { cache.lock.unlock() }
         let url = directory.appendingPathComponent("meeting-recovery.vault")
+        try TranscriptVault.rejectNonregular(url)
+        try MeetingRecoveryLimits.validate(values)
         // If quarantine previously failed, preserve the unreadable file before
         // allowing a checkpoint to replace it.
         if cache.unreadableMeetingRecovery { try preserveUnreadableMeetingRecoveries() }
@@ -179,6 +191,9 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             return
         }
         let data = try JSONEncoder().encode(values)
+        guard data.count <= MeetingRecoveryLimits.maximumBytes else {
+            throw PuddleError("Meeting recovery storage is full. Review existing recoveries before retrying. Previous recovery files were preserved.")
+        }
         // Never create a new key over an existing workspace/recovery file.
         let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path) ||
             FileManager.default.fileExists(atPath: directory.appendingPathComponent("meeting-recovery.vault").path)
@@ -188,10 +203,32 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         cache.lock.lock(); defer { cache.lock.unlock() }
         cache.unreadableMeetingRecovery = true
         let url = directory.appendingPathComponent("meeting-recovery.vault")
+        try TranscriptVault.rejectNonregular(url)
         if FileManager.default.fileExists(atPath: url.path) {
-            try FileManager.default.moveItem(at: url, to: directory.appendingPathComponent("meeting-recovery-unreadable-\(UUID()).vault"))
+            let preserved = directory.appendingPathComponent("meeting-recovery-unreadable-\(UUID()).vault")
+            try FileManager.default.moveItem(at: url, to: preserved)
+            try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: preserved.path)
         }
         cache.unreadableMeetingRecovery = false
+        try pruneMeetingRecoveryQuarantine()
+    }
+    private func pruneMeetingRecoveryQuarantine() throws {
+        let fm = FileManager.default
+        let candidates = try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.contentModificationDateKey])
+            .filter { $0.lastPathComponent.hasPrefix("meeting-recovery-unreadable-") && $0.pathExtension == "vault" }
+        var regular: [(URL, Date)] = []
+        for url in candidates {
+            do {
+                try TranscriptVault.rejectNonregular(url)
+                regular.append((url, try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast))
+            } catch { PuddleDiagnostics.failure(.persistence, "Inspect meeting recovery quarantine", error) }
+        }
+        regular.sort { $0.1 == $1.1 ? $0.0.lastPathComponent < $1.0.lastPathComponent : $0.1 > $1.1 }
+        for (url, _) in regular.dropFirst(MeetingRecoveryLimits.maximumQuarantineCount) {
+            try TranscriptVault.rejectNonregular(url)
+            try fm.removeItem(at: url)
+            PuddleDiagnostics.meetingRecoveryPruned()
+        }
     }
     private func protectLegacyFiles() throws {
         let fm = FileManager.default, key = try key(create: false)

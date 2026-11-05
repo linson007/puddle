@@ -2,6 +2,7 @@
 set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 configuration=${PUDDLE_BUILD_CONFIGURATION:-release}
+python3 "$repo_root/scripts/localizations.py" --check
 # Provision one Google Desktop OAuth client for the app, not per end user.
 # The downloaded client JSON is gitignored; account tokens only use Keychain.
 google_client=${PUDDLE_GOOGLE_CLIENT_FILE:-}
@@ -25,7 +26,10 @@ else
     sh "$repo_root/scripts/swift.sh" build -c "$configuration"
 fi
 binary_dir=$(sh "$repo_root/scripts/swift.sh" build -c "$configuration" --show-bin-path)
-app_bundle="$repo_root/build/Puddle.app"
+mkdir -p "$repo_root/build"
+staging=$(mktemp -d "$repo_root/build/.puddle-build.XXXXXX")
+trap 'rm -rf "$staging"' EXIT HUP INT TERM
+app_bundle="$staging/Puddle.app"
 mkdir -p "$app_bundle/Contents/MacOS" "$app_bundle/Contents/Resources"
 # Replace the executable's inode so an already running build keeps its code pages.
 binary_stage="$app_bundle/Contents/MacOS/.Puddle.$$"
@@ -38,13 +42,13 @@ for resources in "$binary_dir"/Puddle_*.bundle; do
 done
 # SwiftUI LocalizedStringKey initializers look in Bundle.main. Ship the same
 # catalog exports there as well as in PuddleCore's Bundle.module.
-for locale in en tr; do
+for locale in $(python3 "$repo_root/scripts/localization_config.py"); do
     mkdir -p "$app_bundle/Contents/Resources/$locale.lproj"
     cp "$repo_root/Sources/PuddleCore/Resources/$locale.lproj/Localizable.strings" \
         "$app_bundle/Contents/Resources/$locale.lproj/Localizable.strings"
 done
 cp "$repo_root/app/Info.plist" "$app_bundle/Contents/Info.plist"
-swift -module-cache-path "$repo_root/.build/module-cache" "$repo_root/scripts/ConfigureBundle.swift" "$app_bundle/Contents/Info.plist"
+swift -module-cache-path "$repo_root/.build/module-cache" "$repo_root/scripts/ConfigureBundle.swift" "$app_bundle/Contents/Info.plist" "$repo_root/Localization/locales.json"
 if [ -n "$google_client" ]; then
     install -m 600 "$google_client" "$app_bundle/Contents/Resources/GoogleClient.json"
 else
@@ -57,4 +61,5 @@ if [ "${PUDDLE_SIGNING_IDENTITY:--}" = - ]; then
 else
     codesign --force --options runtime --timestamp --entitlements "$repo_root/app/Puddle.entitlements" --sign "$PUDDLE_SIGNING_IDENTITY" --identifier app.puddle.mac "$app_bundle"
 fi
-printf 'Built %s\n' "$app_bundle"
+python3 "$repo_root/scripts/bundle_tools.py" "$app_bundle" "$repo_root/build/Puddle.app"
+printf 'Built %s\n' "$repo_root/build/Puddle.app"

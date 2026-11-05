@@ -28,7 +28,8 @@ struct MeetingCompanionView: View {
                 } else {
                     Picker(L10n.text("Audio source"), selection: $source) { ForEach(MeetingAudioSource.allCases) { Text($0.title).tag($0) } }
                     Button(L10n.text("Start Local Transcription")) { store.startMeetingTranscription(note.id, source: source) }
-                        .disabled(capture.isActive || store.demo || !capture.isSupported)
+                        .disabled(!store.canStartMeetingTranscription(note.id))
+                    if let reason = store.meetingTranscriptionBlockedReason(note.id) { Text(reason).font(.caption).foregroundStyle(.secondary) }
                     TextField(L10n.text("Search transcript"), text: $query).textFieldStyle(.roundedBorder)
                     ScrollView {
                         Text(query.isEmpty ? note.transcript : note.transcript.components(separatedBy: "\n\n").filter { $0.localizedCaseInsensitiveContains(query) }.joined(separator: "\n\n"))
@@ -59,23 +60,26 @@ private struct FloatingMeetingWindow: NSViewRepresentable {
 }
 
 extension PuddleStore {
-    func checkpointMeetingCapture(_ id: UUID, text: String) async {
+    func checkpointMeetingCapture(_ id: UUID, text: String, capturedAt: Date = Date()) async {
         guard !demo, !privateSession, storageAvailable, !text.isEmpty, state.meetings.contains(where: { $0.id == id }) else { return }
+        guard !Task.isCancelled, capturedAt > (state.meetingRecoveryDismissals[id] ?? .distantPast) else { return }
         let text = String(text.prefix(200_000))
         guard state.meetingCaptureRecoveries.first(where: { $0.noteID == id })?.text != text else { return }
         var values = state.meetingCaptureRecoveries.filter { $0.noteID != id }
-        values.append(MeetingCaptureRecovery(noteID: id, text: text))
+        values.append(MeetingCaptureRecovery(noteID: id, text: text, updatedAt: capturedAt))
         do { try await checkpointRecoveries(values) }
         catch { fail(error) }
     }
 
     func reviewMeetingCapture(_ id: UUID) {
         guard let recovery = state.meetingCaptureRecoveries.first(where: { $0.noteID == id }) else { return }
+        if meetingCapture.noteID == id { meetingCapture.stopImmediately() }
         meetingWorkspace.selectedID = id
-        meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id, result: ImportedTranscript(text: recovery.text, sourceName: "Recovered local capture"))
+        meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id, result: ImportedTranscript(text: recovery.text, sourceName: "Recovered local capture"), recovery: recovery)
     }
     func discardMeetingCapture(_ id: UUID) async {
         do {
+            if meetingCapture.noteID == id { meetingCapture.stopImmediately() }
             try await commit { $0.meetingCaptureRecoveries.removeAll { $0.noteID == id }; $0.meetingRecoveryDismissals[id] = Date() }
             try await removeObsoleteMeetingRecoveries()
         } catch { fail(error) }

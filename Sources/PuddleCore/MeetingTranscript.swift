@@ -1,5 +1,19 @@
 import Foundation
 
+public enum MeetingRecoveryLimits {
+    public static let maximumCount = 128
+    public static let maximumBytes = 16 * 1024 * 1024
+    public static let maximumTextBytes = 1024 * 1024
+    public static let maximumQuarantineCount = 5
+    static func validate(_ values: [MeetingCaptureRecovery]) throws {
+        guard values.count <= maximumCount, Set(values.map(\.noteID)).count == values.count,
+              values.allSatisfy({ $0.text.utf8.count <= maximumTextBytes && $0.text.count <= TranscriptImport.maximumCharacters }),
+              values.reduce(0, { $0 + $1.text.utf8.count }) <= maximumBytes else {
+            throw PuddleError("Meeting recovery storage is full. Review and save or discard existing recoveries, then retry. Previous recovery files were preserved.")
+        }
+    }
+}
+
 public struct MeetingCaptureRecovery: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID { noteID }
     public let noteID: UUID
@@ -38,6 +52,7 @@ public struct MeetingTranscriptSegment: Equatable, Sendable, Identifiable {
 /// Revisions replace provisional results; finalized passages remain in chronological order.
 public struct MeetingTranscriptTimeline: Equatable, Sendable {
     public private(set) var segments: [MeetingTranscriptSegment] = []
+    private var renderedPayloadCharacters = 0
     public init() {}
     public mutating func receive(_ segment: MeetingTranscriptSegment) throws {
         guard segment.start.isFinite, segment.end.isFinite, segment.start >= 0, segment.end >= segment.start,
@@ -52,24 +67,36 @@ public struct MeetingTranscriptTimeline: Equatable, Sendable {
             return
         }
         if !segment.isFinal, segments.contains(where: { $0.channel == segment.channel && $0.isFinal && $0.start < segment.end && $0.end > segment.start }) { return }
-        var next = segments
-        next.removeAll {
-            guard $0.channel == segment.channel else { return false }
-            return $0.start == segment.start || (!$0.isFinal && $0.start < segment.end && $0.end > segment.start)
+        let removed = segments.indices.filter { index in
+            let value = segments[index]
+            guard value.channel == segment.channel else { return false }
+            return value.start == segment.start || (!value.isFinal && value.start < segment.end && value.end > segment.start)
         }
-        if !text.isEmpty {
-            next.append(MeetingTranscriptSegment(channel: segment.channel, start: segment.start, end: segment.end, text: text, isFinal: segment.isFinal))
-        }
-        next.sort { $0.start == $1.start ? $0.channel.rawValue < $1.channel.rawValue : $0.start < $1.start }
-        guard next.count <= 5000, Self.render(next).count <= TranscriptImport.maximumCharacters else {
+        let next = MeetingTranscriptSegment(channel: segment.channel, start: segment.start, end: segment.end, text: text, isFinal: segment.isFinal)
+        let count = segments.count - removed.count + (text.isEmpty ? 0 : 1)
+        let payload = renderedPayloadCharacters - removed.reduce(0) { $0 + Self.render(segments[$1]).count } + (text.isEmpty ? 0 : Self.render(next).count)
+        guard count <= 5000, payload + max(0, count - 1) * 2 <= TranscriptImport.maximumCharacters else {
             throw PuddleError("The live transcript reached its size limit. Captured text was retained; continue in a new meeting note.")
         }
-        segments = next
+        for index in removed.reversed() { segments.remove(at: index) }
+        if !text.isEmpty {
+            var low = 0, high = segments.count
+            while low < high {
+                let middle = (low + high) / 2, value = segments[middle]
+                if value.start < next.start || (value.start == next.start && value.channel.rawValue < next.channel.rawValue) { low = middle + 1 }
+                else { high = middle }
+            }
+            segments.insert(next, at: low)
+        }
+        renderedPayloadCharacters = payload
     }
     public var text: String { Self.render(segments) }
     public var hasProvisionalText: Bool { segments.contains { !$0.isFinal } }
     private static func render(_ segments: [MeetingTranscriptSegment]) -> String {
-        segments.map { "[\(timestamp($0.start))] \($0.channel.title)\($0.isFinal ? "" : " (provisional)"): \($0.text)" }.joined(separator: "\n\n")
+        segments.map(render).joined(separator: "\n\n")
+    }
+    private static func render(_ segment: MeetingTranscriptSegment) -> String {
+        "[\(timestamp(segment.start))] \(segment.channel.title)\(segment.isFinal ? "" : " (provisional)"): \(segment.text)"
     }
     public static func timestamp(_ seconds: Double) -> String {
         let value = Int(max(0, min(seconds.isFinite ? seconds : 0, 86_400)) * 1000)

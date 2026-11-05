@@ -24,7 +24,7 @@ extension PuddleStore {
             if let project = next.projectID, !state.workProjects.contains(where: { $0.id == project }) { next.projectID = nil }
             try await commit { snapshot in
                 if let index = snapshot.meetings.firstIndex(where: { $0.id == id }) { snapshot.meetings[index] = next }
-                if snapshot.meetingCaptureRecoveries.contains(where: { $0.noteID == id && next.transcript.contains($0.text) }) {
+                if let applied = meetingWorkspace.appliedRecovery(for: id), snapshot.meetingCaptureRecoveries.contains(applied) {
                     snapshot.meetingCaptureRecoveries.removeAll { $0.noteID == id }
                     snapshot.meetingRecoveryDismissals[id] = Date()
                 }
@@ -65,6 +65,7 @@ extension PuddleStore {
             fail(PuddleError("The combined transcript exceeds 200,000 characters. Replace the transcript or import a smaller file.")); return false
         }
         meetingWorkspace.edit(note) { $0.transcript = combined }
+        if let recovery = pending.recovery { meetingWorkspace.markRecoveryApplied(recovery) }
         meetingWorkspace.pendingImport = nil; meetingWorkspace.selectedID = note.id
         return true
     }
@@ -97,13 +98,22 @@ extension PuddleStore {
     }
 
     func startMeetingTranscription(_ id: UUID, source: MeetingAudioSource) {
-        guard !state.meetingCaptureRecoveries.contains(where: { $0.noteID == id }) else {
-            fail(PuddleError("Review and save or discard the recovered transcript before starting another capture.")); return
-        }
-        guard !demo, storageAvailable, state.meetings.contains(where: { $0.id == id }),
-              !meetingCapture.isActive, meetingWorkspace.pendingImport == nil, !meetingWorkspace.isImporting else { return }
+        if let reason = meetingTranscriptionBlockedReason(id) { fail(PuddleError(reason)); return }
         stopSpeaking(); voiceInput.cancel(); cancelMeetingSummary()
         meetingCapture.start(noteID: id, language: state.settings.speechLanguage, source: source)
+    }
+    func canStartMeetingTranscription(_ id: UUID) -> Bool { meetingTranscriptionBlockedReason(id) == nil }
+    func meetingTranscriptionBlockedReason(_ id: UUID) -> String? {
+        if isLocked { return L10n.text("Unlock Puddle before starting transcription.") }
+        if privateSession { return L10n.text("End the private session before starting transcription.") }
+        if demo { return L10n.text("Live transcription is unavailable in Demo.") }
+        if !storageAvailable { return L10n.text("Retry loading saved state before starting transcription.") }
+        if !state.meetings.contains(where: { $0.id == id }) { return L10n.text("These meeting notes are no longer available.") }
+        if !meetingCapture.isSupported { return L10n.text("Live transcription is unavailable on this Mac.") }
+        if meetingCapture.isActive { return L10n.text("Stop the current capture before starting another.") }
+        if isCompletingMeetingCapture || meetingWorkspace.pendingImport != nil || meetingWorkspace.isImporting { return L10n.text("Finish importing the transcript first.") }
+        if state.meetingCaptureRecoveries.contains(where: { $0.noteID == id }) { return L10n.text("Review and save or discard the recovered transcript before starting another capture.") }
+        return nil
     }
 
     var canInstallMeetingSpeechLanguage: Bool {

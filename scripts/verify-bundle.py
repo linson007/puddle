@@ -6,6 +6,8 @@ import plistlib
 import shutil
 import subprocess
 import tempfile
+from bundle_tools import read_plist
+from localization_config import supported_locales
 
 
 def run(command, *, expected=0):
@@ -16,18 +18,32 @@ def run(command, *, expected=0):
     return result
 
 
+def verify_resource_inventory(resources, locales):
+    allowed = {'Puddle.icns', 'Puddle_PuddleCore.bundle', 'GoogleClient.json'} | {f'{locale}.lproj' for locale in locales}
+    unexpected = {path.name for path in resources.iterdir()} - allowed
+    if unexpected:
+        raise RuntimeError(f'Unexpected stale bundle resources: {sorted(unexpected)}')
+    for path in resources.rglob('*.lproj'):
+        if path.stem not in locales:
+            raise RuntimeError(f'Unexpected stale locale: {path.name}')
+
+
 def verify(app):
     app = app.resolve(strict=True)
     info_path = app / "Contents/Info.plist"
-    info = plistlib.loads(info_path.read_bytes())
+    info = read_plist(info_path.read_bytes())
+    read_plist((Path(__file__).resolve().parent.parent / 'app/Info.plist').read_bytes())
     if any(key.startswith("PuddleUITest") for key in info):
         raise RuntimeError("The release bundle contains a UI fixture marker.")
     executable = app / "Contents/MacOS/Puddle"
     run(["/usr/bin/plutil", "-lint", str(info_path)])
     run(["/usr/bin/codesign", "--verify", "--deep", "--strict", str(app)])
-    if info.get("CFBundleLocalizations") != ["en", "tr"]:
-        raise RuntimeError("The app must declare English and Turkish localizations.")
-    for locale in ("en", "tr"):
+    locales = supported_locales()
+    if info.get("CFBundleLocalizations") != locales:
+        raise RuntimeError("The app localizations must match Localization/locales.json.")
+    resources = app / "Contents/Resources"
+    verify_resource_inventory(resources, locales)
+    for locale in locales:
         resources = app / "Contents/Resources"
         package_strings = list(resources.glob(f"Puddle_*.bundle/**/{locale}.lproj/Localizable.strings"))
         if not package_strings:

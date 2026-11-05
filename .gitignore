@@ -10,3 +10,5 @@ credentials.json
 .swiftpm/
 *.xcuserdatad/
 *.log
+__pycache__/
+*.py[cod]

@@ -30,8 +30,9 @@ struct MeetingCaptureView: View {
                 HStack {
                     Picker("Capture", selection: $source) { ForEach(MeetingAudioSource.allCases) { Text($0.title).tag($0) } }
                     Button("Start transcription") { store.startMeetingTranscription(note.id, source: source) }.buttonStyle(.borderedProminent).accessibilityHint("Starts on-device transcription using the selected audio source")
-                        .disabled(store.demo || !store.storageAvailable || !capture.isSupported || capture.isActive || store.meetingWorkspace.pendingImport != nil || store.meetingWorkspace.isImporting)
+                        .disabled(!store.canStartMeetingTranscription(note.id))
                 }
+                if let reason = store.meetingTranscriptionBlockedReason(note.id) { Text(reason).font(.caption).foregroundStyle(.secondary) }
                 HStack {
                     Button("Install speech language…") { store.installMeetingSpeechLanguage() }.disabled(!store.canInstallMeetingSpeechLanguage)
                     if capture.status == .installingLanguage {

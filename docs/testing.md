@@ -5,10 +5,16 @@
 From the repository root, run:
 
 ```sh
+make verify
 make test
 sh scripts/swift.sh test -c release
 make build
 ```
+
+`make verify` runs localization exports and coverage, Python script tests, the
+Sendable synchronization guard, and debug Swift fixtures. `make guards` runs just
+the script checks. `make verify-premodel` includes these guards before its longer
+debug/release/load/bundle checks.
 
 The default suite uses synthetic data and injected transports. It needs no
 model server, provider credentials, signing identity, or macOS recording grants.
