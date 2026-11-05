@@ -12,6 +12,8 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     @Published private(set) var errorMessage: String?
     @Published private(set) var startedAt: Date?
     @Published private(set) var sourceDescription: String?
+    private(set) var captureStartedAt = Date.distantPast
+    private var stopWaiters: [CheckedContinuation<Void, Never>] = []
     var isActive: Bool { status != .idle }
     var isSupported: Bool { capture.isSupported }
     var onCompletion: (@MainActor (UUID, String) -> Void)?
@@ -49,6 +51,7 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     func start(noteID: UUID, language: String, source: MeetingAudioSource) {
         guard !isActive else { return }
         generation = UUID(); let expected = generation
+        captureStartedAt = Date()
         self.noteID = noteID; status = .preparing; timeline = MeetingTranscriptTimeline()
         errorMessage = nil; message = "Preparing on-device transcription…"; startedAt = nil; sourceDescription = nil
         work = Task { [weak self] in
@@ -74,6 +77,7 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
                         catch { return }
                         guard let self, self.generation == expected else { return }
                         let text = self.timeline.text
+                        guard !Task.isCancelled else { return }
                         if !text.isEmpty { await self.onCheckpoint?(noteID, text) }
                     }
                 }
@@ -87,6 +91,7 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
         }
     }
     func stop(notice: String? = nil) {
+        checkpoints?.cancel(); checkpoints = nil
         guard isActive, status != .finishing else { if let notice { errorMessage = notice }; return }
         if status == .installingLanguage { cancel(); return }
         if status == .preparing { complete(notice: notice); return }
@@ -104,10 +109,26 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
             self.complete(notice: [self.errorMessage, "Finalization timed out. Any provisional text is labeled for review."].compactMap { $0 }.joined(separator: " "))
         }
     }
+    func stopAndWait() async {
+        stop()
+        guard isActive else { return }
+        await withCheckedContinuation { stopWaiters.append($0) }
+    }
+    /// Locking revokes input synchronously. Retain current text without waiting
+    /// for recognition or other workspace cleanup to finish.
+    func stopImmediately() {
+        guard isActive else { return }
+        if status == .installingLanguage { cancel() } else { complete(notice: nil) }
+    }
+    private func releaseStopWaiters() {
+        let waiting = stopWaiters; stopWaiters = []
+        for waiter in waiting { waiter.resume() }
+    }
     /// Used for note deletion or switching between demo and personal state.
     func cancel() {
         generation = UUID(); work?.cancel(); deadline?.cancel(); checkpoints?.cancel(); checkpoints = nil; capture.cancel()
         status = .idle; noteID = nil; startedAt = nil; sourceDescription = nil; message = ""; errorMessage = nil; timeline = MeetingTranscriptTimeline()
+        releaseStopWaiters()
     }
     private func complete(notice: String?) {
         let id = noteID, text = timeline.text
@@ -116,5 +137,6 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
         message = text.isEmpty ? "Transcription stopped." : "Review the captured text, apply it to the transcript, and save your notes."
         if let id, !text.isEmpty { onCompletion?(id, text) }
         noteID = nil
+        releaseStopWaiters()
     }
 }

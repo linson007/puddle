@@ -101,7 +101,8 @@ enum MeetAttendanceStatus: Equatable { case idle, opening, ready, joining, signI
                 }
             } catch {
                 guard generation == expected else { return }
-                let reason = error is CancellationError ? "Attendance was cancelled." : error.localizedDescription
+                let cancelled = PuddleDiagnostics.isCancellation(error)
+                let reason = cancelled ? "Attendance was cancelled." : error.localizedDescription
                 if let session {
                     let owned = await session.hasOwnedTarget
                     let left = await session.leave()
@@ -109,7 +110,7 @@ enum MeetAttendanceStatus: Equatable { case idle, opening, ready, joining, signI
                     message = reason + (left ? (owned ? " The managed Meet tab was closed." : "") : " Close the dedicated Meet tab manually; leaving could not be verified.")
                     mayStillBeInCall = !left
                 } else { message = reason }
-                status = .failed; browser = nil
+                status = cancelled && !mayStillBeInCall ? .ended : .failed; browser = nil
                 if let noteID { onEnded?(noteID) }
             }
         }

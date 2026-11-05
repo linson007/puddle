@@ -32,7 +32,7 @@ behavior, or `L10n.text` for code that also needs SwiftPM-only lookup.
 
 `scripts/localizations.py --check` also scans direct literals in SwiftUI view
 initializers, navigation titles, alerts, help and accessibility labels, plus
-`L10n.text` calls under `Sources/Puddle`. It reports untranslated occurrences
+`L10n.text` calls throughout `Sources`, including `PuddleCore`. It reports untranslated occurrences
 against [the committed baseline](../Localization/ui-literals-baseline.json).
 Baseline identities contain file, call, English key and occurrence count, so a
 new key or another use of existing untranslated text fails CI without depending
@@ -57,6 +57,10 @@ open -n build/Puddle.app --args --demo -AppleLanguages '(tr)'
 
 Check sidebar, Settings, task actions, local AI setup, meeting controls and error
 layout. Switching language must not rename saved tasks, memories or profiles.
-Add new locales to the exporter, package resources and app's
-`CFBundleLocalizations` together. Before translating interpolated text, define
+Add supported locales to `Localization/locales.json` and translate their catalog
+entries, then run the exporter. Export, build and verification read that manifest;
+the build generates `CFBundleLocalizations` from it. `make build` checks exports
+before compiling, assembles a fresh app, and replaces the previous bundle only
+after signing succeeds. Verification rejects stale resources and locale folders.
+Before translating interpolated text, define
 format/plural keys in the catalog rather than concatenating translated fragments.

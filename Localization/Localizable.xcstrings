@@ -664,6 +664,23 @@
         }
       }
     },
+    "End the private session before starting transcription.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End the private session before starting transcription."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transkripsiyona başlamadan önce özel oturumu sonlandırın."
+          }
+        }
+      }
+    },
     "Exit demo": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -694,6 +711,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Harici bağlantılar"
+          }
+        }
+      }
+    },
+    "Finish importing the transcript first.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finish importing the transcript first."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önce transkript içe aktarma işlemini tamamlayın."
           }
         }
       }
@@ -783,6 +817,23 @@
         }
       }
     },
+    "Keep Puddle open": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep Puddle open"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Puddle açık kalsın"
+          }
+        }
+      }
+    },
     "Keep archived conversations": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -813,6 +864,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bilgi"
+          }
+        }
+      }
+    },
+    "Live transcription is unavailable in Demo.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live transcription is unavailable in Demo."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Demo modunda canlı transkripsiyon kullanılamaz."
+          }
+        }
+      }
+    },
+    "Live transcription is unavailable on this Mac.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Live transcription is unavailable on this Mac."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu Mac üzerinde canlı transkripsiyon kullanılamaz."
           }
         }
       }
@@ -1361,6 +1446,23 @@
         }
       }
     },
+    "Quit anyway": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quit anyway"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yine de çık"
+          }
+        }
+      }
+    },
     "Read aloud": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -1446,6 +1548,23 @@
         }
       }
     },
+    "Retry loading saved state before starting transcription.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry loading saved state before starting transcription."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transkripsiyona başlamadan önce kaydedilmiş verileri yeniden yüklemeyi deneyin."
+          }
+        }
+      }
+    },
     "Review Recovered Transcript": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -1459,6 +1578,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kurtarılan metni incele"
+          }
+        }
+      }
+    },
+    "Review and save or discard the recovered transcript before starting another capture.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review and save or discard the recovered transcript before starting another capture."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni bir kayıt başlatmadan önce kurtarılan transkripti inceleyip kaydedin veya silin."
           }
         }
       }
@@ -1854,6 +1990,23 @@
         }
       }
     },
+    "Stop the current capture before starting another.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stop the current capture before starting another."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yeni bir kayıt başlatmadan önce mevcut kaydı durdurun."
+          }
+        }
+      }
+    },
     "Stop voice input": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -1973,6 +2126,23 @@
         }
       }
     },
+    "These meeting notes are no longer available.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These meeting notes are no longer available."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu toplantı notları artık kullanılamıyor."
+          }
+        }
+      }
+    },
     "Title": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -2003,6 +2173,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bugün"
+          }
+        }
+      }
+    },
+    "Unlock Puddle before starting transcription.": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unlock Puddle before starting transcription."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transkripsiyona başlamadan önce Puddle kilidini açın."
           }
         }
       }
@@ -2173,6 +2360,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Çalışma Alanı"
+          }
+        }
+      }
+    },
+    "Workspace changes or meeting text could not be saved": {
+      "comment": "Meeting capture availability or quit recovery control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace changes or meeting text could not be saved"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışma alanı değişiklikleri veya toplantı metni kaydedilemedi"
           }
         }
       }

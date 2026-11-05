@@ -2,6 +2,19 @@ import XCTest
 @testable import PuddleCore
 
 final class MeetingTranscriptTests: XCTestCase {
+    func testLargeTimelineKeepsOrderAndBudgetWithoutRenderingEveryUpdate() throws {
+        var timeline = MeetingTranscriptTimeline()
+        let started = ContinuousClock.now
+        for index in 0..<4_000 {
+            try timeline.receive(.init(channel: .microphone, start: Double(index), end: Double(index + 1), text: "Word", isFinal: true))
+        }
+        XCTAssertLessThan(ContinuousClock.now - started, .seconds(10))
+        XCTAssertEqual(timeline.segments.count, 4_000)
+        XCTAssertEqual(timeline.segments.map(\.start), (0..<4_000).map(Double.init))
+        XCTAssertLessThanOrEqual(timeline.text.count, TranscriptImport.maximumCharacters)
+        try timeline.receive(.init(channel: .meetingAudio, start: 0.5, end: 1, text: "Earlier source", isFinal: false))
+        XCTAssertEqual(timeline.segments[1].text, "Earlier source")
+    }
     func testPunctuationFromSilenceDoesNotCreatePassagesAndRealSpeechStillReplacesIt() throws {
         var timeline = MeetingTranscriptTimeline()
         for value in [".", "...", "?!", "—", "\n"] {

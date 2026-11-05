@@ -269,8 +269,11 @@ Context budgets respect the model's reported capacity and use text token estimat
 
 ## Test
 
-    make test
+    make verify
     make build
+
+`make verify` runs debug fixtures plus localization, Python script and concurrency
+guards. `make guards` runs only the script checks; `make test` runs only Swift tests.
 
 The default suite uses fixtures. Live inference, installed browser-driver, audio,
 and load evaluations are opt-in and are skipped unless explicitly configured.

@@ -118,12 +118,15 @@ extension PuddleStore {
                 } }
             } catch {
                 guard routineGeneration == expected else { return }
-                do { try await commit { next in if let index = next.routineRuns.firstIndex(where: { $0.id == run.id }) {
-                    next.routineRuns[index].status = error is CancellationError ? .interrupted : .failed
-                    next.routineRuns[index].result = error.localizedDescription; next.routineRuns[index].finishedAt = Date()
-                } } } catch { fail(error) }
+                await recordRoutineFailure(run.id, error: error)
             }
         }
+    }
+    func recordRoutineFailure(_ id: UUID, error: Error) async {
+        do { try await commit { next in if let index = next.routineRuns.firstIndex(where: { $0.id == id }) {
+            next.routineRuns[index].status = PuddleDiagnostics.isCancellation(error) ? .interrupted : .failed
+            next.routineRuns[index].result = error.localizedDescription; next.routineRuns[index].finishedAt = Date()
+        } } } catch { fail(error) }
     }
     func pauseRoutineWork() async {
         routineGeneration = UUID(); routineTask?.cancel(); routineTask = nil

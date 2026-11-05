@@ -117,8 +117,8 @@ extension AppSnapshot {
         var result = self
         let recoveries = Dictionary((meetingCaptureRecoveries + values).map { ($0.noteID, $0) }, uniquingKeysWith: { a, b in a.updatedAt > b.updatedAt ? a : b })
         result.meetingCaptureRecoveries = recoveries.values.filter { recovery in
-            guard let note = meetings.first(where: { $0.id == recovery.noteID }) else { return false }
-            return recovery.updatedAt > (meetingRecoveryDismissals[recovery.noteID] ?? .distantPast) && !note.transcript.contains(recovery.text)
+            guard meetings.contains(where: { $0.id == recovery.noteID }) else { return false }
+            return recovery.updatedAt > (meetingRecoveryDismissals[recovery.noteID] ?? .distantPast)
         }.sorted { $0.updatedAt < $1.updatedAt }
         return result
     }

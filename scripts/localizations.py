@@ -5,6 +5,7 @@ from collections import Counter
 import json
 from pathlib import Path
 import re
+from localization_config import supported_locales
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE = ROOT / 'Localization/ui-literals-baseline.json'
@@ -19,16 +20,22 @@ UI_CALLS = {
 
 def swift_string(source, start):
     """Read a quoted literal, including strings nested inside interpolation."""
-    quote = '"""' if source.startswith('"""', start) else '"'
-    index = start + len(quote)
+    prefix = re.match(r'(#+)?("""|")', source[start:])
+    if not prefix:
+        raise ValueError('Expected Swift string literal')
+    hashes = prefix.group(1) or ''
+    quote = prefix.group(2) + hashes
+    escape = '\\' + hashes
+    index = start + prefix.end()
+    content = index
     while index < len(source):
         if source.startswith(quote, index):
-            return source[start + len(quote):index], index + len(quote)
-        if source.startswith('\\(', index):
+            return source[content:index], index + len(quote)
+        if source.startswith(escape + '(', index):
             depth = 1
-            index += 2
+            index += len(escape) + 1
             while index < len(source) and depth:
-                if source[index] == '"':
+                if source[index] == '"' or re.match(r'#+"', source[index:]):
                     _, index = swift_string(source, index)
                     continue
                 if source[index] == '(':
@@ -36,8 +43,8 @@ def swift_string(source, start):
                 elif source[index] == ')':
                     depth -= 1
                 index += 1
-        elif source[index] == '\\':
-            index += 2
+        elif source.startswith(escape, index):
+            index += len(escape) + 1
         else:
             index += 1
     raise ValueError('Unterminated Swift string literal')
@@ -62,7 +69,7 @@ def literals(source):
                     index += 2
                 else:
                     index += 1
-        elif source[index] == '"':
+        elif source[index] == '"' or (source[index] == '#' and re.match(r'#+"', source[index:])):
             _, index = swift_string(source, index)
         elif source[index].isalpha() or source[index] == '_':
             token = re.match(r'[\w]+', source[index:]).group()
@@ -72,9 +79,9 @@ def literals(source):
                 argument = re.match(r'\s*\(\s*(?:title:\s*)?', source[end:])
                 if argument:
                     start = end + argument.end()
-                    if source[start:start + 1] == '"':
+                    if source[start:start + 1] == '"' or re.match(r'#+"', source[start:]):
                         value, stop = swift_string(source, start)
-                        if '\\(' not in value:
+                        if source[start] != '#' and '\\(' not in value:
                             try:
                                 value = json.loads('"' + value + '"')
                             except ValueError:
@@ -90,7 +97,7 @@ def literals(source):
 def coverage(catalog, root=None):
     root = root or ROOT
     missing, locations = Counter(), {}
-    for path in sorted((root / 'Sources/Puddle').rglob('*.swift')):
+    for path in sorted((root / 'Sources').rglob('*.swift')):
         relative = str(path.relative_to(root))
         for call, key, line in literals(path.read_text()):
             if key and key not in catalog['strings']:
@@ -106,7 +113,8 @@ def main():
     parser.add_argument('--update-baseline', action='store_true', help='Explicitly accept current untranslated UI debt')
     args = parser.parse_args()
     catalog = json.loads((ROOT / 'Localization/Localizable.xcstrings').read_text())
-    for locale in ('en', 'tr'):
+    locales = supported_locales(ROOT)
+    for locale in locales:
         lines = ['/* Generated from Localization/Localizable.xcstrings. Run scripts/localizations.py. */']
         for key, entry in sorted(catalog['strings'].items()):
             unit = entry.get('localizations', {}).get(locale, {}).get('stringUnit', {})
@@ -134,8 +142,8 @@ def main():
     if additions:
         for (path, call, key), count in sorted(additions.items()):
             print(f'{path}:{locations[(path, call, key)]}: {call}({key!r}) missing from catalog (+{count})')
-        raise SystemExit('Add English/Turkish catalog entries for new UI strings and run scripts/localizations.py.')
-    print('English and Turkish translations are complete and synchronized; UI coverage baseline passed.')
+        raise SystemExit('Add catalog translations for new UI strings and run scripts/localizations.py.')
+    print(f'Translations for {", ".join(locales)} are complete and synchronized; UI coverage baseline passed.')
 
 
 if __name__ == '__main__':

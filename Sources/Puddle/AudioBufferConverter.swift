@@ -1,4 +1,5 @@
-import AVFoundation
+@preconcurrency import AVFoundation
+import Foundation
 import PuddleCore
 
 /// Used on one audio callback queue. Every output owns its PCM storage.
@@ -29,13 +30,26 @@ final class AudioBufferConverter {
         guard let converter else { throw PuddleError("The audio converter is unavailable.") }
         let frames = AVAudioFrameCount(ceil(Double(buffer.frameLength) * outputFormat.sampleRate / buffer.format.sampleRate)) + 256
         guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: frames) else { throw PuddleError("Audio buffer allocation failed.") }
-        var delivered = false, failure: NSError?
+        let input = ConversionInput(buffer)
+        var failure: NSError?
         let status = converter.convert(to: output, error: &failure) { _, state in
-            if delivered { state.pointee = .noDataNow; return nil }
-            delivered = true; state.pointee = .haveData; return buffer
+            guard let buffer = input.take() else { state.pointee = .noDataNow; return nil }
+            state.pointee = .haveData; return buffer
         }
         if let failure { throw failure }
         guard status != .error else { throw PuddleError("Audio conversion failed.") }
         return output
+    }
+}
+
+// Sendable invariant: lock serializes callback delivery; the retained input is
+// read-only during synchronous conversion on the converter's audio callback queue.
+private final class ConversionInput: @unchecked Sendable {
+    private let lock = NSLock()
+    private let buffer: AVAudioPCMBuffer
+    private var delivered = false
+    init(_ buffer: AVAudioPCMBuffer) { self.buffer = buffer }
+    func take() -> AVAudioPCMBuffer? {
+        lock.withLock { guard !delivered else { return nil }; delivered = true; return buffer }
     }
 }

@@ -263,6 +263,26 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         XCTAssertTrue(completion.contains("Flush on stop"))
         await nextTick.release()
     }
+    func testStoppingCancelsCheckpointBeforeRecognitionFinishes() async throws {
+        let hardware = FixtureMeetingCapture(); hardware.holdFinish = true
+        let tick = AsyncTestGate(), woke = expectation(description: "Cancelled checkpoint woke")
+        let controller = MeetingCaptureController(capture: hardware, sleep: { interval in
+            if interval == MeetingCaptureController.checkpointInterval { await tick.pause(); woke.fulfill() }
+            else { try await Task.sleep(for: interval) }
+        })
+        var checkpoints = 0
+        controller.onCheckpoint = { _, _ in checkpoints += 1 }
+        controller.start(noteID: UUID(), language: "en-US", source: .microphone)
+        await wait { controller.status == .listening }
+        hardware.segments[0](.init(channel: .microphone, start: 0, end: 1, text: "Provisional", isFinal: false))
+        await fulfillment(of: [tick.entered], timeout: 5)
+        controller.stop(); await wait { hardware.finishGate != nil }
+        await tick.release(); await fulfillment(of: [woke], timeout: 5)
+        XCTAssertEqual(checkpoints, 0)
+        XCTAssertEqual(controller.status, .finishing)
+        hardware.finishGate?.resume(); hardware.finishGate = nil
+        await wait { controller.status == .idle }
+    }
 }
 
 private actor CheckpointClock {

@@ -62,7 +62,7 @@ enum TranscriptVault {
             guard info.isDirectory == true, info.isSymbolicLink != true else { throw PuddleError("The transcript directory is not a regular folder.") }
         } else { try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
     }
-    private static func rejectNonregular(_ file: URL) throws {
+    static func rejectNonregular(_ file: URL) throws {
         var value = stat()
         if lstat(file.path, &value) == 0, value.st_mode & mode_t(S_IFMT) != mode_t(S_IFREG) { throw PuddleError("A transcript path is not a regular file. It was not followed or replaced.") }
     }

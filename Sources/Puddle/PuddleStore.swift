@@ -137,6 +137,12 @@ final class PuddleStore: ObservableObject {
     private let reminderScheduler: any ReminderScheduling
     private var approvalContinuation: CheckedContinuation<Bool, Never>?
     private var started = false
+    private var startupTask: Task<Void, Never>?
+    private var meetingCompletionTask: Task<Void, Never>?
+    @Published private(set) var isCompletingMeetingCapture = false
+    var meetingCaptureNeedsQuitReview: Bool {
+        meetingCapture.errorMessage != nil && meetingCapture.errorMessage != "No speech was detected."
+    }
     private let writer: WorkspaceWriter
     @Published private(set) var isLoadingState = false
     @Published private(set) var pendingSaves = 0
@@ -151,6 +157,7 @@ final class PuddleStore: ObservableObject {
     let google: GoogleSession
     let transport: any HTTPTransport
     private var lastSavedState = AppSnapshot()
+    private var unsavedToolReceipts: [UUID: [String: ToolReceipt]] = [:]
     private var pollingTask: Task<Void, Never>?
     private var reminderTask: Task<Void, Never>?
     private var syncTask: Task<Void, Never>?
@@ -220,17 +227,28 @@ final class PuddleStore: ObservableObject {
         self.urlOpener = urlOpener ?? WorkspaceURLOpener()
         self.suppliedMeetingSummarizer = meetingSummarizer
         self.google = google ?? GoogleSession(store: secrets, transport: protectedTransport)
-        self.meetingCapture.onCheckpoint = { [weak self] id, text in await self?.checkpointMeetingCapture(id, text: text) }
-        self.meetingCapture.onCompletion = { [weak self] id, text in Task {
-            guard let self, self.state.meetings.contains(where: { $0.id == id }) else { return }
-            await self.checkpointMeetingCapture(id, text: text)
-            self.meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id,
-                result: ImportedTranscript(text: text, sourceName: "Live meeting transcription"))
-            if self.saveCaptureOnCompletion == id {
-                self.saveCaptureOnCompletion = nil
-                if self.useImportedTranscript(append: true) { _ = await self.saveMeetingNote(id) }
-            }
+        self.meetingCapture.onCheckpoint = { [weak self] id, text in
+            guard let self else { return }
+            await self.checkpointMeetingCapture(id, text: text, capturedAt: self.meetingCapture.captureStartedAt)
         }
+        self.meetingCapture.onCompletion = { [weak self] id, text in
+            guard let self else { return }
+            let capturedAt = self.meetingCapture.captureStartedAt
+            self.isCompletingMeetingCapture = true
+            self.meetingCompletionTask = Task {
+                defer { self.meetingCompletionTask = nil; self.isCompletingMeetingCapture = false }
+                guard self.state.meetings.contains(where: { $0.id == id }), !self.demo, !self.privateSession,
+                      capturedAt > (self.state.meetingRecoveryDismissals[id] ?? .distantPast) else { return }
+                await self.checkpointMeetingCapture(id, text: text, capturedAt: capturedAt)
+                guard capturedAt > (self.state.meetingRecoveryDismissals[id] ?? .distantPast), self.state.meetings.contains(where: { $0.id == id }) else { return }
+                self.meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id,
+                    result: ImportedTranscript(text: text, sourceName: "Live meeting transcription"),
+                    recovery: self.state.meetingCaptureRecoveries.first(where: { $0.noteID == id }))
+                if self.saveCaptureOnCompletion == id {
+                    self.saveCaptureOnCompletion = nil
+                    if self.useImportedTranscript(append: true) { _ = await self.saveMeetingNote(id) }
+                }
+            }
         }
         self.meetAttendance.onEnded = { [weak self] id in
             guard let self, self.meetingCapture.noteID == id else { return }; self.meetingCapture.stop()
@@ -242,8 +260,16 @@ final class PuddleStore: ObservableObject {
     }
 
     func start() async {
+        if let startupTask { await startupTask.value; return }
         guard !started else { return }
         started = true
+        isLoadingState = true
+        let task = Task { await performStartup() }
+        startupTask = task
+        await task.value
+        startupTask = nil; isLoadingState = false
+    }
+    private func performStartup() async {
         if demo { await enterDemo(); return }
         guard await loadState() else { return }
         await pauseRoutineWork()
@@ -274,10 +300,9 @@ final class PuddleStore: ObservableObject {
     private func loadState() async -> Bool {
         await waitForPersistence()
         do {
-            isLoadingState = true
-            defer { isLoadingState = false }
             let loaded = try await writer.load()
-            state = loaded.snapshot; lastSavedState = state; storageAvailable = true; errorMessage = loaded.notice
+            state = loaded.snapshot; lastSavedState = state; restoreUnsavedToolReceipts(in: &state)
+            storageAvailable = true; errorMessage = loaded.notice
             if state.actionProposals.contains(where: { $0.status == .dispatching }) {
                 state.recoverInterruptedActions(); guard await persist() else { return false }
             }
@@ -292,7 +317,16 @@ final class PuddleStore: ObservableObject {
         } catch { PuddleDiagnostics.failure(.persistence, "Load workspace", error); storageAvailable = false; fail(error); return false }
     }
 
-    func retryLoadingState() async { started = false; await start() }
+    func retryLoadingState() async {
+        if let startupTask { await startupTask.value; return }
+        started = false; await start()
+    }
+    func finishMeetingCaptureForTermination() async -> Bool {
+        await meetingCapture.stopAndWait()
+        await meetingCompletionTask?.value
+        await waitForPersistence()
+        return persistenceFailure == nil && !meetingCaptureNeedsQuitReview
+    }
 
     func openMeetingLink(_ address: String) async {
         meetingLinkStatus = nil
@@ -627,15 +661,15 @@ final class PuddleStore: ObservableObject {
 
     private func execute(_ call: AgentToolCall, userLine: ChatLine? = nil, turn: UUID? = nil) async throws -> String {
         do { return try await executeTool(call, userLine: userLine, turn: turn) }
-        catch is CancellationError { throw CancellationError() }
+        catch where PuddleDiagnostics.isCancellation(error) { throw CancellationError() }
         catch {
             try checkTurn(turn)
             let userID = userLine?.id ?? state.chat.last(where: { $0.role == "user" })?.id
             let attempted = state.chat.first(where: { $0.id == userID })?.receipts?.contains {
                 $0.id == call.id && $0.status == "pending" && AgentTool(rawValue: $0.tool)?.isBrowserAction == true
             } == true
-            try? await commit { $0.recordReceipt(ToolReceipt(id: call.id, tool: call.function.name,
-                detail: String(error.localizedDescription.prefix(500)), status: attempted ? "unverified" : "failed"), userID: userID) }
+            await saveToolFailureReceipt(ToolReceipt(id: call.id, tool: call.function.name,
+                detail: String(error.localizedDescription.prefix(500)), status: attempted ? "unverified" : "failed"), userID: userID)
             throw error
         }
     }
@@ -1171,6 +1205,7 @@ final class PuddleStore: ObservableObject {
     }
     func commit(_ update: (inout AppSnapshot) throws -> Void) async throws {
         var next = state
+        restoreUnsavedToolReceipts(in: &next)
         try update(&next)
         // Deleted notes cannot be revived by recovery merging, so they need no
         // tombstone. Existing notes keep at most one dismissal each.
@@ -1204,6 +1239,8 @@ final class PuddleStore: ObservableObject {
         catch { persistenceFailure = error.localizedDescription; throw error }
     }
     private func saveSnapshot(_ next: AppSnapshot) async throws {
+        var next = next
+        restoreUnsavedToolReceipts(in: &next)
         guard storageAvailable else { state = lastSavedState; throw PuddleError("Saved state is unavailable. Retry loading it in Settings.") }
         saveRevision &+= 1
         let revision = saveRevision, epoch = saveEpoch
@@ -1212,7 +1249,14 @@ final class PuddleStore: ObservableObject {
         do {
             let saved = try await writer.save(next, revision: revision, epoch: epoch)
             guard epoch == saveEpoch else { throw PuddleError("A previous save failed. Review the restored workspace and retry your edit.") }
-            persistenceFailure = nil
+            for (userID, receipts) in unsavedToolReceipts {
+                let line = saved.snapshot.chat.first(where: { $0.id == userID }) ?? saved.snapshot.conversations.flatMap(\.lines).first(where: { $0.id == userID })
+                for (id, receipt) in receipts where line == nil || line?.receipts?.contains(receipt) == true {
+                    unsavedToolReceipts[userID]?[id] = nil
+                }
+                if unsavedToolReceipts[userID]?.isEmpty == true { unsavedToolReceipts[userID] = nil }
+            }
+            if unsavedToolReceipts.isEmpty { persistenceFailure = nil }
             if saved.revision > savedRevision { savedRevision = saved.revision; lastSavedState = saved.snapshot.mergingMeetingRecoveries(lastSavedState.meetingCaptureRecoveries) }
         } catch {
             persistenceFailure = error.localizedDescription
@@ -1223,6 +1267,7 @@ final class PuddleStore: ObservableObject {
                 saveEpoch += 1
                 if !demo, !privateSession { state = lastSavedState }
                 else if privateSession { savedPrivateWorkspace = lastSavedState }
+                restoreUnsavedToolReceipts(in: &state)
             }
             throw error
         }
@@ -1230,6 +1275,29 @@ final class PuddleStore: ObservableObject {
     private func record(_ text: String) {
         state.activity.insert(ActivityEvent(text), at: 0)
         state.activity = Array(state.activity.prefix(100))
+    }
+    func saveToolFailureReceipt(_ receipt: ToolReceipt, userID: UUID?) async {
+        do { try await commit { $0.recordReceipt(receipt, userID: userID) } }
+        catch {
+            if let userID {
+                unsavedToolReceipts[userID, default: [:]][receipt.id] = receipt
+                restoreUnsavedToolReceipts(in: &state)
+            }
+            PuddleDiagnostics.failure(.persistence, "Save failed tool receipt", error)
+            fail(PuddleError("The tool result could not be saved. Its receipt is retained in memory and will retry with the next workspace save. \(error.localizedDescription)"))
+        }
+    }
+    private func restoreUnsavedToolReceipts(in snapshot: inout AppSnapshot) {
+        for (userID, receipts) in unsavedToolReceipts {
+            if snapshot.chat.contains(where: { $0.id == userID }) {
+                for receipt in receipts.values { snapshot.recordReceipt(receipt, userID: userID) }
+            } else if let conversation = snapshot.conversations.firstIndex(where: { $0.lines.contains(where: { $0.id == userID }) }),
+                      let line = snapshot.conversations[conversation].lines.firstIndex(where: { $0.id == userID }) {
+                var values = snapshot.conversations[conversation].lines[line].receipts ?? []
+                for receipt in receipts.values { values.removeAll { $0.id == receipt.id }; values.append(receipt) }
+                snapshot.conversations[conversation].lines[line].receipts = values
+            }
+        }
     }
     func fail(_ error: Error) {
         guard !PuddleDiagnostics.isCancellation(error) else { return }

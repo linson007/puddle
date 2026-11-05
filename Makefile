@@ -1,4 +1,4 @@
-.PHONY: build run demo test verify-premodel verify-local
+.PHONY: build run demo test verify guards verify-premodel verify-local
 
 build:
 	sh scripts/build.sh
@@ -11,6 +11,13 @@ demo: build
 
 test:
 	sh scripts/swift.sh test
+
+guards:
+	python3 scripts/localizations.py --check
+	python3 -m unittest discover -s scripts -p 'test_*.py'
+	python3 scripts/check-concurrency.py
+
+verify: guards test
 
 verify-premodel:
 	sh scripts/verify-premodel.sh

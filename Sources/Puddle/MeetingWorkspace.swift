@@ -6,6 +6,7 @@ struct PendingTranscriptImport: Identifiable {
     let id = UUID()
     let noteID: UUID
     let result: ImportedTranscript
+    var recovery: MeetingCaptureRecovery? = nil
 }
 
 /// Unsaved drafts survive selection changes and failed saves within the running app.
@@ -28,6 +29,9 @@ struct PendingTranscriptImport: Identifiable {
     private var importingNoteID: UUID?
     private var importGeneration = UUID()
     private var importTask: Task<Void, Never>?
+    private var appliedRecoveries: [UUID: MeetingCaptureRecovery] = [:]
+    func appliedRecovery(for id: UUID) -> MeetingCaptureRecovery? { appliedRecoveries[id] }
+    func markRecoveryApplied(_ recovery: MeetingCaptureRecovery) { appliedRecoveries[recovery.noteID] = recovery }
 
     func draft(for note: MeetingNote) -> MeetingDraft { drafts[note.id] ?? MeetingDraft(note) }
     func isDirty(_ note: MeetingNote) -> Bool { draft(for: note) != MeetingDraft(note) }
@@ -35,15 +39,15 @@ struct PendingTranscriptImport: Identifiable {
         var value = draft(for: note); change(&value)
         drafts[note.id] = value; status = nil
     }
-    func saved(_ id: UUID) { drafts[id] = nil; status = "Saved locally." }
-    func discard(_ id: UUID) { drafts[id] = nil; status = nil }
+    func saved(_ id: UUID) { drafts[id] = nil; appliedRecoveries[id] = nil; status = "Saved locally." }
+    func discard(_ id: UUID) { drafts[id] = nil; appliedRecoveries[id] = nil; status = nil }
     func deleted(_ id: UUID) {
         discard(id); if selectedID == id { selectedID = nil }
         if importingNoteID == id || pendingImport?.noteID == id { cancelImport() }
     }
 
     func reset() {
-        cancelImport(); drafts = [:]; selectedID = nil; status = nil
+        cancelImport(); drafts = [:]; appliedRecoveries = [:]; selectedID = nil; status = nil
         summarizingID = nil; summaryProgress = ""; summaryError = nil
         searchGeneration = UUID(); searchTask?.cancel(); searchQuery = ""; searchResults = []; isSearching = false; searchError = nil
     }

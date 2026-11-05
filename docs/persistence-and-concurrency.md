@@ -42,6 +42,29 @@ seconds of recognized text plus any in-flight disk-write time; a failed checkpoi
 shows an error and is retried on the next tick. Encoding, encryption and file I/O
 stay on `WorkspaceWriter`, off the main actor. Raw audio is never saved.
 
+Recovery sidecars accept at most 128 distinct notes, 200,000 characters and 1 MiB
+of UTF-8 text per note, and 16 MiB of encoded JSON in total. An over-budget write
+fails visibly while preserving the previous file. Startup checks the file's size
+before reading it. Quarantine retains the newest five regular recovery files;
+older files are pruned with a persistence diagnostic. Directories and symlinks
+at recovery paths are rejected before reading, replacing, deleting or moving them.
+
+Applying recovery text records the exact reviewed recovery in the draft. Saving
+that draft dismisses only that recovery; substring overlap with unrelated saved
+text never counts as application. Capture timestamps prevent checkpoints from a
+dismissed session recreating its text. Stopping cancels periodic checkpoints
+immediately. Locking synchronously stops audio input and retains current text
+before asynchronous cleanup. Normal Quit waits for final recognition and its
+durable checkpoint; failure offers Keep Puddle open / Quit anyway. Private or
+locked workspaces cannot start transcription, and both capture views share the
+store's availability reason.
+
+Concurrent workspace retries share one startup task and keep loading state true
+through connection setup. Failed/unverified tool receipts that cannot be saved
+remain visible in memory across rollbacks and are retried on the next save,
+including when their conversation is archived. Forced termination can still lose
+these unacknowledged receipts; save failures remain visible until resolved.
+
 The encrypted store checks inode, size, modification time, change time and key
 fingerprint before reusing its validated primary. Changed files or keys require
 validation again. Backups use a staged file copy and atomic replacement, rejecting
