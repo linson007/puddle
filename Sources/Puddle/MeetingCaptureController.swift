@@ -15,8 +15,11 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     var isActive: Bool { status != .idle }
     var isSupported: Bool { capture.isSupported }
     var onCompletion: (@MainActor (UUID, String) -> Void)?
-    var onCheckpoint: (@MainActor (UUID, String) -> Void)?
-    private var lastCheckpoint = Date.distantPast
+    var onCheckpoint: (@MainActor (UUID, String) async -> Void)?
+    // Periodic snapshots include provisional text, even if speech then goes
+    // quiet. Completion flushes immediately; unchanged text is skipped by store.
+    nonisolated static let checkpointInterval: Duration = .seconds(30)
+    private var checkpoints: Task<Void, Never>?
     private let capture: any MeetingAudioCapturing
     private let maximumSeconds: Double
     private let finishTimeout: Double
@@ -54,12 +57,7 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
                 try Task.checkCancellation()
                 try await capture.start(language: language, source: source, onSegment: { [weak self] segment in
                     guard let self, self.generation == expected else { return }
-                    do {
-                        try self.timeline.receive(segment)
-                        if segment.isFinal || Date().timeIntervalSince(self.lastCheckpoint) >= 5 {
-                            self.lastCheckpoint = Date(); self.onCheckpoint?(noteID, self.timeline.text)
-                        }
-                    }
+                    do { try self.timeline.receive(segment) }
                     catch { self.stop(notice: error.localizedDescription) }
                 }, onStatus: { [weak self] message in
                     guard let self, self.generation == expected else { return }; self.message = message
@@ -70,6 +68,15 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
                 guard generation == expected, status == .preparing else { return }
                 sourceDescription = capture.sourceDescription
                 status = .listening; startedAt = Date(); message = "Transcribing on this Mac."
+                checkpoints = Task { [weak self, sleep] in
+                    while !Task.isCancelled {
+                        do { try await sleep(Self.checkpointInterval); try Task.checkCancellation() }
+                        catch { return }
+                        guard let self, self.generation == expected else { return }
+                        let text = self.timeline.text
+                        if !text.isEmpty { await self.onCheckpoint?(noteID, text) }
+                    }
+                }
                 deadline = Task { [weak self, sleep, maximumSeconds] in
                     do { try await sleep(.seconds(maximumSeconds)) } catch { return }
                     guard let self, self.generation == expected else { return }
@@ -99,12 +106,12 @@ enum MeetingCaptureStatus: Equatable { case idle, installingLanguage, preparing,
     }
     /// Used for note deletion or switching between demo and personal state.
     func cancel() {
-        generation = UUID(); work?.cancel(); deadline?.cancel(); capture.cancel()
+        generation = UUID(); work?.cancel(); deadline?.cancel(); checkpoints?.cancel(); checkpoints = nil; capture.cancel()
         status = .idle; noteID = nil; startedAt = nil; sourceDescription = nil; message = ""; errorMessage = nil; timeline = MeetingTranscriptTimeline()
     }
     private func complete(notice: String?) {
         let id = noteID, text = timeline.text
-        generation = UUID(); work?.cancel(); deadline?.cancel(); capture.cancel(); status = .idle; startedAt = nil; sourceDescription = nil
+        generation = UUID(); work?.cancel(); deadline?.cancel(); checkpoints?.cancel(); checkpoints = nil; capture.cancel(); status = .idle; startedAt = nil; sourceDescription = nil
         errorMessage = notice ?? (text.isEmpty ? "No speech was detected." : nil)
         message = text.isEmpty ? "Transcription stopped." : "Review the captured text, apply it to the transcript, and save your notes."
         if let id, !text.isEmpty { onCompletion?(id, text) }

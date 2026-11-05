@@ -1395,6 +1395,23 @@
         }
       }
     },
+    "Recovered meeting text could not be read; the file was preserved.": {
+      "comment": "Non-blocking notice after an unreadable meeting recovery file is preserved.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recovered meeting text could not be read; the file was preserved."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kurtarılan toplantı metni okunamadı; dosya korundu."
+          }
+        }
+      }
+    },
     "Retry Loading State": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {

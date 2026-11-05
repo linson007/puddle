@@ -61,8 +61,10 @@ private struct FloatingMeetingWindow: NSViewRepresentable {
 extension PuddleStore {
     func checkpointMeetingCapture(_ id: UUID, text: String) async {
         guard !demo, !privateSession, storageAvailable, !text.isEmpty, state.meetings.contains(where: { $0.id == id }) else { return }
+        let text = String(text.prefix(200_000))
+        guard state.meetingCaptureRecoveries.first(where: { $0.noteID == id })?.text != text else { return }
         var values = state.meetingCaptureRecoveries.filter { $0.noteID != id }
-        values.append(MeetingCaptureRecovery(noteID: id, text: String(text.prefix(200_000))))
+        values.append(MeetingCaptureRecovery(noteID: id, text: text))
         do { try await checkpointRecoveries(values) }
         catch { fail(error) }
     }
@@ -73,6 +75,13 @@ extension PuddleStore {
         meetingWorkspace.pendingImport = PendingTranscriptImport(noteID: id, result: ImportedTranscript(text: recovery.text, sourceName: "Recovered local capture"))
     }
     func discardMeetingCapture(_ id: UUID) async {
-        do { try await commit { $0.meetingCaptureRecoveries.removeAll { $0.noteID == id }; $0.meetingRecoveryDismissals[id] = Date() } } catch { fail(error) }
+        do {
+            try await commit { $0.meetingCaptureRecoveries.removeAll { $0.noteID == id }; $0.meetingRecoveryDismissals[id] = Date() }
+            try await removeObsoleteMeetingRecoveries()
+        } catch { fail(error) }
+    }
+    func removeObsoleteMeetingRecoveries() async throws {
+        guard !demo, !privateSession else { return }
+        try await checkpointRecoveries(state.meetingCaptureRecoveries)
     }
 }
