@@ -50,7 +50,7 @@ struct ReleaseUpdateConfiguration {
             do { try await work(expected) }
             catch {
                 guard generation == expected else { return }
-                status = error is CancellationError ? "Update operation cancelled." : error.localizedDescription
+                status = PuddleDiagnostics.isCancellation(error) ? "Update operation cancelled." : error.localizedDescription
             }
         }
     }

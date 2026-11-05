@@ -142,7 +142,7 @@ final class PuddleStore: ObservableObject {
     @Published private(set) var pendingSaves = 0
     private var saveRevision: UInt64 = 0
     private var savedRevision: UInt64 = 0
-    private var saveEpoch = UUID()
+    private var saveEpoch: UInt64 = 1
     private var checkpointRevision: UInt64 = 0
     private var savedCheckpointRevision: UInt64 = 0
     private var saveWaiters: [CheckedContinuation<Void, Never>] = []
@@ -220,7 +220,7 @@ final class PuddleStore: ObservableObject {
         self.urlOpener = urlOpener ?? WorkspaceURLOpener()
         self.suppliedMeetingSummarizer = meetingSummarizer
         self.google = google ?? GoogleSession(store: secrets, transport: protectedTransport)
-        self.meetingCapture.onCheckpoint = { [weak self] id, text in Task { await self?.checkpointMeetingCapture(id, text: text) } }
+        self.meetingCapture.onCheckpoint = { [weak self] id, text in await self?.checkpointMeetingCapture(id, text: text) }
         self.meetingCapture.onCompletion = { [weak self] id, text in Task {
             guard let self, self.state.meetings.contains(where: { $0.id == id }) else { return }
             await self.checkpointMeetingCapture(id, text: text)
@@ -1172,6 +1172,10 @@ final class PuddleStore: ObservableObject {
     func commit(_ update: (inout AppSnapshot) throws -> Void) async throws {
         var next = state
         try update(&next)
+        // Deleted notes cannot be revived by recovery merging, so they need no
+        // tombstone. Existing notes keep at most one dismissal each.
+        let noteIDs = Set(next.meetings.map(\.id))
+        next.meetingRecoveryDismissals = next.meetingRecoveryDismissals.filter { noteIDs.contains($0.key) }
         if demo || privateSession { state = next; return }
         guard storageAvailable else { throw PuddleError("Saved state is unavailable. Retry loading it in Settings.") }
         state = next
@@ -1216,7 +1220,7 @@ final class PuddleStore: ObservableObject {
                 if let durable = (error as? WorkspaceWriteFailure)?.lastSaved, durable.revision > savedRevision {
                     savedRevision = durable.revision; lastSavedState = durable.snapshot.mergingMeetingRecoveries(lastSavedState.meetingCaptureRecoveries)
                 }
-                saveEpoch = UUID()
+                saveEpoch += 1
                 if !demo, !privateSession { state = lastSavedState }
                 else if privateSession { savedPrivateWorkspace = lastSavedState }
             }
@@ -1227,5 +1231,8 @@ final class PuddleStore: ObservableObject {
         state.activity.insert(ActivityEvent(text), at: 0)
         state.activity = Array(state.activity.prefix(100))
     }
-    func fail(_ error: Error) { errorMessage = error.localizedDescription }
+    func fail(_ error: Error) {
+        guard !PuddleDiagnostics.isCancellation(error) else { return }
+        errorMessage = error.localizedDescription
+    }
 }

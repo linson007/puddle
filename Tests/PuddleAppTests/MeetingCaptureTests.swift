@@ -236,4 +236,38 @@ private final class CaptureDisk: SnapshotPersistence, @unchecked Sendable {
         XCTAssertTrue(store.state.meetings.isEmpty); XCTAssertNil(store.meetingWorkspace.pendingImport)
         XCTAssertEqual(store.meetingCapture.status, .idle)
     }
+    func testCheckpointTimerIncludesQuietProvisionalTextAndCompletionFlushesImmediately() async throws {
+        let hardware = FixtureMeetingCapture(), tick = AsyncTestGate(), nextTick = AsyncTestGate()
+        let clock = CheckpointClock(first: tick, next: nextTick)
+        let controller = MeetingCaptureController(capture: hardware, sleep: { interval in
+            if interval == MeetingCaptureController.checkpointInterval { await clock.wait(); try Task.checkCancellation() }
+            else { try await Task.sleep(for: interval) }
+        })
+        var checkpoints: [String] = [], completion = ""
+        controller.onCheckpoint = { _, text in checkpoints.append(text) }
+        controller.onCompletion = { _, text in completion = text }
+        controller.start(noteID: UUID(), language: "en-US", source: .microphone)
+        await wait { controller.status == .listening }
+        await fulfillment(of: [tick.entered], timeout: 5)
+        for index in 0..<100 {
+            hardware.segments[0](.init(channel: .microphone, start: Double(index), end: Double(index + 1), text: "Final passage \(index)", isFinal: true))
+        }
+        hardware.segments[0](.init(channel: .microphone, start: 101, end: 102, text: "Quiet provisional text", isFinal: false))
+        XCTAssertTrue(checkpoints.isEmpty, "Segment callbacks must not trigger full-file writes")
+        await tick.release()
+        await fulfillment(of: [nextTick.entered], timeout: 5)
+        XCTAssertEqual(checkpoints.count, 1)
+        XCTAssertTrue(checkpoints[0].contains("Quiet provisional text"))
+        hardware.segments[0](.init(channel: .microphone, start: 103, end: 104, text: "Flush on stop", isFinal: true))
+        controller.stop(); await wait { controller.status == .idle }
+        XCTAssertTrue(completion.contains("Flush on stop"))
+        await nextTick.release()
+    }
+}
+
+private actor CheckpointClock {
+    let first: AsyncTestGate, next: AsyncTestGate
+    private var waits = 0
+    init(first: AsyncTestGate, next: AsyncTestGate) { self.first = first; self.next = next }
+    func wait() async { waits += 1; await (waits == 1 ? first : next).pause() }
 }

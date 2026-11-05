@@ -23,7 +23,7 @@ import PuddleCore
             } catch {
                 guard revision == expected else { return }
                 isVerifying = false
-                if !(error is CancellationError) {
+                if !PuddleDiagnostics.isCancellation(error) {
                     self.error = error.localizedDescription + " Check that your server is running, the model is loaded, and the address, model ID and API key are correct."
                 }
             }

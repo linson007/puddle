@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MeetingCaptureRecovery: Codable, Identifiable, Sendable {
+public struct MeetingCaptureRecovery: Codable, Identifiable, Equatable, Sendable {
     public var id: UUID { noteID }
     public let noteID: UUID
     public var text: String

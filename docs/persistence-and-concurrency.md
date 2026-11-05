@@ -10,6 +10,8 @@ Edits are **optimistically visible** while saving. Mutation methods are async an
 report success only after a durable write. On failure, the current batch is
 rejected and the UI returns to the last acknowledged snapshot. The writer rejects
 late arrivals from that failed epoch, so they cannot overwrite the rollback.
+Epochs increase after rollback; a single rejection watermark retains this
+protection for every older epoch without accumulating UUIDs.
 External actions await their intent save and recheck workspace/account policy
 before dispatch. Normal Quit waits for pending writes; a failed save offers a
 keep-open choice. Forced termination can still lose work that was not acknowledged.
@@ -22,6 +24,23 @@ dismissal timestamp, preventing an older sidecar from resurrecting discarded
 text after a crash. Previous single-file recovery records remain readable. No raw
 audio is persisted. The recovery file contains only the bounded recovery payload;
 ordinary workspace saves may also include those records.
+
+An unreadable recovery sidecar does not block an intact workspace. Startup logs
+the error, shows a non-blocking notice and moves the damaged file to
+`meeting-recovery-unreadable-<uuid>.vault`. If moving fails, the original is kept
+and checkpoints must preserve it before replacing it. Discarding, applying, or
+deleting recovered text rewrites the sidecar with only the remaining recoveries;
+an empty sidecar is deleted. Deleted notes' dismissal entries are pruned on edits,
+so bookkeeping contains at most one entry per existing note. Normal encrypted
+workspace backups can still retain earlier snapshots according to their existing
+recovery policy.
+
+Live capture checkpoints at most once every 30 seconds, including provisional
+text even when no further segment arrives. Unchanged text does not cause a write.
+Stopping capture flushes immediately. A forced termination can lose up to 30
+seconds of recognized text plus any in-flight disk-write time; a failed checkpoint
+shows an error and is retried on the next tick. Encoding, encryption and file I/O
+stay on `WorkspaceWriter`, off the main actor. Raw audio is never saved.
 
 The encrypted store checks inode, size, modification time, change time and key
 fingerprint before reusing its validated primary. Changed files or keys require
@@ -50,7 +69,10 @@ serial audio callback queue.
 Console categories under subsystem `app.puddle`: `persistence`, `network`,
 `speech`, `oauth`. Stable operation names are public; error details are always
 private because they may contain paths, URLs, provider responses or user content.
-Cancellation is not logged as a failure. User-visible errors remain visible.
+Swift `CancellationError`, URLSession `URLError(.cancelled)` and the bridged
+`NSURLErrorDomain` / `NSURLErrorCancelled` form are not logged as failures.
+Timeouts and privacy-policy interruptions remain logged. User-visible errors
+remain visible.
 
 ```sh
 log stream --level error --predicate 'subsystem == "app.puddle"'

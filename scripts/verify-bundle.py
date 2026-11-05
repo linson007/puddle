@@ -28,8 +28,15 @@ def verify(app):
     if info.get("CFBundleLocalizations") != ["en", "tr"]:
         raise RuntimeError("The app must declare English and Turkish localizations.")
     for locale in ("en", "tr"):
-        if not list((app / "Contents/Resources").glob(f"Puddle_*.bundle/**/{locale}.lproj/Localizable.strings")):
+        resources = app / "Contents/Resources"
+        package_strings = list(resources.glob(f"Puddle_*.bundle/**/{locale}.lproj/Localizable.strings"))
+        if not package_strings:
             raise RuntimeError(f"The app is missing the {locale} localization resource.")
+        main_strings = resources / f"{locale}.lproj/Localizable.strings"
+        expected = (Path(__file__).resolve().parent.parent /
+                    f"Sources/PuddleCore/Resources/{locale}.lproj/Localizable.strings").read_bytes()
+        if not main_strings.exists() or main_strings.read_bytes() != expected or any(path.read_bytes() != expected for path in package_strings):
+            raise RuntimeError(f"The main and package {locale} localization resources must match the catalog export.")
     print("PASS: bundle plist, localizations and code signature", flush=True)
     with tempfile.TemporaryDirectory(prefix="puddle-bundle-check-") as disposable:
         root = Path(disposable)

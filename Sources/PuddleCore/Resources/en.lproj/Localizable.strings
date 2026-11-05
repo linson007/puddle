@@ -81,6 +81,7 @@
 "Quick meeting notes" = "Quick meeting notes";
 "Read aloud" = "Read aloud";
 "Read new replies aloud" = "Read new replies aloud";
+"Recovered meeting text could not be read; the file was preserved." = "Recovered meeting text could not be read; the file was preserved.";
 "Retry Loading State" = "Retry Loading State";
 "Retry last message" = "Retry last message";
 "Review Recovered Transcript" = "Review Recovered Transcript";

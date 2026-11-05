@@ -62,7 +62,7 @@ final class WorkspaceWriterTests: XCTestCase {
     }
     func testFailedWriteRejectsPendingBatchWithoutPublishingIt() async throws {
         let disk = BlockingWorkspaceDisk(fail: true), writer = WorkspaceWriter(disk)
-        let epoch = UUID()
+        let epoch: UInt64 = 1
         let first = Task { try await writer.save(AppSnapshot(), revision: 1, epoch: epoch) }
         await fulfillment(of: [disk.entered], timeout: 5)
         let pending = Task { try await writer.save(AppSnapshot(), revision: 2, epoch: epoch) }
@@ -103,4 +103,90 @@ final class WorkspaceWriterTests: XCTestCase {
         let dismissed = try await restarted.load()
         XCTAssertTrue(dismissed.snapshot.meetingCaptureRecoveries.isEmpty)
     }
+    func testManyFailedEpochsUseOneWatermarkAndRejectOldArrivalsAfterSuccess() async throws {
+        let disk = EpochDisk(), writer = WorkspaceWriter(disk)
+        for epoch in UInt64(1)...128 {
+            do { _ = try await writer.save(AppSnapshot(), revision: epoch, epoch: epoch); XCTFail("Injected failure must throw") }
+            catch { XCTAssertTrue(error is WorkspaceWriteFailure) }
+        }
+        let rejected = await writer.rejectedThroughEpoch
+        XCTAssertEqual(rejected, 128)
+        disk.allowWrites()
+        _ = try await writer.save(AppSnapshot(), revision: 129, epoch: 129)
+        for epoch in [UInt64(1), 64, 128] {
+            do { _ = try await writer.save(AppSnapshot(), revision: 130, epoch: epoch); XCTFail("Old failed epoch accepted") }
+            catch { XCTAssertTrue(error is WorkspaceWriteFailure) }
+        }
+        _ = try await writer.save(AppSnapshot(), revision: 131, epoch: 129)
+        XCTAssertEqual(disk.writeCount, 2)
+    }
+    @MainActor func testUnchangedCheckpointSkipsDiskAndCleanupRejectsOlderTextOffMainThread() async throws {
+        let disk = RecoveryWriteDisk(), writer = WorkspaceWriter(disk)
+        let values = [MeetingCaptureRecovery(noteID: UUID(), text: "Synthetic capture")]
+        try await writer.checkpoint(values, revision: 1)
+        try await writer.checkpoint(values, revision: 2)
+        XCTAssertEqual(disk.writes.count, 1)
+        try await writer.checkpoint([], revision: 4)
+        let stale = try await writer.checkpoint(values, revision: 3)
+        XCTAssertTrue(stale.values.isEmpty)
+        XCTAssertEqual(disk.writes, [values, []])
+        XCTAssertFalse(disk.usedMainThread)
+    }
+    func testUnreadableRecoveryDoesNotBlockWorkspaceAndIsPreservedBeforeNewCheckpoint() async throws {
+        for wrongKey in [false, true] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("puddle-recovery-\(UUID())")
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let secrets = WriterSecrets(), disk = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+            var snapshot = AppSnapshot(); let note = MeetingNote(title: "Durable meeting")
+            snapshot.meetings = [note]; snapshot.assistantInstructions = "Intact workspace"
+            try disk.save(snapshot)
+            let recovery = directory.appendingPathComponent("meeting-recovery.vault")
+            let damaged: Data
+            if wrongKey {
+                let other = directory.appendingPathComponent("other")
+                let otherDisk = EncryptedSnapshotStore(directory: other, secrets: WriterSecrets())
+                try otherDisk.saveMeetingRecoveries([.init(noteID: note.id, text: "Wrong key")])
+                damaged = try Data(contentsOf: other.appendingPathComponent("meeting-recovery.vault"))
+            } else { damaged = Data("PUDDLEVAULT1\ntruncated".utf8) }
+            try damaged.write(to: recovery)
+            let writer = WorkspaceWriter(disk), loaded = try await writer.load()
+            XCTAssertEqual(loaded.snapshot.assistantInstructions, "Intact workspace")
+            XCTAssertEqual(loaded.snapshot.meetings.first?.id, note.id)
+            XCTAssertTrue(loaded.notice?.contains("file was preserved") == true)
+            let preserved = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+                .filter { $0.lastPathComponent.hasPrefix("meeting-recovery-unreadable-") }
+            XCTAssertEqual(preserved.count, 1)
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(preserved.first)), damaged)
+            try await writer.checkpoint([.init(noteID: note.id, text: "New capture")])
+            XCTAssertEqual(try disk.loadMeetingRecoveries().first?.text, "New capture")
+            XCTAssertEqual(try Data(contentsOf: XCTUnwrap(preserved.first)), damaged)
+        }
+    }
+}
+
+// All mutable state is protected by lock, including test-side access.
+private final class EpochDisk: SnapshotPersistence, @unchecked Sendable {
+    private let lock = NSLock()
+    private var failing = true
+    private var writes = 0
+    func load() -> AppSnapshot { AppSnapshot() }
+    func save(_ snapshot: AppSnapshot) throws {
+        try lock.withLock { if failing { throw PuddleError("Injected save failure") }; writes += 1 }
+    }
+    func allowWrites() { lock.withLock { failing = false } }
+    var writeCount: Int { lock.withLock { writes } }
+}
+
+// Checkpoint calls and fixture reads share lock.
+private final class RecoveryWriteDisk: SnapshotPersistence, @unchecked Sendable {
+    private let lock = NSLock()
+    private var saved: [[MeetingCaptureRecovery]] = []
+    private var onMain = false
+    func load() -> AppSnapshot { AppSnapshot() }
+    func save(_ snapshot: AppSnapshot) {}
+    func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) {
+        lock.withLock { saved.append(values); onMain = onMain || Thread.isMainThread }
+    }
+    var writes: [[MeetingCaptureRecovery]] { lock.withLock { saved } }
+    var usedMainThread: Bool { lock.withLock { onMain } }
 }

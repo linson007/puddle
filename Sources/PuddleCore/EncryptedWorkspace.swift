@@ -170,11 +170,28 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
     }
     public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws {
         cache.lock.lock(); defer { cache.lock.unlock() }
+        let url = directory.appendingPathComponent("meeting-recovery.vault")
+        // If quarantine previously failed, preserve the unreadable file before
+        // allowing a checkpoint to replace it.
+        if cache.unreadableMeetingRecovery { try preserveUnreadableMeetingRecoveries() }
+        if values.isEmpty {
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            return
+        }
         let data = try JSONEncoder().encode(values)
         // Never create a new key over an existing workspace/recovery file.
         let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path) ||
             FileManager.default.fileExists(atPath: directory.appendingPathComponent("meeting-recovery.vault").path)
-        try write(seal(data, key: key(create: !exists)), to: directory.appendingPathComponent("meeting-recovery.vault"))
+        try write(seal(data, key: key(create: !exists)), to: url)
+    }
+    public func preserveUnreadableMeetingRecoveries() throws {
+        cache.lock.lock(); defer { cache.lock.unlock() }
+        cache.unreadableMeetingRecovery = true
+        let url = directory.appendingPathComponent("meeting-recovery.vault")
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.moveItem(at: url, to: directory.appendingPathComponent("meeting-recovery-unreadable-\(UUID()).vault"))
+        }
+        cache.unreadableMeetingRecovery = false
     }
     private func protectLegacyFiles() throws {
         let fm = FileManager.default, key = try key(create: false)

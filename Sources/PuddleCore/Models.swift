@@ -370,6 +370,7 @@ public protocol SnapshotPersistence: Sendable {
     func loadResult() throws -> SnapshotLoadResult
     func save(_ state: AppSnapshot) throws
     func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery]
+    func preserveUnreadableMeetingRecoveries() throws
     func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws
 }
 
@@ -383,6 +384,7 @@ extension SnapshotPersistence {
     // Legacy/in-memory stores retain their existing persistence contract. The
     // production encrypted store overrides these with a separate recovery file.
     public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] { try load().meetingCaptureRecoveries }
+    public func preserveUnreadableMeetingRecoveries() throws {}
     public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws {
         var snapshot = try load(); snapshot.meetingCaptureRecoveries = values; try save(snapshot)
     }
