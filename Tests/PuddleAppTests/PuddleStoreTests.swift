@@ -29,6 +29,7 @@ private final class TestDisk: SnapshotPersistence, @unchecked Sendable {
         }
     }
     func blockFailingWrite(_ entered: XCTestExpectation) { lock.withLock { writeEntered = entered; holdingWrite = true; failWrite = true } }
+    func blockWrite(_ entered: XCTestExpectation) { lock.withLock { writeEntered = entered; holdingWrite = true } }
     func releaseWrite() { lock.withLock { holdingWrite = false; lock.broadcast() } }
 }
 
@@ -75,6 +76,74 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testPendingPromptSaveReservesTurnAgainstAnotherSubmit() async throws {
+        let (store, disk, http, _) = fixture(); await store.start()
+        let entered = expectation(description: "First prompt is saving"), rejected = expectation(description: "Competing submit returns")
+        disk.blockWrite(entered); defer { disk.releaseWrite() }
+        let first = Task { await store.ask("First request") }
+        await fulfillment(of: [entered], timeout: 5)
+        XCTAssertTrue(store.isThinking)
+        let second = Task { let accepted = await store.ask("Competing request"); rejected.fulfill(); return accepted }
+        await fulfillment(of: [rejected], timeout: 5)
+        XCTAssertEqual(store.state.chat.filter { $0.role == "user" }.map(\.content), ["First request"])
+        disk.releaseWrite()
+        let firstAccepted = await first.value, secondAccepted = await second.value
+        XCTAssertTrue(firstAccepted); XCTAssertFalse(secondAccepted)
+        await store.aiTask?.value
+        let requests = await http.requests
+        XCTAssertEqual(requests.filter { $0.url?.path == "/v1/chat/completions" }.count, 1)
+        await store.suspendConnectionWork()
+    }
+    func testPendingPromptSavePreventsCompetingMailSummary() async throws {
+        let (store, disk, http, _) = fixture(); await store.start()
+        store.state.messages = [MailMessage(id: "summary-fixture", subject: "Fixture", sender: "fixture@example.test", body: "Synthetic text")]
+        let entered = expectation(description: "Prompt save held before summary")
+        disk.blockWrite(entered); defer { disk.releaseWrite() }
+        let submit = Task { await store.ask("Explain something") }
+        await fulfillment(of: [entered], timeout: 5)
+        await store.summarize("summary-fixture")
+        let before = await http.requests
+        XCTAssertFalse(before.contains { $0.url?.path == "/v1/chat/completions" })
+        disk.releaseWrite(); _ = await submit.value; await store.aiTask?.value
+        XCTAssertNil(store.state.messages.first?.summary)
+        let after = await http.requests
+        XCTAssertEqual(after.filter { $0.url?.path == "/v1/chat/completions" }.count, 1)
+        await store.suspendConnectionWork()
+    }
+    func testCancelledSubmissionCannotStartModelAfterItsSaveCompletes() async throws {
+        let (store, disk, http, _) = fixture(); await store.start()
+        let entered = expectation(description: "Prompt save held during parent cancellation")
+        disk.blockWrite(entered); defer { disk.releaseWrite() }
+        let submit = Task { await store.ask("Cancelled before generation") }
+        await fulfillment(of: [entered], timeout: 5)
+        submit.cancel(); disk.releaseWrite()
+        let accepted = await submit.value
+        XCTAssertFalse(accepted); XCTAssertFalse(store.isThinking)
+        let requests = await http.requests
+        XCTAssertFalse(requests.contains { $0.url?.path == "/v1/chat/completions" })
+        XCTAssertEqual(store.state.chat.first?.content, "Cancelled before generation")
+        await store.suspendConnectionWork()
+    }
+    func testStoppedPendingSaveCannotTakeOverANewerTurn() async throws {
+        let (store, disk, http, _) = fixture(); await store.start(); await http.setDelay()
+        let entered = expectation(description: "Old prompt save is held")
+        disk.blockWrite(entered); defer { disk.releaseWrite(); Task { await http.gate.release() } }
+        let first = Task { await store.ask("Stopped old request") }
+        await fulfillment(of: [entered], timeout: 5)
+        await store.stopAI()
+        let second = Task { await store.ask("Current request") }
+        try await waitForTestEvent("New prompt save enqueued") { await store.pendingSaves == 2 }
+        disk.releaseWrite()
+        let oldAccepted = await first.value, newAccepted = await second.value
+        XCTAssertFalse(oldAccepted); XCTAssertTrue(newAccepted)
+        await fulfillment(of: [http.gate.entered], timeout: 5)
+        XCTAssertTrue(store.isThinking)
+        let requests = await http.requests
+        XCTAssertEqual(requests.filter { $0.url?.path == "/v1/chat/completions" }.count, 1)
+        await http.gate.release(); await store.aiTask?.value
+        XCTAssertFalse(store.isThinking)
+        await store.suspendConnectionWork()
+    }
     func testFailedQuickRequestIsRecoverableAndDoesNotStartModelWork() async throws {
         let (store, disk, http, _) = fixture(); await store.start()
         disk.failWrite = true
