@@ -50,6 +50,8 @@ enum TranscriptVault {
         var fileLock: WorkspaceFileLock?
         var generationObserved = false
         var migrationSourceVersion: Int?
+        var recoveryGenerationObserved = false
+        var recoveryMetadata: Fingerprint?
     }
     struct Prepared {
         let data: Data

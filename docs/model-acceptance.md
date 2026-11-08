@@ -69,3 +69,34 @@ save/inspect/correct/forget a preference and capture/complete a task. Record
 success, assistance needed and unclear next actions. Include keyboard-only and
 minimum-window use; perform native VoiceOver/contrast/reduced-motion checks.
 Resolve observed blockers before expanding specialist features.
+
+## Repeatable model compatibility runs
+
+Copy [the example matrix](model-matrix.example.json) to a private configuration
+file and replace every placeholder with an exact model ID, runtime version and
+model revision/quantization. Add one entry for each advertised configuration.
+Runtime/revision descriptions are operator-supplied metadata; discovery verifies
+the actual model ID, not the provenance of those descriptions.
+
+```sh
+python3 scripts/verify-models.py --matrix /private/path/to/matrix.json \
+  --output build/model-acceptance-NEW-RUN
+```
+
+This runs synthetic live core/app workflows and the production streamed setup
+probe for each loopback server, independently of Cua, audio, provider accounts
+and load-test opt-ins. It uses an exact selected model and records source commit,
+dirty/source digest, OS/architecture, declared configuration, elapsed time and
+test output. An unavailable/unlisted model, timeout, failure, empty test selection
+or any skipped selected test keeps that configuration failed. Later configurations
+still run. Existing evidence directories are preserved. `--configuration debug`
+and a per-configuration `--timeout` are available; release is the default.
+
+For a server key, add `"key_env": "PUDDLE_MODEL_KEY_SERVER_A"` and set that
+environment variable outside the JSON. Never put keys in the matrix or URL.
+Only the selected key reaches the test variable; matrix keys are redacted from
+saved logs, and evidence stays in a private local directory. Do not treat a
+fixture test of this runner as a live-model pass. No configuration is accepted
+until the real run succeeds and its synthetic outputs have been reviewed.
+First-time-user assessment, deliberate server restart, genuinely cold start,
+runtime/app peak memory and minimum-hardware performance remain separate checks.

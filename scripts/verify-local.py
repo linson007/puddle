@@ -51,19 +51,31 @@ def inference_models(address, api_key):
         connection.close()
 
 
+def validate_driver(driver, requirement):
+    if not requirement or not requirement.strip():
+        raise ValueError('Set --driver-requirement or PUDDLE_CUA_DRIVER_REQUIREMENT to the accepted helper identity.')
+    driver = driver.resolve(strict=True)
+    if not driver.is_file() or not os.access(driver, os.X_OK):
+        raise ValueError('Choose an installed, executable Cua Driver.')
+    result = subprocess.run(['/usr/bin/codesign', '--verify', '--strict', '-R', requirement, str(driver)],
+                            capture_output=True, timeout=30)
+    if result.returncode:
+        raise ValueError('The driver does not satisfy its accepted code-signing identity.')
+    return driver
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--driver", type=Path, default=Path("/Applications/CuaDriver.app/Contents/MacOS/cua-driver"))
+    parser.add_argument("--driver-requirement", default=os.environ.get("PUDDLE_CUA_DRIVER_REQUIREMENT"), help="Accepted designated helper signing requirement")
     parser.add_argument("--server", default=os.environ.get("PUDDLE_LIVE_INFERENCE_ADDRESS"), help="Local OpenAI-compatible server address")
     parser.add_argument("--model", default=os.environ.get("PUDDLE_LIVE_INFERENCE_MODEL", ""), help="Optional exact model ID")
     args = parser.parse_args()
     if not args.server:
         parser.error("Pass --server or set PUDDLE_LIVE_INFERENCE_ADDRESS to your running local server.")
     repo = Path(__file__).resolve().parent.parent
-    driver = args.driver.resolve(strict=True)
-    if not driver.is_file() or not os.access(driver, os.X_OK):
-        raise RuntimeError("Choose an installed, already configured Cua Driver executable.")
+    driver = validate_driver(args.driver, args.driver_requirement)
     api_key = os.environ.get("PUDDLE_LIVE_INFERENCE_KEY", "")
     models = inference_models(args.server, api_key)
     if args.model and not any(model.get("id") == args.model for model in json.loads(models)["data"]):
@@ -74,11 +86,12 @@ def main():
     environment = os.environ.copy()
     for key in ["PUDDLE_LOAD_PROFILE", "PUDDLE_LOAD_ITERATIONS", "PUDDLE_LOAD_EXPORT_FIXTURE", "PUDDLE_LOAD_SAVE_BUDGET_MS",
                 "PUDDLE_GOOGLE_CLIENT_FILE", "PUDDLE_SIGNING_IDENTITY", "PUDDLE_BUILD_CONFIGURATION", "PUDDLE_ACCEPTANCE_OUTPUT_DIRECTORY",
-                "PUDDLE_VERSION", "PUDDLE_BUILD_NUMBER", "PUDDLE_UPDATE_MANIFEST_URL", "PUDDLE_UPDATE_PUBLIC_KEY", "PUDDLE_MICROSOFT_CLIENT_ID"]:
+                "PUDDLE_VERSION", "PUDDLE_BUILD_NUMBER", "PUDDLE_UPDATE_MANIFEST_URL", "PUDDLE_UPDATE_PUBLIC_KEY", "PUDDLE_MICROSOFT_CLIENT_ID", "PUDDLE_RUN_CAPACITY_TESTS"]:
         environment.pop(key, None)
     environment.update(PUDDLE_LIVE_INFERENCE_ADDRESS=args.server, PUDDLE_LIVE_INFERENCE_MODEL=args.model,
                        PUDDLE_FILESYSTEM_TESTS="1", PUDDLE_LOAD_TESTS="1",
-                       PUDDLE_CUA_DRIVER=str(driver), PUDDLE_CUA_LIVE="1", PUDDLE_LOAD_OUTPUT_DIRECTORY=str(output))
+                       PUDDLE_CUA_DRIVER=str(driver), PUDDLE_CUA_DRIVER_REQUIREMENT=args.driver_requirement,
+                       PUDDLE_CUA_LIVE="1", PUDDLE_LOAD_OUTPUT_DIRECTORY=str(output))
     results = []
 
     def run(name, command, extra=None):
