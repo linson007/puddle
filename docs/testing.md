@@ -84,6 +84,26 @@ independent stores from blindly overwriting a newer index. Tests inject publicat
 interruptions and hold a real child-process lock. Actual power-loss tests on each
 supported filesystem remain required.
 
+The storage follow-up also uses read-only descriptors for existing ownership
+locks, allowing valid encrypted workspaces to reopen on read-only APFS/HFS+
+recovery volumes. Checkpoints track the last observed sidecar generation: another
+store's newer text cannot be overwritten, deleted, or quarantined from stale
+state. Reload before retrying; a writer reload invalidates checkpoint write
+elision. Ownership conflicts fail the load instead of being treated as damaged
+meeting text.
+
+`scripts/test_storage_crash.py` compiles the production durability/lock primitives
+into a disposable child process. It exits abruptly before and after rename, then
+opens the generation from a fresh process and verifies the expected whole file
+and release of the advisory lock. This exercises skipped cleanup and restart; it
+does not simulate hardware power loss or prove the entire app's quit behavior.
+Use the existing opt-in filesystem suite for actual bounded ENOSPC, read-only
+mounts and migration/restore on disposable disk images:
+
+```sh
+PUDDLE_FILESYSTEM_TESTS=1 sh scripts/swift.sh test --filter FilesystemRecoveryAcceptanceTests
+```
+
 The decoder retains the source schema and applies the supported migration steps
 before stamping the current schema. The first encrypted rewrite keeps
 `workspace-premigration-schema-N.vault`; its transcript pages are retained while

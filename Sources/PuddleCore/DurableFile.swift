@@ -41,12 +41,26 @@ final class WorkspaceFileLock {
     private let descriptor: Int32
     init(directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        descriptor = open(directory.appendingPathComponent(".workspace.lock").path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        let path = directory.appendingPathComponent(".workspace.lock").path
+        // An existing lock can be flock'ed through a read-only descriptor. This
+        // keeps intact workspaces readable on read-only recovery volumes.
+        let existing = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+        descriptor = existing >= 0 ? existing : (errno == ENOENT ? open(path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600) : -1)
         guard descriptor >= 0 else { throw PuddleError("Could not open the workspace ownership lock.") }
         guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
             close(descriptor)
-            throw PuddleError("Another process is using this workspace. Close its operation and retry loading before saving.")
+            throw WorkspaceConflict.busy
         }
     }
     deinit { flock(descriptor, LOCK_UN); close(descriptor) }
+}
+
+enum WorkspaceConflict: LocalizedError {
+    case busy, staleRecovery
+    var errorDescription: String? {
+        switch self {
+        case .busy: "Another process is using this workspace. Close its operation and retry loading before saving."
+        case .staleRecovery: "Meeting recovery changed in another process. Reload the workspace before saving or deleting recovered text."
+        }
+    }
 }
