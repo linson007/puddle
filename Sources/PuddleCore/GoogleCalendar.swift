@@ -82,12 +82,28 @@ public struct GoogleCalendarClient: Sendable {
         } ?? []
     }
     public func calendars() async throws -> [GoogleCalendarInfo] {
-        var request = URLRequest(url: URL(string: "https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=100")!)
+        // Compatibility caller must never silently treat the first page as all calendars.
+        let page = try await calendarsPage()
+        guard !page.hasMore else { throw PuddleError("The calendar list is incomplete. Use the primary calendar or narrow your connected calendars before choosing one.") }
+        return page.calendars
+    }
+    public func calendarsPage(pageToken: String? = nil) async throws -> GoogleCalendarListPage {
+        var parts = URLComponents(string: "https://www.googleapis.com/calendar/v3/users/me/calendarList")!
+        parts.queryItems = [URLQueryItem(name: "maxResults", value: "100")]
+        if let pageToken { parts.queryItems?.append(URLQueryItem(name: "pageToken", value: pageToken)) }
+        var request = URLRequest(url: parts.url!)
         request.setValue("Bearer \(try await session.accessToken())", forHTTPHeaderField: "Authorization")
         let (data, response) = try await transport.sendBounded(request, maximumBytes: 4 * 1024 * 1024, until: nil); try checkHTTP(response, data: data, service: "Google Calendar")
-        struct Page: Decodable { let items: [GoogleCalendarInfo]? }
-        return try JSONDecoder().decode(Page.self, from: data).items ?? []
+        struct Page: Decodable { let items: [GoogleCalendarInfo]?; let nextPageToken: String? }
+        let page = try JSONDecoder().decode(Page.self, from: data)
+        return GoogleCalendarListPage(calendars: page.items ?? [], nextPageToken: page.nextPageToken)
     }
+}
+
+public struct GoogleCalendarListPage: Sendable {
+    public let calendars: [GoogleCalendarInfo]
+    public let nextPageToken: String?
+    public var hasMore: Bool { nextPageToken != nil }
 }
 
 public struct GoogleCalendarInfo: Decodable, Identifiable, Sendable {

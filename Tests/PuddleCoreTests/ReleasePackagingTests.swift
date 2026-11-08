@@ -13,6 +13,13 @@ final class ReleasePackagingTests: XCTestCase {
             try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
             let source = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             try FileManager.default.copyItem(at: source.appendingPathComponent("scripts/release.sh"), to: scripts.appendingPathComponent("release.sh"))
+            try Data("""
+            import os, sys
+            from pathlib import Path
+            with open(Path(os.environ['FIXTURE_ROOT']) / 'commands', 'a') as log:
+                log.write('verify-bundle\\n')
+            sys.exit(int(os.environ.get('FIXTURE_VERIFY_STATUS', '0')))
+            """.utf8).write(to: scripts.appendingPathComponent("verify-bundle.py"))
             try executable(scripts.appendingPathComponent("build.sh"), """
             #!/bin/sh
             set -eu
@@ -66,6 +73,14 @@ final class ReleasePackagingTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.output.appendingPathComponent("Puddle-1.0.0.zip").path))
         let commands = try String(contentsOf: fixture.root.appendingPathComponent("commands"), encoding: .utf8)
         XCTAssertFalse(commands.contains("stapler")); XCTAssertFalse(commands.contains("spctl"))
+    }
+
+    func testFailedBundleVerifierStopsBeforeNotarization() throws {
+        let fixture = try Fixture(), result = try fixture.run(["FIXTURE_VERIFY_STATUS": "1"])
+        XCTAssertNotEqual(result.0, 0)
+        let commands = try String(contentsOf: fixture.root.appendingPathComponent("commands"), encoding: .utf8)
+        XCTAssertTrue(commands.contains("verify-bundle")); XCTAssertFalse(commands.contains("notarytool"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.output.appendingPathComponent("submission.zip").path))
     }
 
     func testAdHocIdentityAndExistingReleaseAreRejectedBeforeBuild() throws {

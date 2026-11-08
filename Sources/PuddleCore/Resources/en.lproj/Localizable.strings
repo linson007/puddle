@@ -16,6 +16,8 @@
 "Cancel" = "Cancel";
 "Cancel test" = "Cancel test";
 "Capture a commitment" = "Capture a commitment";
+"Check Provider" = "Check Provider";
+"Check for Provider Receipt" = "Check for Provider Receipt";
 "Choose meeting notes" = "Choose meeting notes";
 "Close" = "Close";
 "Completed" = "Completed";
@@ -26,10 +28,12 @@
 "Connections" = "Connections";
 "Context budget" = "Context budget";
 "Copy" = "Copy";
+"Copy Request" = "Copy Request";
 "Delete" = "Delete";
 "Delete…" = "Delete…";
 "Demo mode" = "Demo mode";
 "Developer" = "Developer";
+"Discard Request" = "Discard Request";
 "Disconnect Google" = "Disconnect Google";
 "Dismiss" = "Dismiss";
 "Dismiss error" = "Dismiss error";
@@ -61,6 +65,10 @@
 "Lock Puddle" = "Lock Puddle";
 "Mail" = "Mail";
 "Main" = "Main";
+"Manage Atlassian access" = "Manage Atlassian access";
+"Manage GitHub tokens" = "Manage GitHub tokens";
+"Manage Google access" = "Manage Google access";
+"Manage Microsoft access" = "Manage Microsoft access";
 "Meetings" = "Meetings";
 "Memory" = "Memory";
 "Message Puddle" = "Message Puddle";
@@ -81,6 +89,7 @@
 "Privacy" = "Privacy";
 "Private by default" = "Private by default";
 "Private session" = "Private session";
+"Provider access is not confirmed revoked by disconnecting. Remove Puddle’s grant or token in your provider’s account settings." = "Provider access is not confirmed revoked by disconnecting. Remove Puddle’s grant or token in your provider’s account settings.";
 "Puddle" = "Puddle";
 "Puddle is locked" = "Puddle is locked";
 "Quick meeting notes" = "Quick meeting notes";
@@ -89,9 +98,11 @@
 "Read new replies aloud" = "Read new replies aloud";
 "Recovered meeting text could not be read; the file was preserved." = "Recovered meeting text could not be read; the file was preserved.";
 "Retry Loading State" = "Retry Loading State";
+"Retry Request" = "Retry Request";
 "Retry last message" = "Retry last message";
 "Retry loading saved state before starting transcription." = "Retry loading saved state before starting transcription.";
 "Review Recovered Transcript" = "Review Recovered Transcript";
+"Review Saved History" = "Review Saved History";
 "Review and save or discard the recovered transcript before starting another capture." = "Review and save or discard the recovered transcript before starting another capture.";
 "Routines" = "Routines";
 "Save" = "Save";
@@ -107,6 +118,7 @@
 "Search tasks" = "Search tasks";
 "Search transcript" = "Search transcript";
 "Search workspace and commands" = "Search workspace and commands";
+"Selected provider content is sent to your local model. Disconnect removes local credentials and current caches. Retrieved content can remain in saved conversations, notes, model-server logs and exported backups. Review History, Memory and Meetings to delete saved content; delete old exports and model-server logs separately." = "Selected provider content is sent to your local model. Disconnect removes local credentials and current caches. Retrieved content can remain in saved conversations, notes, model-server logs and exported backups. Review History, Memory and Meetings to delete saved content; delete old exports and model-server logs separately.";
 "Send message" = "Send message";
 "Set up local AI" = "Set up local AI";
 "Settings" = "Settings";
@@ -127,6 +139,7 @@
 "These meeting notes are no longer available." = "These meeting notes are no longer available.";
 "Title" = "Title";
 "Today" = "Today";
+"Uncertain — check provider" = "Uncertain — check provider";
 "Unlock Puddle before starting transcription." = "Unlock Puddle before starting transcription.";
 "Unlock with macOS" = "Unlock with macOS";
 "Until I delete them" = "Until I delete them";
@@ -139,3 +152,4 @@
 "Work Context" = "Work Context";
 "Workspace" = "Workspace";
 "Workspace changes or meeting text could not be saved" = "Workspace changes or meeting text could not be saved";
+"Your request could not be saved. Keep Puddle open to recover it." = "Your request could not be saved. Keep Puddle open to recover it.";

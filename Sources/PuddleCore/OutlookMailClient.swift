@@ -1,14 +1,32 @@
 import Foundation
 
+public struct MailQueryPage: Sendable {
+    public let messages: [MailMessage]
+    public let continuation: URL?
+    public let hasMore: Bool
+    public init(messages: [MailMessage], continuation: URL? = nil, hasMore: Bool = false) {
+        self.messages = messages; self.continuation = continuation; self.hasMore = hasMore || continuation != nil
+    }
+}
+
 public struct OutlookMailClient: Sendable {
     private let session: MicrosoftMailSession
     private let transport: any HTTPTransport
     public init(session: MicrosoftMailSession, transport: any HTTPTransport = URLSessionTransport()) { self.session = session; self.transport = transport }
     public func inbox() async throws -> [MailMessage] {
+        try await inboxPage().messages
+    }
+    public func inboxPage() async throws -> MailQueryPage {
         try await messages(path: "mailFolders/inbox/messages", query: [URLQueryItem(name: "$top", value: "50"), URLQueryItem(name: "$orderby", value: "receivedDateTime desc")])
     }
     public func search(_ query: String) async throws -> [MailMessage] {
-        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return Array(try await inbox().prefix(10)) }
+        try await searchPage(query).messages
+    }
+    public func searchPage(_ query: String) async throws -> MailQueryPage {
+        if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let page = try await inboxPage()
+            return MailQueryPage(messages: Array(page.messages.prefix(10)), continuation: page.continuation, hasMore: page.hasMore || page.messages.count > 10)
+        }
         let escaped = String(query.prefix(500)).replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
         return try await messages(path: "messages", query: [URLQueryItem(name: "$top", value: "10"), URLQueryItem(name: "$search", value: "\"\(escaped)\"")])
     }
@@ -52,8 +70,9 @@ public struct OutlookMailClient: Sendable {
         let (data, response) = try await transport.sendBounded(request, maximumBytes: 16 * 1024 * 1024, until: nil)
         try checkHTTP(response, data: data, service: "Outlook"); return data
     }
-    private func messages(path: String, query: [URLQueryItem]) async throws -> [MailMessage] {
-        try await messagePage(messageURL(path: path, query: query)).0
+    private func messages(path: String, query: [URLQueryItem]) async throws -> MailQueryPage {
+        let (messages, next) = try await messagePage(messageURL(path: path, query: query))
+        return MailQueryPage(messages: messages, continuation: next)
     }
     private func messageURL(path: String, query: [URLQueryItem]) -> URL {
         var parts = URLComponents(string: "https://graph.microsoft.com/v1.0/me/\(path)")!

@@ -182,6 +182,24 @@ private struct RaceHTTP: HTTPTransport {
         XCTAssertEqual(reply, true)
         XCTAssertTrue(disk.loadMeetingRecoveries().first?.text.contains("Final recognized words") == true)
     }
+    func testQuitDeadlineCanKeepOpenAndRepliesOnlyOnceAfterLateSave() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        let entered = expectation(description: "Save held during quit"); disk.blockWrite(entered)
+        let save = Task { await subject.addTask(title: "Save before quit", dueAt: nil) }
+        await fulfillment(of: [entered], timeout: 5)
+        let lifecycle = PuddleLifecycle(); lifecycle.store = subject; lifecycle.terminationTimeout = .milliseconds(50)
+        lifecycle.confirmQuit = { _, _ in false }
+        let answered = expectation(description: "Quit deadline answered"), firstTask: Task<Void, Never>?
+        var replies = 0
+        XCTAssertEqual(lifecycle.requestTermination { allow in XCTAssertFalse(allow); replies += 1; answered.fulfill() }, .terminateLater)
+        firstTask = lifecycle.terminationTask
+        XCTAssertEqual(lifecycle.requestTermination { _ in XCTFail("Duplicate quit replied") }, .terminateLater)
+        await fulfillment(of: [answered], timeout: 5)
+        XCTAssertFalse(subject.isShuttingDown)
+        disk.release(); _ = await save.value; await firstTask?.value
+        XCTAssertEqual(replies, 1)
+        await subject.suspendConnectionWork()
+    }
     func testFailedFinalizationOffersKeepOpenAndRetainsText() async throws {
         let disk = RaceDisk(), hardware = RaceCapture(), subject = store(disk, capture: hardware)
         subject.storageAvailable = true

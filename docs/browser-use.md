@@ -108,3 +108,23 @@ open a disposable page, navigate by URL and scroll. Confirm fresh results and
 visible browser state, manual takeover, decline an action,
 stop during work, restart Puddle and verify no automatic reconnect. Test with
 your chosen local model; fixture success does not prove live model quality.
+
+## Helper identity and host trust
+
+Puddle currently runs as an unsandboxed macOS application. Its document scopes,
+network policy and action review are application checks; they are not an OS
+sandbox. The selected Cua Driver runs with the current user's permissions and
+manages browser profiles outside encrypted workspace storage. Browser cookies,
+downloads and profile state need separate browser review/deletion.
+
+Before distributing a build with browser support, set
+`PUDDLE_CUA_DRIVER_REQUIREMENT` to the accepted helper's designated code-signing
+requirement, including its identifier and publisher Team ID. Obtain and review it
+from the exact supported signed driver with `codesign -d -r- /path/to/cua-driver`;
+do not pin a generic “any signed code” requirement. The app verifies that
+requirement and strict signature validity immediately before launching the helper
+and sending MCP data. No configured requirement means browser launch is disabled.
+Tampered/unsigned/other-publisher helpers are refused. Test helper updates against
+the same requirement before advertising their versions. Local administrators or
+code already executing as the user remain within the host trust boundary; this
+check does not provide process containment or protect a compromised host.

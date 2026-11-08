@@ -164,6 +164,8 @@ public struct PuddleSettings: Codable, Sendable {
 public struct AppSnapshot: Codable, Sendable {
     public static let currentSchemaVersion = 9
     public var schemaVersion = currentSchemaVersion
+    /// Original on-disk version, excluded from encoding. Useful for migration evidence.
+    public private(set) var decodedSchemaVersion = currentSchemaVersion
     public var account: String?
     public var messages: [MailMessage] = []
     public var chat: [ChatLine] = []
@@ -223,13 +225,14 @@ public struct AppSnapshot: Codable, Sendable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         let version = try values.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 0
         guard (0...Self.currentSchemaVersion).contains(version) else { throw SnapshotVersionError() }
+        decodedSchemaVersion = version
         account = try values.decodeIfPresent(String.self, forKey: .account)
         messages = try values.decodeIfPresent([MailMessage].self, forKey: .messages) ?? []
         chat = try values.decodeIfPresent([ChatLine].self, forKey: .chat) ?? []
         // Legacy snapshots already saved the active transcript outside the archive.
         // Its first message supplies a stable identity until the next save.
-        currentConversationID = try values.decodeIfPresent(UUID.self, forKey: .currentConversationID) ?? chat.first?.id ?? UUID()
-        currentConversationCreatedAt = try values.decodeIfPresent(Date.self, forKey: .currentConversationCreatedAt) ?? Date()
+        currentConversationID = try values.decodeIfPresent(UUID.self, forKey: .currentConversationID) ?? chat.first?.id ?? UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1))
+        currentConversationCreatedAt = try values.decodeIfPresent(Date.self, forKey: .currentConversationCreatedAt) ?? Date(timeIntervalSinceReferenceDate: 0)
         conversations = try values.decodeIfPresent([Conversation].self, forKey: .conversations) ?? []
         activity = try values.decodeIfPresent([ActivityEvent].self, forKey: .activity) ?? []
         settings = try values.decodeIfPresent(PuddleSettings.self, forKey: .settings) ?? PuddleSettings()
@@ -270,6 +273,22 @@ public struct AppSnapshot: Codable, Sendable {
         if !developerProjects.contains(where: { $0.id == activeDeveloperProjectID }) { activeDeveloperProjectID = nil }
         if let instructions = try values.decodeIfPresent(String.self, forKey: .assistantInstructions) {
             assistantInstructions = instructions
+        }
+        try migrate(from: version)
+    }
+
+    private mutating func migrate(from source: Int) throws {
+        schemaVersion = source
+        while schemaVersion < Self.currentSchemaVersion {
+            // Schemas 0–9 add optional collections/settings. Their defaults and
+            // legacy profile conversion are decoded above; no fields are dropped.
+            // A future semantic change must add an explicit step here rather than
+            // silently accepting it through Codable defaults.
+            switch schemaVersion {
+            case 0, 1, 2, 3, 4, 5, 6, 7, 8: break
+            default: throw SnapshotVersionError()
+            }
+            schemaVersion += 1
         }
     }
 

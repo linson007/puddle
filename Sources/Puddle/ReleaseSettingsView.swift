@@ -29,7 +29,10 @@ struct ReleaseSettingsView: View {
             }
             Section("Local diagnostics") {
                 Button("Prepare Redacted Diagnostics") {
+                    let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601; encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    let events = String(decoding: (try? encoder.encode(PuddleDiagnostics.supportEvents())) ?? Data("[]".utf8), as: UTF8.self)
                     diagnostics = "Puddle \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development")\nmacOS \(ProcessInfo.processInfo.operatingSystemVersionString)\nMemory: \(ProcessInfo.processInfo.physicalMemory / 1_073_741_824) GB\nWorkspace schema: \(AppSnapshot.currentSchemaVersion)\nLocal AI connected: \(store.inferenceModel != nil)\nCua connected: \(store.browserWorkspace.isConnected)\nExternal connections paused: \(store.state.settings.networkDisabled)\nNo conversation, document, account, address, token, URL, path, or transcript content is included."
+                    diagnostics? += "\nBuild: \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "development")\nStorage available: \(store.storageAvailable)\nSave failed: \(store.persistenceFailure != nil)\nSaves pending: \(store.pendingSaves)\nRecovered request pending: \(!store.recoverablePrompts.isEmpty)\nUncertain action pending: \(store.state.actionProposals.contains { $0.status == .uncertain || $0.status == .dispatching })\nRecent redacted errors (this process only):\n" + events
                 }
                 if let diagnostics {
                     Text(diagnostics).font(.caption.monospaced()).textSelection(.enabled)

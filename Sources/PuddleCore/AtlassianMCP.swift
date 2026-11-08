@@ -5,6 +5,7 @@ struct AtlassianToolResult: Sendable {
     let text: String
 }
 actor AtlassianMCP {
+    private let reads = ConnectorReads<ConnectorJSON>()
     static let permittedTools: Set<String> = ["getAccessibleAtlassianResources", "atlassianUserInfo", "searchJiraIssuesUsingJql", "getJiraIssue", "searchConfluence", "getConfluenceContent"]
     private let transport: any HTTPTransport
     private let authorization: @Sendable () async throws -> String
@@ -67,7 +68,23 @@ actor AtlassianMCP {
         try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
     }
     private func readRPC(_ method: String, parameters: ConnectorJSON) async throws -> ConnectorJSON {
-        do { return try await rpc(method, parameters: parameters) }
+        var key = Data(method.utf8); key.append(parameters.data)
+        return try await reads.run(key: key) { try await self.performReadRPC(method, parameters: parameters) }
+    }
+    private func performReadRPC(_ method: String, parameters: ConnectorJSON) async throws -> ConnectorJSON {
+        do {
+            // MCP reads use POST, so opt in here only after enforcing the read
+            // allowlist. Never wrap initialization, auth or arbitrary POSTs.
+            for attempt in 0..<3 {
+                do { return try await rpc(method, parameters: parameters) }
+                catch let error as HTTPServiceError where [429, 500, 502, 503, 504].contains(error.statusCode) && attempt < 2 {
+                    let delay = error.retryAfter ?? pow(2, Double(attempt))
+                    guard delay.isFinite, delay <= 30 else { throw error }
+                    try await Task.sleep(for: .seconds(min(30, delay + Double.random(in: 0...0.25))))
+                }
+            }
+            throw PuddleError("Atlassian read retry limit reached.")
+        }
         catch let error as HTTPServiceError where error.statusCode == 404 && sessionID != nil {
             // Streamable HTTP servers may expire an idle session. Replay only our read operations once.
             sessionID = nil; initialized = false

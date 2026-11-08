@@ -3,6 +3,21 @@ import XCTest
 @testable import PuddleCore
 
 final class PersistenceTests: XCTestCase {
+    func testEverySupportedSchemaMigratesIdempotentlyAndRetainsItsSource() throws {
+        for source in 0...AppSnapshot.currentSchemaVersion {
+            let input = try JSONSerialization.data(withJSONObject: ["schemaVersion": source, "assistantInstructions": "Keep this preference"])
+            let state = try JSONDecoder().decode(AppSnapshot.self, from: input)
+            XCTAssertEqual(state.decodedSchemaVersion, source)
+            XCTAssertEqual(state.schemaVersion, AppSnapshot.currentSchemaVersion)
+            let repeated = try JSONDecoder().decode(AppSnapshot.self, from: input)
+            XCTAssertEqual(state.currentConversationID, repeated.currentConversationID)
+            XCTAssertEqual(state.currentConversationCreatedAt, repeated.currentConversationCreatedAt)
+            let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+            let saved = try encoder.encode(state), restored = try JSONDecoder().decode(AppSnapshot.self, from: saved)
+            XCTAssertEqual(try encoder.encode(restored), saved)
+            XCTAssertEqual(restored.assistantInstructions, "Keep this preference")
+        }
+    }
     func testArchiveReopenAndReceiptsSurviveRestart() throws {
         var state = AppSnapshot()
         let user = ChatLine(role: "user", content: "Remember this conversation")

@@ -1,6 +1,7 @@
 import Foundation
 
 public actor GitHubConnector {
+    private let reads = ConnectorReads<(ConnectorJSON, HTTPURLResponse)>()
     private struct Credentials: Codable { let token: String; let login: String; let repositories: [String]; let verifiedAt: Date }
     private let secrets: any SecretStore
     private let transport: any HTTPTransport
@@ -51,8 +52,11 @@ public actor GitHubConnector {
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("2022-11-28", forHTTPHeaderField: "X-GitHub-Api-Version")
         request.setValue("Puddle-local-assistant", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await WorkConnectorHTTP.send(request, transport: transport, service: "GitHub", hosts: ["api.github.com"])
-        return (try WorkConnectorHTTP.decode(data), response)
+        let outgoing = request, transport = self.transport
+        return try await reads.run(key: Data((outgoing.url!.absoluteString + "\n" + token).utf8)) {
+            let (data, response) = try await WorkConnectorHTTP.send(outgoing, transport: RetryingTransport(base: transport), service: "GitHub", hosts: ["api.github.com"])
+            return (try WorkConnectorHTTP.decode(data), response)
+        }
     }
     public func connect(token: String, repositories: [String]) async throws -> GitHubConnectionInfo {
         let expected = revision

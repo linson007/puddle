@@ -29,7 +29,8 @@ PUDDLE_NOTARY_PROFILE='puddle-notary' \
 PUDDLE_VERSION=0.2.0 PUDDLE_BUILD_NUMBER=2 sh scripts/release.sh
 ```
 
-The script verifies hardened signing, submits a ZIP, requires Apple's Accepted
+The script runs the full bundle verifier before notarization and after stapling,
+verifies hardened signing, submits a ZIP, requires Apple's Accepted
 result, staples/validates, runs Gatekeeper assessment and creates an archive plus
 SHA256SUMS in a new build/releases/VERSION-BUILD directory. Existing outputs are
 preserved. See [Apple notarization guidance](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution).
@@ -56,6 +57,46 @@ PUDDLE_UPDATE_SIGNING_KEY_FILE=/private/secure/puddle-update-key \
 Publish the archive before the manifest in a separate owner-controlled step.
 Scripts do not upload them. Protect/back up the private key; changing the pinned
 key needs a separately trusted application update.
+
+Alternatively set `PUDDLE_UPDATE_SIGNING_KEY_FILE` and
+`PUDDLE_RELEASE_DOWNLOAD_URL` when running `release.sh` to generate
+`manifest.json` alongside the final stapled archive. The manifest tool extracts
+the archive, checks its version/build and embedded update public key against the
+requested release and signing key, verifies the archived app signature, then
+signs and checks the manifest. A mismatched archive/key/version fails closed.
+Use an immutable URL containing both version and build; never replace its bytes.
+
+After uploading that archive, smoke-test its public URL before promoting the feed:
+
+```sh
+swift scripts/verify-release.swift \
+  build/releases/0.2.0-2/Puddle-0.2.0.zip \
+  build/releases/0.2.0-2/manifest.json BASE64_PINNED_PUBLIC_KEY
+```
+
+This checks the manifest signature, local checksum and an independently fetched,
+bounded HTTPS archive without credentials or redirects. Promote the exact tested
+manifest only after the remote bytes match and the acceptance record is complete.
+
+## Pilot, pause and recovery runbook
+
+Keep separate owner-controlled pilot and stable manifest URLs. The URL pinned in
+each app chooses its channel. Start with a small invited pilot; advance to stable
+only after reviewing install, setup, provider, save/restore and accessibility
+acceptance. No automatic cohort assignment or telemetry is implemented.
+
+For a bad update, stop promotion immediately. At the affected manifest URL, restore
+the last known-good signed manifest (old builds will not be offered as an update),
+or make the feed unavailable while investigating. Preserve immutable installers,
+manifests, notarization records and checksums. Already downloaded installers cannot
+be recalled; notify affected testers through the established support channel.
+
+Rollback is manual: quit, retain the complete workspace directory, install the
+previous signed app, and restore a backup that its schema can read. Never ask an
+older binary to rewrite a newer workspace. Rehearse this on a disposable clean Mac
+before promotion. Name a release operator and a monitored security/support owner,
+publish supported versions and response targets, and confirm private reporting is
+enabled. Those are owner prerequisites, not services this repository provisions.
 
 Settings → Updates & Diagnostics verifies the pinned signature, newer build,
 OS compatibility and SHA256 before offering Open Installer. Downloads cap128MB;

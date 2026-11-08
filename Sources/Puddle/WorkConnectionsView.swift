@@ -60,6 +60,8 @@ struct WorkConnectionsView: View {
                     if let error = store.workConnectionErrors[service], service == .jira || error != store.workConnectionErrors[.jira] { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
                 }
             }
+            ConnectionPrivacyNotice(store: store, provider: "GitHub")
+            ConnectionPrivacyNotice(store: store, provider: "Atlassian")
             Text("Read-only connectors. Puddle cannot change issues/pages, comment, merge PRs or trigger CI. Retrieved excerpts may remain in your chat history; disconnecting removes local credentials and current connector results.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding(22).frame(maxWidth: .infinity, alignment: .leading).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 14))
@@ -80,6 +82,7 @@ private struct GitHubConnectionSheet: View {
             Text("Use a fine-grained personal access token for the repositories you choose. Give it read access to Issues and Pull requests; Checks read access is optional for CI results. Paste it here, never into chat.")
                 .font(.callout).foregroundStyle(.secondary)
             Link("Create a fine-grained GitHub token", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!)
+            ConnectionPrivacyNotice(store: store, provider: "GitHub")
             SecureField("GitHub token", text: $token).textFieldStyle(.roundedBorder).disabled(store.isConnectingGitHub)
             Text("Repositories").font(.callout).fontWeight(.medium)
             TextField("owner/repository or https://github.com/owner/repository", text: $repositories, axis: .vertical).lineLimit(3...6).textFieldStyle(.roundedBorder).disabled(store.isConnectingGitHub)

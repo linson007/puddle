@@ -21,6 +21,12 @@ struct ActionsView: View {
                             Text("Reviewed undo of: \(original.title)").font(.caption).foregroundStyle(.secondary)
                         }
                         if let detail = action.detail { Text(detail).font(.callout).textSelection(.enabled) }
+                        if action.status == .uncertain {
+                            Text("Uncertain — check provider").font(.headline).foregroundStyle(.orange)
+                            Text(action.recoveryInstructions).font(.callout).textSelection(.enabled)
+                            if let url = action.recoveryURL { Link("Check Provider", destination: url) }
+                            if action.provider != .outlook { Button("Check for Provider Receipt") { Task { await store.reconcileAction(action.id) } } }
+                        }
                         HStack {
                             if action.status == .draft {
                                 Button("Edit & Review") { store.editingAction = action }

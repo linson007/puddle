@@ -57,7 +57,7 @@ final class LocalInferenceTests: XCTestCase {
             } else {
                 payload = #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"local-call","type":"function","function":{"name":"list_tasks","arguments":"{}"}}]},"finish_reason":"tool_calls"}]}"#
             }
-            return (Data((payload + "\ndata: [DONE]\n").utf8), 200)
+            return (Data((payload + "\n\ndata: [DONE]\n\n").utf8), 200)
         }
         let client = try LocalInferenceClient(address: "http://localhost:1234/v1", transport: transport)
         let answer = try await LocalAgent(client: client).respond(question: "List tasks", history: [], context: AgentContext(), tools: [.tasks], execute: { call in

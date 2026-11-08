@@ -14,6 +14,7 @@ mkdir -p "$output"
 # A developer's debug setting must never enable fixture mode in a public archive.
 PUDDLE_BUILD_CONFIGURATION=release sh "$repo_root/scripts/build.sh"
 app="$repo_root/build/Puddle.app"
+python3 "$repo_root/scripts/verify-bundle.py" "$app"
 codesign --verify --deep --strict "$app"
 ditto -c -k --keepParent "$app" "$output/submission.zip"
 xcrun notarytool submit "$output/submission.zip" --keychain-profile "$PUDDLE_NOTARY_PROFILE" --wait --output-format json > "$output/notarization.json"
@@ -22,6 +23,12 @@ if [ "$result" != Accepted ]; then echo 'Apple did not accept this submission. I
 xcrun stapler staple "$app"
 xcrun stapler validate "$app"
 spctl --assess --type execute "$app"
+python3 "$repo_root/scripts/verify-bundle.py" "$app"
 ditto -c -k --keepParent "$app" "$output/Puddle-$PUDDLE_VERSION.zip"
 shasum -a 256 "$output/Puddle-$PUDDLE_VERSION.zip" > "$output/SHA256SUMS"
+if [ -n "${PUDDLE_UPDATE_SIGNING_KEY_FILE:-}" ]; then
+    : "${PUDDLE_RELEASE_DOWNLOAD_URL:?Set the immutable HTTPS URL for this version and build}"
+    swift "$repo_root/scripts/release-manifest.swift" "$output/Puddle-$PUDDLE_VERSION.zip" \
+        "$PUDDLE_VERSION" "$PUDDLE_BUILD_NUMBER" "$PUDDLE_RELEASE_DOWNLOAD_URL" "$output/manifest.json"
+fi
 printf 'Prepared notarized release in %s. Publishing is a separate step.\n' "$output"

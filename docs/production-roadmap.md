@@ -37,6 +37,33 @@ existing release gates for installation, privacy, recovery and accessibility.
 Defer new providers, profiles and automation breadth until the core passes;
 new work should solve an observed failure or a repeated user need.
 
+## Production-readiness assessment follow-up — 8 November 2026
+
+The supplied `production-readiness-assessment.md` reviewed an earlier, dirty
+checkout. Its recommendations remain useful, but its claims about English-only
+shipping and uncommitted OAuth revocation do not describe the current baseline.
+English and Turkish are shipped. Current provider disconnects remove local
+credentials; they do not establish remote revocation.
+
+| Finding | Repository change | Remaining release evidence |
+| --- | --- | --- |
+| 1: shutdown | One delegate owns wake/background observers. Quit blocks new work, cancels tracked producers, drains writes, preserves uncertain actions and waits for capture/persistence. A deadline offers Keep Open or explicit Quit Anyway. | Native quit/sleep/wake/multiple-window acceptance with live providers, permissions and helper processes. |
+| 2: durability/ownership | Encrypted files/pages use file `fsync` plus `F_FULLFSYNC`, atomic rename and parent-directory `fsync`. Advisory locks serialize processes and digest checks reject stale snapshots. Errors propagate; pages referenced by an uncertain index commit are retained. | Actual power-loss/crash drills and supported-filesystem/hardware validation. Flush requests cannot prove that every storage controller honors them. |
+| 3: model contract | Setup uses the production streaming parser for reply, tool call, synthetic tool result and final reply. SSE assembles multiline events; byte framing preserves CRLF delimiters and bounds memory. Idle/first-byte and total deadlines cancel stalled streams. | Each advertised server/model/version, restart and cancellation acceptance. |
+| 4: uncertain writes/revocation | Guided provider checks expose stable identities. Read-only Gmail sent-record and new Calendar-event lookups can confirm positive evidence; absent/changed records stay uncertain. No write replays. Consent/disconnect explicitly distinguish local removal from provider revocation. | Real consent, expiry and revoke behavior for each provider. Other write types require the manual check. No retained-token revocation queue is claimed. |
+| 5: helper boundary | Cua launch requires a publisher-pinned code-signing requirement and strict signature validation. Builds without a pin disable this optional helper. The current app remains unsandboxed. | Select and accept the intended helper identity/version, including its installation/update path and clean-Mac permissions. Sandboxing is not implemented. |
+| 6: release artifact | Release runs bundle verification before notarization and after stapling. Optional manifest generation uses the final archive and checks its embedded version/build/key/signature. A remote hash/signature check is available before feed promotion. | Developer ID, Apple notarization, immutable hosting, feed promotion and clean-Mac install/upgrade/restore drills. |
+| 7: failed requests/privacy | Failed initial or answer saves retain the original request with Retry/Copy/Discard and quit-loss review. Provider consent/disconnect surfaces disclose saved-history, model-log and backup retention, with deletion/access routes. | First-time-user comprehension and failure/retry acceptance. In-memory drafts cannot survive process death when storage is unavailable. |
+| 8: migration | The decoder retains its source version, dispatches explicit supported-version steps and stamps current only on success. First encrypted rewrite retains the original encrypted generation and its transcript pages. | Real historical-version fixtures and older-binary restore/rollback. Downgrade is restore-from-backup, not in-place reverse migration. |
+| 9: capacity | An opt-in 108 MiB deterministic entropy/reopen profile reports save/load time and peak RSS, and checks the separate portable-backup limit. | Low-RAM/slow-disk hardware, genuinely cold OS caches and practical latency/memory budgets. The logical cap is a storage guardrail. |
+| 10: connectors | GitHub reads share bounded jittered retry; allowlisted Atlassian MCP reads opt into retry despite POST framing. Work reads coalesce identical requests and cap distinct concurrent reads. Outlook query pages and Calendar-list pages expose completeness/continuations; the assistant receives a completeness warning. | Disposable-account pagination, rate-limit and quota acceptance. Calendar selection fails explicitly if its list is truncated. |
+| 11: fleet operations | Previewable diagnostics include bounded redacted operation IDs/timestamps/error codes and recovery flags. Release instructions define cohorts, feed pause and restore steps. | Appoint monitored security/support owners and response targets, configure production hosting/key custody, and rehearse the incident/update-pause runbook. |
+| 12: OS/human acceptance | Minimum-OS and accessibility acceptance remain explicit blocking rows in the release checklist; new recovery/privacy controls ship in English and Turkish. | macOS 14 runtime, first-run, VoiceOver, keyboard, contrast and reduced-motion acceptance. CI compilation and fixtures do not close these rows. |
+
+This follow-up does not change the public-distribution hold. Record exact artifact
+hash, OS, hardware, provider/model/helper versions, tester, date and observed
+results for every external gate. Do not mark a row accepted from fixture counts.
+
 ## Work before live-model acceptance
 
 The owner chose page reading, URL navigation and scrolling for the first release

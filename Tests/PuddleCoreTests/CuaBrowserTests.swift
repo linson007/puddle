@@ -241,7 +241,7 @@ final class CuaBrowserTests: XCTestCase {
 
     func testStdioMCPHandlesNotificationsAndMatchesRequestIDs() async throws {
         let file = try script("print(json.dumps({'jsonrpc':'2.0','method':'notifications/progress'}), flush=True)\n    print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'method':request['method']}}), flush=True)")
-        let transport = CuaStdioTransport(executable: file)
+        let transport = CuaStdioTransport(executable: file, verifyExecutable: { _ in })
         let reply = try await transport.rpc("initialize", parameters: .object([:]))
         XCTAssertEqual(reply["method"]?.string, "initialize")
         _ = try await transport.rpc("notifications/initialized", parameters: .object([:]), notification: true)
@@ -252,15 +252,23 @@ final class CuaBrowserTests: XCTestCase {
 
     func testStdioMCPTimeoutAndCancellationStopWithoutReplay() async throws {
         let file = try script("time.sleep(10)")
-        let transport = CuaStdioTransport(executable: file, timeout: 0.1)
+        let transport = CuaStdioTransport(executable: file, timeout: 0.1, verifyExecutable: { _ in })
         do { _ = try await transport.rpc("tools/call", parameters: .object([:])); XCTFail("Expected timeout") } catch {}
         let cancellationFile = try script("open(__file__ + '.entered', 'w').close()\n    time.sleep(10)")
-        let cancelled = CuaStdioTransport(executable: cancellationFile)
+        let cancelled = CuaStdioTransport(executable: cancellationFile, verifyExecutable: { _ in })
         let request = Task { try await cancelled.rpc("tools/call", parameters: .object([:])) }
         try await waitForTestEvent("child received cancellation request") { FileManager.default.fileExists(atPath: cancellationFile.path + ".entered") }
         request.cancel()
         do { _ = try await request.value; XCTFail("Expected cancellation") } catch {}
         do { _ = try await cancelled.rpc("tools/call", parameters: .object([:])); XCTFail("Closed connection replayed") } catch {}
+    }
+
+    func testUntrustedHelperIsRejectedBeforeStartingProcess() async throws {
+        let file = try script("open(__file__ + '.started', 'w').close()")
+        let transport = CuaStdioTransport(executable: file)
+        do { _ = try await transport.rpc("initialize", parameters: .object([:])); XCTFail("Untrusted helper launched") } catch {}
+        XCTAssertFalse(FileManager.default.fileExists(atPath: file.path + ".started"))
+        XCTAssertThrowsError(try CuaHelperTrust.verify(file, requirement: "anchor apple generic"))
     }
 
     func testInstalledDriverMCPHandshakeAndBrowserCatalog() async throws {

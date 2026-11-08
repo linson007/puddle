@@ -34,15 +34,24 @@ final class StreamingTests: XCTestCase {
     data: {"choices":[{"delta":{"content":" world"},"finish_reason":null}]}
 
     data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
     data: [DONE]
+
+
     """
 
     func testFragmentedTextAndToolArgumentsCompleteBeforeExecution() async throws {
         let tool = """
+
         data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"list_tasks","arguments":"{"}}]},"finish_reason":null}]}
+
         data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]},"finish_reason":null}]}
+
         data: {"choices":[{"delta":{},"finish_reason":"tool_calls"}]}
+
         data: [DONE]
+
+
         """
         let fixture = StreamFixture([tool, text]), recorder = PartialRecorder()
         let agent = LocalAgent(client: try LocalInferenceClient(address: "http://127.0.0.1:8000", transport: fixture))
@@ -81,6 +90,24 @@ final class StreamingTests: XCTestCase {
         XCTAssertEqual(requests.filter { $0.url?.path == "/v1/chat/completions" }.count, 2)
         XCTAssertEqual(metrics.count, 2); XCTAssertNotNil(metrics[0].firstTokenSeconds)
         XCTAssertEqual(metrics[0].extractionSeconds, 0)
+    }
+
+    func testMultilineEventAndCRLFPreserveJSONWhitespace() async throws {
+        let stream = CompletionStream(), recorder = PartialRecorder()
+        for line in [": heartbeat\r", "event: message\r", "id: 12\r", "data: {\r", "data: \"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"stop\"}]}\r", "\r"] {
+            try await stream.consume(line) { await recorder.partial($0) }
+        }
+        let result = try await stream.result()
+        XCTAssertEqual(result.content, "Hi")
+    }
+
+    func testErrorEventAndUnterminatedEventFailClosed() async throws {
+        let stream = CompletionStream()
+        try await stream.consume("event: error") { _ in }
+        do { try await stream.consume("") { _ in }; XCTFail("Error event accepted") } catch {}
+        let unfinished = CompletionStream()
+        try await unfinished.consume("data: {\"choices\":[]}") { _ in }
+        do { try await unfinished.finish(onPartial: { _ in }); XCTFail("Unterminated event accepted") } catch {}
     }
 
     func testContextBudgetIncludesToolArgumentsAndMultibyteText() {

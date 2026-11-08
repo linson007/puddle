@@ -117,6 +117,26 @@ public struct ActionProposal: Codable, Identifiable, Equatable, Sendable {
         case .calendarRemoval(let value): return "Delete created event: \(value.title)"
         }
     }
+    public var recoveryInstructions: String {
+        let identity = "puddle-\(id.uuidString.lowercased())@puddle.local"
+        switch payload {
+        case .email(let draft):
+            return "Use the reviewed account \(account). Check Sent \(provider == .outlook ? "Items" : "Mail") and search for the exact subject, recipient and time: \(draft.subject), \(draft.to). Gmail can search rfc822msgid:\(identity). A missing result does not prove the send failed. Confirm with the provider before creating another send."
+        case .calendar(let draft):
+            return "Open the reviewed calendar in account \(account). Check \(draft.title) at \(draft.start.formatted()). Inspect attendees and any updates. Do not create another event until you have checked the provider."
+        case .calendarRemoval(let value): return "Check whether \(value.title) still exists in the reviewed calendar. An absent event alone cannot establish who deleted it."
+        case .mailLabels: return "Open the original message in the reviewed account and inspect its current folder, read status and labels before proposing another change."
+        case .unsubscribe: return "Inspect the sender’s subscription settings. A missing response cannot establish whether the unsubscribe succeeded; do not automatically submit it again."
+        }
+    }
+    public var recoveryURL: URL? {
+        if let url = resultURL ?? sourceURL { return url }
+        switch payload {
+        case .email, .mailLabels: return URL(string: provider == .outlook ? "https://outlook.office.com/mail/sentitems" : "https://mail.google.com/mail/u/0/#sent")
+        case .calendar, .calendarRemoval: return URL(string: "https://calendar.google.com/")
+        case .unsubscribe: return nil
+        }
+    }
     public var digest: String {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         let data = (try? encoder.encode(payload)) ?? Data()

@@ -36,6 +36,7 @@ struct OutlookConnectionsView: View {
                     }
                 }.padding(.top, 10)
             }
+            ConnectionPrivacyNotice(store: store, provider: "Microsoft")
             Text("Mail goes directly to Microsoft Graph. Credentials stay in Keychain. Calendar proposals currently use Google Calendar. Sending is reviewed separately and an accepted request is not proof of delivery.").font(.caption).foregroundStyle(.secondary)
         }.padding(22).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 12))
             .task {
@@ -60,7 +61,7 @@ extension PuddleStore {
         } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
     }
     func connectOutlook(clientID: String, tenant: String, allowSend: Bool, allowOrganize: Bool) async {
-        guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingOutlook else { return }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingOutlook else { return }
         await stopAI(); isConnectingOutlook = true
         outlookOAuthTask = Task {
             let callback = WorkOAuthCallback(); outlookCallback = callback
@@ -78,17 +79,17 @@ extension PuddleStore {
     }
     func cancelOutlookConnection() { outlookOAuthTask?.cancel(); outlookCallback?.cancel(); isConnectingOutlook = false }
     func switchOutlookAccount(_ id: String) async {
-        guard !privateSession, !isLocked, !isConnectingOutlook else { return }
+        guard !isShuttingDown, !privateSession, !isLocked, !isConnectingOutlook else { return }
         await stopAI(); await suspendConnectionWork()
         do { try await outlook.select(id); await loadOutlookConnection(); await selectMailProvider(.outlook) } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
     }
     func disconnectOutlook() async {
-        guard !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !privateSession, !isLocked else { return }
         cancelOutlookConnection(); await stopAI(); await suspendConnectionWork()
         do { try await outlook.disconnect(); await loadOutlookConnection(); startPolling() } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
     }
     func selectMailProvider(_ provider: MailProvider) async {
-        guard !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !privateSession, !isLocked else { return }
         await stopAI(); await suspendConnectionWork()
         do { try await commit { $0.settings.mailProvider = provider }; selectedID = nil; startPolling(); Task { await sync() } }
         catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
@@ -97,7 +98,8 @@ extension PuddleStore {
         guard !isSyncing, !demo, !privateSession, !isLocked, let account = outlookAccount else { return }
         isSyncing = true; defer { isSyncing = false }
         do {
-            let fetched = try await OutlookMailClient(session: outlook, transport: transport).inbox()
+            let page = try await OutlookMailClient(session: outlook, transport: transport).inboxPage()
+            let fetched = page.messages
             try Task.checkCancellation()
             guard state.settings.mailProvider == .outlook, outlookAccount?.id == account.id, !isLocked, !privateSession else { return }
             try await commit { next in
@@ -111,10 +113,11 @@ extension PuddleStore {
         guard !PuddleDiagnostics.isCancellation(error) else { return }
         PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error)
     }
-    func searchCurrentMail(_ query: String) async throws -> [MailMessage] {
-        if demo { return Array(mailInbox.prefix(10)) }
-        if state.settings.mailProvider == .outlook { return try await OutlookMailClient(session: outlook, transport: transport).search(query) }
-        return try await GmailClient(session: google, transport: transport).search(query: query)
+    func searchCurrentMail(_ query: String) async throws -> [MailMessage] { try await searchCurrentMailPage(query).messages }
+    func searchCurrentMailPage(_ query: String) async throws -> MailQueryPage {
+        if demo { return MailQueryPage(messages: Array(mailInbox.prefix(10)), hasMore: mailInbox.count > 10) }
+        if state.settings.mailProvider == .outlook { return try await OutlookMailClient(session: outlook, transport: transport).searchPage(query) }
+        return MailQueryPage(messages: try await GmailClient(session: google, transport: transport).search(query: query), hasMore: true)
     }
     func accountForAction(_ proposal: ActionProposal) -> String? { proposal.provider == .outlook ? outlookAccount?.email : state.account }
 }

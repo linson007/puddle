@@ -3,7 +3,7 @@ import PuddleCore
 
 extension PuddleStore {
     func workspaceAccess() throws -> UUID {
-        guard !isLocked, !privateSession, !demo, storageAvailable else {
+        guard !isShuttingDown, !isLocked, !privateSession, !demo, storageAvailable else {
             throw PuddleError("Unlock Puddle, end the private session and load the saved workspace before continuing.")
         }
         return workspaceAccessRevision

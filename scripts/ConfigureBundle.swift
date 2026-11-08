@@ -26,4 +26,8 @@ if let client = environment["PUDDLE_MICROSOFT_CLIENT_ID"] {
     guard UUID(uuidString: client) != nil else { fail("PUDDLE_MICROSOFT_CLIENT_ID must be an application UUID.") }
     info["PuddleMicrosoftClientID"] = client
 }
+if let requirement = environment["PUDDLE_CUA_DRIVER_REQUIREMENT"] {
+    guard !requirement.isEmpty, requirement.utf8.count <= 4000 else { fail("Set a bounded Cua Driver code-signing requirement.") }
+    info["PuddleCuaDriverRequirement"] = requirement
+}
 try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0).write(to: url, options: .atomic)

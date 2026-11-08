@@ -47,6 +47,9 @@ enum TranscriptVault {
         var needsSweep = true
         var recoveredPages = false
         var unreadableMeetingRecovery = false
+        var fileLock: WorkspaceFileLock?
+        var generationObserved = false
+        var migrationSourceVersion: Int?
     }
     struct Prepared {
         let data: Data
@@ -72,7 +75,7 @@ enum TranscriptVault {
             let preserved = file.deletingLastPathComponent().appendingPathComponent("damaged-\(UUID())-" + file.lastPathComponent)
             try FileManager.default.moveItem(at: file, to: preserved)
         }
-        try data.write(to: file, options: [.atomic, .completeFileProtection])
+        try DurableFile.write(data, to: file)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
         cache.fingerprints[cacheKey(file)] = try fingerprint(file)
         cache.recoveredPages = true
@@ -151,6 +154,8 @@ enum TranscriptVault {
                         seal: (Data) throws -> Data, open: (Data) throws -> Data) throws -> Prepared {
         let fm = FileManager.default, recovery = directory.appendingPathComponent("recovery", isDirectory: true)
         try ensureDirectory(directory); try ensureDirectory(recovery)
+        try DurableFile.syncDirectory(directory.deletingLastPathComponent())
+        try DurableFile.syncDirectory(directory)
         var created: [URL] = [], entries: [UUID: CachedTranscript] = [:], total = 0
         do {
             func reference(_ value: Conversation) throws -> Transcript {
@@ -181,12 +186,12 @@ enum TranscriptVault {
                     let plain = try JSONEncoder().encode(Array(value.lines[start..<end]))
                     guard plain.count <= maximumBytes else { throw PuddleError("This transcript exceeds the workspace size limit.") }
                     let data = try seal(plain), name = UUID().uuidString + ".vault", file = directory.appendingPathComponent(name)
-                    try data.write(to: file, options: [.atomic, .completeFileProtection])
+                    try DurableFile.write(data, to: file)
                     created.append(file)
                     try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
                     cache.fingerprints[name] = try fingerprint(file)
                     let replica = recovery.appendingPathComponent(name)
-                    try data.write(to: replica, options: [.atomic, .completeFileProtection]); created.append(replica)
+                    try DurableFile.write(data, to: replica); created.append(replica)
                     try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: replica.path)
                     cache.fingerprints[cacheKey(replica)] = try fingerprint(replica)
                     pages.append(Page(file: name, sha256: digest(data), bytes: plain.count))

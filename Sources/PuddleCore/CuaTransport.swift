@@ -19,9 +19,14 @@ public final class CuaStdioTransport: CuaRPCTransport, @unchecked Sendable {
     private var buffer = Data()
     private var closed = false
     private let timeout: TimeInterval
+    private let verifyExecutable: @Sendable (URL) throws -> Void
 
     public init(executable: URL, timeout: TimeInterval = 30) {
-        self.executable = executable; self.timeout = timeout
+        self.executable = executable; self.timeout = timeout; verifyExecutable = { try CuaHelperTrust.verify($0) }
+    }
+    // Tests may supply a disposable protocol fixture without weakening release trust.
+    init(executable: URL, timeout: TimeInterval = 30, verifyExecutable: @escaping @Sendable (URL) throws -> Void) {
+        self.executable = executable; self.timeout = timeout; self.verifyExecutable = verifyExecutable
     }
     deinit { shutdown() }
 
@@ -60,6 +65,7 @@ public final class CuaStdioTransport: CuaRPCTransport, @unchecked Sendable {
               FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw PuddleError("Choose the installed cua-driver executable in Browser.")
         }
+        try verifyExecutable(executable)
         let task = Process(), stdin = Pipe(), stdout = Pipe()
         task.executableURL = executable; task.arguments = ["mcp"]
         var environment = ProcessInfo.processInfo.environment.filter {

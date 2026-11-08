@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import XCTest
 @testable import PuddleCore
 
@@ -9,6 +10,62 @@ private final class VaultSecrets: SecretStore, @unchecked Sendable {
     func delete(_ key: String) throws { _ = lock.withLock { values.removeValue(forKey: key) } }
 }
 final class EncryptedWorkspaceTests: XCTestCase {
+    func testFirstMigrationRewriteRetainsVerifiedOriginalAndItsPages() throws {
+        let root = try directory(), secrets = VaultSecrets(), disk = EncryptedSnapshotStore(directory: root, secrets: secrets)
+        var initial = AppSnapshot(); initial.chat = [ChatLine(role: "user", content: "Original schema fixture")]
+        try disk.save(initial)
+        let file = root.appendingPathComponent("workspace.vault"), header = Data("PUDDLEVAULT1\n".utf8)
+        let key = SymmetricKey(data: try XCTUnwrap(secrets.values.values.first))
+        let current = try Data(contentsOf: file)
+        let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: current.dropFirst(header.count)), using: key, authenticating: header)
+        var index = try JSONSerialization.jsonObject(with: plain) as! [String: Any]
+        index["schemaVersion"] = 0
+        var snapshot = index["snapshot"] as! [String: Any]; snapshot["schemaVersion"] = 0; index["snapshot"] = snapshot
+        let migratedInput = header + (try AES.GCM.seal(JSONSerialization.data(withJSONObject: index), using: key, authenticating: header).combined!)
+        try migratedInput.write(to: file)
+        var restored = try disk.load(); XCTAssertEqual(restored.decodedSchemaVersion, 0)
+        for _ in 0..<3 { restored.chat.append(ChatLine(role: "assistant", content: "New schema")); try disk.save(restored) }
+        XCTAssertEqual(try Data(contentsOf: root.appendingPathComponent("workspace-premigration-schema-0.vault")), migratedInput)
+        let originalPages = ((index["active"] as? [String: Any])?["pages"] as? [[String: Any]]) ?? []
+        for page in originalPages { XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("transcripts/" + (page["file"] as! String)).path)) }
+    }
+    func testIndependentStoresRejectStaleAndUnloadedSnapshots() throws {
+        let folder = try directory(), secrets = VaultSecrets()
+        let first = EncryptedSnapshotStore(directory: folder, secrets: secrets)
+        let second = EncryptedSnapshotStore(directory: folder, secrets: secrets)
+        _ = try first.load(); _ = try second.load()
+        var initial = AppSnapshot(); initial.chat = [ChatLine(role: "user", content: "First owner")]
+        try first.save(initial)
+        XCTAssertThrowsError(try second.save(AppSnapshot()))
+        XCTAssertThrowsError(try EncryptedSnapshotStore(directory: folder, secrets: secrets).save(AppSnapshot()))
+        var loaded = try second.load(); loaded.chat.append(ChatLine(role: "assistant", content: "Second owner"))
+        try second.save(loaded)
+        XCTAssertThrowsError(try first.save(initial))
+        XCTAssertEqual(try first.load().chat.count, 2)
+    }
+    func testAdvisoryLockBlocksAnotherProcessBeforeWorkspaceAccess() throws {
+        let folder = try directory(), child = Process(), output = Pipe(), input = Pipe()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+        child.arguments = ["-c", "import fcntl,sys; f=open(sys.argv[1], 'a'); fcntl.flock(f, fcntl.LOCK_EX); print('ready', flush=True); sys.stdin.read(1)", folder.appendingPathComponent(".workspace.lock").path]
+        child.standardOutput = output; child.standardInput = input
+        try child.run()
+        defer { try? input.fileHandleForWriting.close(); child.waitUntilExit() }
+        XCTAssertEqual(output.fileHandleForReading.readData(ofLength: 6), Data("ready\n".utf8))
+        XCTAssertThrowsError(try EncryptedSnapshotStore(directory: folder, secrets: VaultSecrets()).load())
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("workspace.vault").path))
+    }
+    func testInterruptedAtomicPublicationKeepsAnEntireGeneration() throws {
+        let file = try directory().appendingPathComponent("atomic-fixture")
+        try DurableFile.write(Data("old".utf8), to: file)
+        XCTAssertThrowsError(try DurableFile.write(Data("new".utf8), to: file) { stage in
+            if stage == .beforeRename { throw PuddleError("Injected interruption") }
+        })
+        XCTAssertEqual(try Data(contentsOf: file), Data("old".utf8))
+        XCTAssertThrowsError(try DurableFile.write(Data("new".utf8), to: file) { stage in
+            if stage == .afterRename { throw PuddleError("Injected directory flush failure") }
+        })
+        XCTAssertEqual(try Data(contentsOf: file), Data("new".utf8))
+    }
     private func directory() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("puddle-vault-\(UUID())")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)

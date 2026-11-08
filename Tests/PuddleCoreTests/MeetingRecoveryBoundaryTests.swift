@@ -53,7 +53,7 @@ final class MeetingRecoveryBoundaryTests: XCTestCase {
         try disk.preserveUnreadableMeetingRecoveries()
         let regular = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]).filter {
             let value = try $0.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
-            return value.isRegularFile == true && value.isSymbolicLink != true
+            return $0.lastPathComponent.hasPrefix("meeting-recovery-unreadable-") && value.isRegularFile == true && value.isSymbolicLink != true
         }
         XCTAssertEqual(regular.count, MeetingRecoveryLimits.maximumQuarantineCount)
         XCTAssertTrue(try regular.contains { try Data(contentsOf: $0) == Data("Newest damaged bytes".utf8) })

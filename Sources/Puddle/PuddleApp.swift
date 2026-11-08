@@ -20,20 +20,15 @@ struct PuddleApp: App {
         WindowGroup("Puddle", id: "main") {
             AssistantWindow(store: store)
                 .frame(minWidth: 960, minHeight: 640)
-                .task { lifecycle.store = store; lifecycle.attendance = store.meetAttendance; lifecycle.systemDictation = store.systemDictation; await store.start() }
-                .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didWakeNotification)) { _ in Task {
-                    await store.refresh()
-                } }
-                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in Task {
-                    if store.state.settings.lockOnBackground { await store.lockWorkspace() }
-                } }
+                .disabled(store.isShuttingDown)
+                .task { lifecycle.attach(store); await store.start() }
         }
         .defaultSize(width: 1180, height: 820)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Conversation") { Task { await store.clearChat(); store.section = .chat } }
                     .keyboardShortcut("n", modifiers: .command)
-                    .disabled(store.isLocked)
+                    .disabled(store.isLocked || store.isShuttingDown)
             }
             CommandMenu("Puddle") {
                 Button("Search & Commands") { store.showCommands = true }.keyboardShortcut("k", modifiers: .command)
@@ -48,12 +43,12 @@ struct PuddleApp: App {
                 } }.disabled(store.isLocked || store.meetingCapture.isActive || !store.executingActions.isEmpty)
             }
         }
-        Settings { PuddleSettingsView(store: store) }
+        Settings { PuddleSettingsView(store: store).disabled(store.isShuttingDown) }
         Window("Meeting Companion", id: "meeting-companion") {
-            MeetingCompanionView(store: store, capture: store.meetingCapture, workspace: store.meetingWorkspace)
+            MeetingCompanionView(store: store, capture: store.meetingCapture, workspace: store.meetingWorkspace).disabled(store.isShuttingDown)
         }.defaultSize(width: 410, height: 580)
         MenuBarExtra {
-            PuddleMenu(store: store)
+            PuddleMenu(store: store).disabled(store.isShuttingDown)
         } label: { Image(systemName: store.isThinking ? "drop.circle.fill" : "drop").accessibilityLabel("Puddle menu").accessibilityValue(store.isThinking ? "Thinking" : "Ready") }
     }
 }

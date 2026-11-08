@@ -68,7 +68,7 @@ private struct RoutineEditor: View {
 
 extension PuddleStore {
     @discardableResult func saveRoutine(_ original: AssistantRoutine) async -> Bool {
-        guard !privateSession, !isLocked else { return false }
+        guard !isShuttingDown, !privateSession, !isLocked else { return false }
         do {
             var routine = try original.validated(); routine.nextRunAt = routine.enabled ? routine.nextFire(after: Date()) : nil
             guard state.routines.count < 50 || state.routines.contains(where: { $0.id == routine.id }) else { throw PuddleError("Keep up to 50 routines.") }

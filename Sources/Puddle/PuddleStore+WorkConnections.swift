@@ -40,7 +40,7 @@ extension PuddleStore {
         catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[.jira] = error.localizedDescription; workConnectionErrors[.confluence] = error.localizedDescription } }
     }
     @discardableResult func connectGitHub(token: String, repositoryText: String) async -> Bool {
-        guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingGitHub else { return false }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingGitHub else { return false }
         do {
             let repositories = try GitHubConnector.parseRepositories(repositoryText)
             return await connectGitHub(token: token, repositories: repositories)
@@ -48,18 +48,18 @@ extension PuddleStore {
         catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); workConnectionErrors[.github] = error.localizedDescription; return false }
     }
     @discardableResult func connectGitHub(token: String, repositories: [String]) async -> Bool {
-        guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingGitHub else { return false }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingGitHub else { return false }
         isConnectingGitHub = true; workConnectionErrors[.github] = nil
         defer { isConnectingGitHub = false }
         do {
             let info = try await githubConnector.connect(token: token, repositories: repositories)
-            guard !demo, !privateSession, !isLocked else { return false }
+            guard !isShuttingDown, !demo, !privateSession, !isLocked else { return false }
             await stopAI(); workSources.cancel(); githubConnection = info; return true
         } catch is CancellationError { return false }
         catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[.github] = error.localizedDescription }; return false }
     }
     func beginAtlassianSignIn(services: Set<WorkService>) {
-        guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingAtlassian else { return }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isConnectingAtlassian else { return }
         cancelAtlassianSignIn(); isConnectingAtlassian = true
         workConnectionErrors[.jira] = nil; workConnectionErrors[.confluence] = nil
         let receiver = WorkOAuthCallback(); workOAuthCallback = receiver
@@ -86,14 +86,14 @@ extension PuddleStore {
         isConnectingAtlassian = false; workAuthorizationStatus = ""
     }
     func chooseAtlassianSite(_ id: String?) async {
-        guard !demo, !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked else { return }
         do {
             let info = try await atlassianConnector.selectSite(id)
             await stopAI(); workSources.cancel(); atlassianConnection = info
         } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); workConnectionErrors[.jira] = error.localizedDescription; workConnectionErrors[.confluence] = error.localizedDescription }
     }
     func testWorkConnection(_ service: WorkService) async {
-        guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !testingWorkConnections.contains(service) else { return }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !testingWorkConnections.contains(service) else { return }
         testingWorkConnections.insert(service); workConnectionErrors[service] = nil
         defer { testingWorkConnections.remove(service) }
         do {
@@ -102,7 +102,7 @@ extension PuddleStore {
         } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); if !demo { workConnectionErrors[service] = error.localizedDescription } }
     }
     func disconnectWorkConnection(_ service: WorkService) async {
-        guard !demo, !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !demo, !privateSession, !isLocked else { return }
         await stopAI(); workSources.cancel()
         if service != .github { cancelAtlassianSignIn() }
         do {

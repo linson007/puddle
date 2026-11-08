@@ -290,6 +290,40 @@
         }
       }
     },
+    "Check Provider": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check Provider"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sağlayıcıyı Kontrol Et"
+          }
+        }
+      }
+    },
+    "Check for Provider Receipt": {
+      "comment": "Read-only reconciliation of an uncertain action.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for Provider Receipt"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sağlayıcı Kaydını Kontrol Et"
+          }
+        }
+      }
+    },
     "Choose meeting notes": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -460,6 +494,23 @@
         }
       }
     },
+    "Copy Request": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Request"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İsteği Kopyala"
+          }
+        }
+      }
+    },
     "Delete": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -524,6 +575,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Geliştirici"
+          }
+        }
+      }
+    },
+    "Discard Request": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard Request"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İsteği Sil"
           }
         }
       }
@@ -1055,6 +1123,74 @@
         }
       }
     },
+    "Manage Atlassian access": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage Atlassian access"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atlassian erişimini yönet"
+          }
+        }
+      }
+    },
+    "Manage GitHub tokens": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage GitHub tokens"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GitHub belirteçlerini yönet"
+          }
+        }
+      }
+    },
+    "Manage Google access": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage Google access"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google erişimini yönet"
+          }
+        }
+      }
+    },
+    "Manage Microsoft access": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage Microsoft access"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft erişimini yönet"
+          }
+        }
+      }
+    },
     "Meetings": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -1395,6 +1531,23 @@
         }
       }
     },
+    "Provider access is not confirmed revoked by disconnecting. Remove Puddle’s grant or token in your provider’s account settings.": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider access is not confirmed revoked by disconnecting. Remove Puddle’s grant or token in your provider’s account settings."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı kesmek, sağlayıcı erişiminin iptal edildiğini doğrulamaz. Sağlayıcınızın hesap ayarlarından Puddle iznini veya belirtecini kaldırın."
+          }
+        }
+      }
+    },
     "Puddle": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -1531,6 +1684,23 @@
         }
       }
     },
+    "Retry Request": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry Request"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İsteği Yeniden Dene"
+          }
+        }
+      }
+    },
     "Retry last message": {
       "comment": "Primary interface or recovery message. English is the stable lookup key.",
       "localizations": {
@@ -1578,6 +1748,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kurtarılan metni incele"
+          }
+        }
+      }
+    },
+    "Review Saved History": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review Saved History"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydedilen Geçmişi İncele"
           }
         }
       }
@@ -1833,6 +2020,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Çalışma alanında ve komutlarda ara"
+          }
+        }
+      }
+    },
+    "Selected provider content is sent to your local model. Disconnect removes local credentials and current caches. Retrieved content can remain in saved conversations, notes, model-server logs and exported backups. Review History, Memory and Meetings to delete saved content; delete old exports and model-server logs separately.": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selected provider content is sent to your local model. Disconnect removes local credentials and current caches. Retrieved content can remain in saved conversations, notes, model-server logs and exported backups. Review History, Memory and Meetings to delete saved content; delete old exports and model-server logs separately."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seçilen sağlayıcı içeriği yerel modelinize gönderilir. Bağlantıyı kesmek yerel kimlik bilgilerini ve mevcut önbellekleri kaldırır. Alınan içerik kaydedilmiş sohbetlerde, notlarda, model sunucusu günlüklerinde ve dışa aktarılan yedeklerde kalabilir. Kaydedilmiş içeriği silmek için Geçmiş, Hafıza ve Toplantılar bölümlerini inceleyin; eski dışa aktarmaları ve model sunucusu günlüklerini ayrıca silin."
           }
         }
       }
@@ -2177,6 +2381,23 @@
         }
       }
     },
+    "Uncertain — check provider": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uncertain — check provider"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Belirsiz — sağlayıcıyı kontrol edin"
+          }
+        }
+      }
+    },
     "Unlock Puddle before starting transcription.": {
       "comment": "Meeting capture availability or quit recovery control.",
       "localizations": {
@@ -2377,6 +2598,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Çalışma alanı değişiklikleri veya toplantı metni kaydedilemedi"
+          }
+        }
+      }
+    },
+    "Your request could not be saved. Keep Puddle open to recover it.": {
+      "comment": "Production readiness: request recovery and provider privacy.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your request could not be saved. Keep Puddle open to recover it."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İsteğiniz kaydedilemedi. Kurtarmak için Puddle uygulamasını açık tutun."
           }
         }
       }
