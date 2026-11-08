@@ -11,11 +11,17 @@ final class NoRedirects: NSObject, URLSessionTaskDelegate {
 }
 func fail(_ text: String) -> Never { FileHandle.standardError.write(Data((text + "\n").utf8)); exit(1) }
 let args = Array(CommandLine.arguments.dropFirst())
-guard args.count == 3, let publicKey = Data(base64Encoded: args[2]) else { fail("Usage: verify-release.swift ARCHIVE MANIFEST BASE64_PUBLIC_KEY") }
+guard args.count == 4, let publicKey = Data(base64Encoded: args[2]) else { fail("Usage: verify-release.swift ARCHIVE MANIFEST BASE64_PUBLIC_KEY ACCEPTANCE_JSON") }
 let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: URL(fileURLWithPath: args[1])))
 let key = try Curve25519.Signing.PublicKey(rawRepresentation: publicKey)
 guard key.isValidSignature(manifest.signature, for: manifest.payload) else { fail("Manifest signature verification failed.") }
 let release = try JSONDecoder().decode(Release.self, from: manifest.payload)
+let acceptance = Process(); acceptance.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+let acceptanceScript = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("release-acceptance.py")
+acceptance.arguments = ["python3", acceptanceScript.path, "check", "--archive", args[0], "--record", args[3],
+                        "--expected-version", release.version, "--expected-build", String(release.build), "--public-key", args[2]]
+try acceptance.run(); acceptance.waitUntilExit()
+guard acceptance.terminationStatus == 0 else { fail("Release acceptance is incomplete or belongs to a different archive. The manifest must not be promoted.") }
 let local = try Data(contentsOf: URL(fileURLWithPath: args[0]))
 func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 guard digest(local) == release.sha256, release.downloadURL.scheme == "https", release.downloadURL.host != nil,

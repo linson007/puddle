@@ -66,17 +66,79 @@ requested release and signing key, verifies the archived app signature, then
 signs and checks the manifest. A mismatched archive/key/version fails closed.
 Use an immutable URL containing both version and build; never replace its bytes.
 
-After uploading that archive, smoke-test its public URL before promoting the feed:
+Complete [the artifact-bound acceptance record](#artifact-bound-acceptance-record)
+below. After uploading that archive, smoke-test its public URL before promoting the feed:
 
 ```sh
 swift scripts/verify-release.swift \
   build/releases/0.2.0-2/Puddle-0.2.0.zip \
-  build/releases/0.2.0-2/manifest.json BASE64_PINNED_PUBLIC_KEY
+  build/releases/0.2.0-2/manifest.json BASE64_PINNED_PUBLIC_KEY \
+  build/release-acceptance-0.2.0-2/acceptance.json
 ```
 
 This checks the manifest signature, local checksum and an independently fetched,
 bounded HTTPS archive without credentials or redirects. Promote the exact tested
 manifest only after the remote bytes match and the acceptance record is complete.
+
+## Artifact-bound acceptance record
+
+Create a private record for the final stapled ZIP. Repeat `--model` for every
+advertised runtime/model configuration label; record its exact version/revision
+in the evidence. Every check starts pending, including minimum-OS runtime and
+accessibility, provider contracts, model streaming/restart, first-run/privacy,
+hardware/cold-cache, migration, power-loss recovery, distribution and operations.
+Native/VoiceOver checks cover macOS 14, 15, 26 and 27 where compatible with the
+bundle minimum OS. A configured browser helper adds an identity/compatibility gate.
+
+```sh
+python3 scripts/release-acceptance.py init \
+  --archive build/releases/0.2.0-2/Puddle-0.2.0.zip \
+  --output build/release-acceptance-0.2.0-2 --model owner-tested-model
+```
+
+After actually performing a check, attach a redacted report with the exact OS,
+build, hardware/RAM, provider/model/helper versions, permissions and observations:
+
+```sh
+python3 scripts/release-acceptance.py record \
+  --archive build/releases/0.2.0-2/Puddle-0.2.0.zip \
+  --record build/release-acceptance-0.2.0-2/acceptance.json \
+  --check native-macos-14 --status passed --tester 'TESTER' \
+  --environment 'EXACT OS BUILD, HARDWARE AND RAM' \
+  --notes 'OBSERVED RESULTS AND RECOVERY LIMITS' --evidence /private/redacted-report.txt
+```
+
+Use `failed` to record an unsuccessful result or `pending` to reset a gate. The
+tool copies bounded evidence into its private directory and stores hashes,
+tester, environment and time. Keep the complete directory together. Existing
+records are preserved; concurrent operators must retry instead of overwriting
+each other's updates. A new archive hash requires a new record and review.
+
+Copy [the operations template](release-operations.example.json) to a private file,
+fill the real monitored owners/channels, triage target, key-custody owner,
+incident runbook and previous signed installer checksum, then attach it:
+
+```sh
+python3 scripts/release-acceptance.py configure \
+  --archive build/releases/0.2.0-2/Puddle-0.2.0.zip \
+  --record build/release-acceptance-0.2.0-2/acceptance.json --policy /private/operations.json
+python3 scripts/release-acceptance.py check \
+  --archive build/releases/0.2.0-2/Puddle-0.2.0.zip \
+  --record build/release-acceptance-0.2.0-2/acceptance.json
+```
+
+`check` exits nonzero for pending/failed/missing checks, incomplete operations,
+missing/changed/symlinked evidence, wrong artifact or missing pinned update
+configuration. The final `verify-release.swift` command requires this record and
+also binds the manifest version/build/public key to the archive before fetching
+the remote bytes. Neither command publishes anything or uses provider accounts.
+
+Validation establishes record completeness and file identity. It cannot prove
+the truth of human attestations or certify hardware, provider behavior, signing,
+accessibility or monitored support. Review the actual evidence; fixture/unit
+results must not be entered as live/native acceptance. Keep reports local and
+redacted; the example `build/` destination is ignored by Git. Never attach tokens,
+personal workspaces, model-server keys or signing private keys.
 
 ## Pilot, pause and recovery runbook
 
