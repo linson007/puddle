@@ -35,13 +35,17 @@ public actor WorkspaceWriter {
     public init(_ persistence: any SnapshotPersistence) { self.persistence = persistence }
 
     public func load() async throws -> SnapshotLoadResult {
+        // A reload invalidates write elision: another store may have changed the
+        // sidecar even when our next checkpoint has the same text as before.
+        checkpointSave = nil
         let persistence = persistence
         return try await Task.detached(priority: .utility) {
             let loaded = try persistence.loadResult()
             do {
                 let snapshot = loaded.snapshot.mergingMeetingRecoveries(try persistence.loadMeetingRecoveries())
                 return SnapshotLoadResult(snapshot: snapshot, notice: loaded.notice)
-            } catch {
+            } catch let error as WorkspaceConflict { throw error }
+            catch {
                 PuddleDiagnostics.failure(.persistence, "Load meeting recovery", error)
                 do { try persistence.preserveUnreadableMeetingRecoveries() }
                 catch { PuddleDiagnostics.failure(.persistence, "Preserve unreadable meeting recovery", error) }

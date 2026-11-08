@@ -50,6 +50,7 @@ final class MeetingRecoveryBoundaryTests: XCTestCase {
         try Data("Keep".utf8).write(to: folder.appendingPathComponent("child"))
         try fm.createSymbolicLink(at: root.appendingPathComponent("meeting-recovery-unreadable-link.vault"), withDestinationURL: folder)
         try Data("Newest damaged bytes".utf8).write(to: root.appendingPathComponent("meeting-recovery.vault"))
+        XCTAssertThrowsError(try disk.loadMeetingRecoveries())
         try disk.preserveUnreadableMeetingRecoveries()
         let regular = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]).filter {
             let value = try $0.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
