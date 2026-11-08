@@ -5,7 +5,9 @@ import XCTest
 private actor LiveBrowserRPCTrace: CuaRPCTransport {
     let base: CuaStdioTransport
     var bindings: [String] = []
-    init(executable: URL) { base = CuaStdioTransport(executable: executable) }
+    init(executable: URL, requirement: String) {
+        base = CuaStdioTransport(executable: executable, verifyExecutable: { try CuaHelperTrust.verify($0, requirement: requirement) })
+    }
     func close() async { await base.close() }
     func rpc(_ method: String, parameters: ConnectorJSON, notification: Bool) async throws -> ConnectorJSON {
         let result = try await base.rpc(method, parameters: parameters, notification: notification)
@@ -275,7 +277,10 @@ final class CuaBrowserTests: XCTestCase {
         guard let path = ProcessInfo.processInfo.environment["PUDDLE_CUA_DRIVER"] else {
             throw XCTSkip("Set PUDDLE_CUA_DRIVER to an installed Cua Driver for the optional real MCP check")
         }
-        let transport = CuaStdioTransport(executable: URL(fileURLWithPath: path))
+        guard let requirement = ProcessInfo.processInfo.environment["PUDDLE_CUA_DRIVER_REQUIREMENT"], !requirement.isEmpty else {
+            throw PuddleError("Live helper acceptance requires its accepted PUDDLE_CUA_DRIVER_REQUIREMENT. A path alone does not establish trust.")
+        }
+        let transport = CuaStdioTransport(executable: URL(fileURLWithPath: path), verifyExecutable: { try CuaHelperTrust.verify($0, requirement: requirement) })
         let initialized = try await transport.rpc("initialize", parameters: .object([
             "protocolVersion": .string("2025-06-18"), "capabilities": .object([:]),
             "clientInfo": .object(["name": .string("Puddle test"), "version": .string("0.1.0")])]))
@@ -286,7 +291,7 @@ final class CuaBrowserTests: XCTestCase {
         XCTAssertTrue(Set(["browser_prepare", "get_browser_state", "browser_navigate", "browser_pointer"]).isSubset(of: names))
         await transport.close()
         if ProcessInfo.processInfo.environment["PUDDLE_CUA_LIVE"] == "1" {
-            let trace = LiveBrowserRPCTrace(executable: URL(fileURLWithPath: path))
+            let trace = LiveBrowserRPCTrace(executable: URL(fileURLWithPath: path), requirement: requirement)
             let browser = CuaBrowser(factory: { _ in trace })
             do {
                 let page = try await browser.connect(executable: URL(fileURLWithPath: path))
