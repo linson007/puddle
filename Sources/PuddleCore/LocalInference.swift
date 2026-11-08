@@ -146,8 +146,10 @@ public struct LocalInferenceClient: Sendable {
             let accumulator = CompletionStream()
             do {
                 _ = try await transport.stream(request) { line in try await accumulator.consume(line, onPartial: onPartial) }
+                try await accumulator.finish(onPartial: onPartial)
                 return try await accumulator.result()
-            } catch let error as URLError where error.code == .cancelled { throw CancellationError() }
+            } catch is CompletionStreamFinished { return try await accumulator.result() }
+            catch let error as URLError where error.code == .cancelled { throw CancellationError() }
         }
         let (data, response) = try await send(request)
         try checkHTTP(response, data: data, service: "Local AI")

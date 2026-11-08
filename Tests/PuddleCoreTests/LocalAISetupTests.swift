@@ -28,10 +28,16 @@ final class LocalAISetupTests: XCTestCase {
         XCTAssertTrue(result.toolCalling); XCTAssertEqual(result.model.contextTokens, 32768)
         XCTAssertEqual(result.answer, "Hello from this Mac.")
         let requests = await transport.requests
-        XCTAssertEqual(requests.count, 3)
+        XCTAssertEqual(requests.count, 4)
         XCTAssertTrue(requests.allSatisfy { $0.url?.host == "127.0.0.1" })
-        let last = try JSONSerialization.jsonObject(with: requests.last!.httpBody!) as! [String: Any]
-        XCTAssertEqual(last["tool_choice"] as? String, "required")
+        let probe = try JSONSerialization.jsonObject(with: requests[2].httpBody!) as! [String: Any]
+        XCTAssertEqual(probe["tool_choice"] as? String, "required")
+        for request in requests.dropFirst() {
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            XCTAssertEqual(body["stream"] as? Bool, true)
+        }
+        let followUp = try JSONSerialization.jsonObject(with: requests[3].httpBody!) as! [String: Any]
+        XCTAssertEqual((followUp["messages"] as? [[String: Any]])?.last?["role"] as? String, "tool")
     }
     func testChatOnlyModelDoesNotReceiveToolVerifiedBadge() async throws {
         let client = try LocalInferenceClient(address: "http://localhost:8000", transport: SetupTransport(validTools: false))

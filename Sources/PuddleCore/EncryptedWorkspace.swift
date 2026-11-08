@@ -43,6 +43,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
     private func decode(_ data: Data, key: SymmetricKey) throws -> AppSnapshot {
         let plain = try open(data, key: key), probe = try JSONDecoder().decode(Probe.self, from: plain)
         guard (probe.schemaVersion ?? 0) <= AppSnapshot.currentSchemaVersion else { throw SnapshotVersionError() }
+        cache.migrationSourceVersion = (probe.schemaVersion ?? 0) < AppSnapshot.currentSchemaVersion ? (probe.schemaVersion ?? 0) : nil
         if let format = probe.format {
             guard format == TranscriptVault.format else { throw SnapshotVersionError() }
             let index = try JSONDecoder().decode(TranscriptVault.Index.self, from: plain)
@@ -56,18 +57,29 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         guard data.starts(with: header), data.count <= 128 * 1024 * 1024 else { throw PuddleError("The encrypted workspace is unreadable or too large.") }
         return try AES.GCM.open(AES.GCM.SealedBox(combined: data.dropFirst(header.count)), using: key, authenticating: header)
     }
-    private func write(_ data: Data, to url: URL) throws {
+    private func write(_ data: Data, to url: URL, checkpoint: (DurableFile.Stage) throws -> Void = { _ in }) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
-        try data.write(to: url, options: [.atomic, .completeFileProtection])
+        try DurableFile.write(data, to: url, checkpoint: checkpoint)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
     public func load() throws -> AppSnapshot { try loadResult().snapshot }
-    public func loadResult() throws -> SnapshotLoadResult {
+    private func withOwnership<T>(_ operation: () throws -> T) throws -> T {
+        cache.lock.lock(); defer { cache.lock.unlock() }
+        if cache.fileLock != nil { return try operation() }
+        cache.fileLock = try WorkspaceFileLock(directory: directory)
+        defer { cache.fileLock = nil }
+        return try operation()
+    }
+    public func loadResult() throws -> SnapshotLoadResult { try withOwnership { try loadContents() } }
+    private func loadContents() throws -> SnapshotLoadResult {
         cache.lock.lock(); defer { cache.lock.unlock() }
         cache.recoveredPages = false
+        cache.generationObserved = true
         let fm = FileManager.default
         guard fm.fileExists(atPath: file.path) || fm.fileExists(atPath: backup.path) else {
+            cache.primaryDigest = nil; cache.primaryMetadata = nil; cache.primaryKeyDigest = nil
+            cache.transcripts = [:]; cache.committedNames = []; cache.migrationSourceVersion = nil
             let legacy = SnapshotStore(directory: directory)
             let result = try legacy.loadResult()
             if fm.fileExists(atPath: directory.appendingPathComponent("state.json").path) {
@@ -102,12 +114,21 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         return result
     }
     public func save(_ state: AppSnapshot) throws {
-        try autoreleasepool { try saveContents(state) }
+        try withOwnership { try autoreleasepool { try saveContents(state) } }
     }
     private func saveContents(_ state: AppSnapshot) throws {
         cache.lock.lock(); defer { cache.lock.unlock() }
         let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path)
         let key = try key(create: !exists)
+        if exists {
+            guard cache.generationObserved else { throw PuddleError("Load the existing workspace before saving changes.") }
+            let current = try Data(contentsOf: file)
+            guard cache.primaryDigest == fingerprint(current, key: key) else {
+                throw PuddleError("The workspace changed in another process. Reload it before saving; your stale snapshot was not written.")
+            }
+        } else if cache.generationObserved, cache.primaryDigest != nil {
+            throw PuddleError("The saved workspace was removed. Reload before saving changes.")
+        }
         let fm = FileManager.default
         var previous: URL?
         if fm.fileExists(atPath: file.path) {
@@ -121,34 +142,42 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             _ = try decode(Data(contentsOf: backup), key: key)
         }
         let oldNames = cache.committedNames
+        if let source = cache.migrationSourceVersion, let previous {
+            let preserved = directory.appendingPathComponent("workspace-premigration-schema-\(source).vault")
+            if !fm.fileExists(atPath: preserved.path) {
+                let original = try Data(contentsOf: previous)
+                try DurableFile.write(original, to: preserved)
+                guard try Data(contentsOf: preserved) == original else { throw PuddleError("Pre-migration verification failed. The original workspace was preserved.") }
+            }
+        }
         let prepared = try TranscriptVault.prepare(state, directory: transcripts, cache: cache,
             seal: { try sealPage($0, key: key) }, open: { try openPage($0, key: key) })
+        var indexPublished = false
         do {
             let encrypted = try seal(prepared.data, key: key)
             if let previous {
                 if fm.fileExists(atPath: backup.path) { _ = try TranscriptVault.fingerprint(backup) }
-                let temporary = directory.appendingPathComponent(".backup-\(UUID()).vault")
-                defer { if fm.fileExists(atPath: temporary.path) { PuddleDiagnostics.removeRecoveryFile(temporary) } }
-                try fm.copyItem(at: previous, to: temporary)
-                try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: temporary.path)
-                if fm.fileExists(atPath: backup.path) { _ = try fm.replaceItemAt(backup, withItemAt: temporary) }
-                else { try fm.moveItem(at: temporary, to: backup) }
+                try DurableFile.write(Data(contentsOf: previous), to: backup)
             }
-            try write(encrypted, to: file)
+            try write(encrypted, to: file) { if $0 == .afterRename { indexPublished = true } }
+            cache.generationObserved = true
             cache.primaryDigest = fingerprint(encrypted, key: key)
             cache.primaryMetadata = try TranscriptVault.fingerprint(file)
             cache.primaryKeyDigest = fingerprint(header, key: key)
             cache.transcripts = prepared.transcripts
             cache.committedNames = Set(prepared.index.pages.map(\.file))
         } catch {
-            for page in prepared.created { PuddleDiagnostics.removeRecoveryFile(page); cache.fingerprints.removeValue(forKey: TranscriptVault.cacheKey(page)) }
+            if !indexPublished {
+                for page in prepared.created { PuddleDiagnostics.removeRecoveryFile(page); cache.fingerprints.removeValue(forKey: TranscriptVault.cacheKey(page)) }
+            }
+            cache.needsSweep = true
             throw error
         }
         let names = Set(prepared.index.pages.map(\.file))
         cache.garbageCandidates.formUnion(oldNames.subtracting(names))
         if cache.needsSweep || !cache.garbageCandidates.isEmpty {
             let roots = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
-            if !roots.contains(where: { $0.hasPrefix("workspace-unreadable-") }) {
+            if !roots.contains(where: { $0.hasPrefix("workspace-unreadable-") || $0.hasPrefix("workspace-premigration-") }) {
                 let keep = names.union(oldNames), recovery = transcripts.appendingPathComponent("recovery", isDirectory: true)
                 if cache.needsSweep {
                     TranscriptVault.collect(in: transcripts, keeping: keep, cache: cache)
@@ -162,7 +191,8 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             }
         }
     }
-    public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] {
+    public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] { try withOwnership { return try loadMeetingRecoveryContents() } }
+    private func loadMeetingRecoveryContents() throws -> [MeetingCaptureRecovery] {
         cache.lock.lock(); defer { cache.lock.unlock() }
         if FileManager.default.fileExists(atPath: directory.path) {
             do { try pruneMeetingRecoveryQuarantine() }
@@ -178,7 +208,8 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         try MeetingRecoveryLimits.validate(values)
         return values
     }
-    public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws {
+    public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws { try withOwnership { try saveMeetingRecoveryContents(values) } }
+    private func saveMeetingRecoveryContents(_ values: [MeetingCaptureRecovery]) throws {
         cache.lock.lock(); defer { cache.lock.unlock() }
         let url = directory.appendingPathComponent("meeting-recovery.vault")
         try TranscriptVault.rejectNonregular(url)
@@ -187,7 +218,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         // allowing a checkpoint to replace it.
         if cache.unreadableMeetingRecovery { try preserveUnreadableMeetingRecoveries() }
         if values.isEmpty {
-            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url); try DurableFile.syncDirectory(directory) }
             return
         }
         let data = try JSONEncoder().encode(values)
@@ -199,7 +230,8 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             FileManager.default.fileExists(atPath: directory.appendingPathComponent("meeting-recovery.vault").path)
         try write(seal(data, key: key(create: !exists)), to: url)
     }
-    public func preserveUnreadableMeetingRecoveries() throws {
+    public func preserveUnreadableMeetingRecoveries() throws { try withOwnership { try preserveUnreadableMeetingRecoveryContents() } }
+    private func preserveUnreadableMeetingRecoveryContents() throws {
         cache.lock.lock(); defer { cache.lock.unlock() }
         cache.unreadableMeetingRecovery = true
         let url = directory.appendingPathComponent("meeting-recovery.vault")

@@ -51,6 +51,7 @@ struct GoogleSetupView: View {
                             }
                         }.padding(16).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
                     }
+                    ConnectionPrivacyNotice(store: store, provider: "Google")
                     Label("Tokens stay in macOS Keychain. Selected data goes to your local model when you ask Puddle to use it.", systemImage: "lock.shield")
                         .font(.caption).foregroundStyle(.secondary)
                     if store.configured {
@@ -229,6 +230,7 @@ struct PuddleSettingsView: View {
 
             Form {
                 Section("Optional Google connection") {
+                    ConnectionPrivacyNotice(store: store, provider: "Google")
                     Picker("Sign-in browser", selection: $store.googleSignInBrowser) {
                         ForEach(GoogleSignInBrowser.allCases) { browser in Text(browser.title).tag(browser) }
                     }

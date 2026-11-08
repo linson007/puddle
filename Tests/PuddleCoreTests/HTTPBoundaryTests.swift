@@ -55,6 +55,26 @@ private final class SecurityHTTPServer: @unchecked Sendable {
     func stop() { listener.cancel() }
 }
 final class HTTPBoundaryTests: XCTestCase {
+    func testConcreteStreamPreservesMultilineCRLFEventDelimiters() async throws {
+        let body = "data: {\r\ndata: \"choices\":[]}\r\n\r\n: heartbeat\r\n\r\n"
+        let server = try SecurityHTTPServer(response: "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n" + body)
+        let url = try await server.start(); defer { server.stop() }
+        actor Lines { var values: [String] = []; func add(_ line: String) { values.append(line) } }
+        let lines = Lines()
+        _ = try await URLSessionTransport().stream(URLRequest(url: url)) { await lines.add($0) }
+        let values = await lines.values
+        XCTAssertEqual(values, ["data: {", "data: \"choices\":[]}", "", ": heartbeat", ""])
+    }
+    func testStreamFirstByteAndIdleTimeoutsCancelStalledConnections() async throws {
+        for response in ["", "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n"] {
+            let server = try SecurityHTTPServer(response: response, keepOpen: true)
+            let url = try await server.start(); defer { server.stop() }
+            do {
+                _ = try await URLSessionTransport(streamIdleTimeout: 0.1).stream(URLRequest(url: url)) { _ in }
+                XCTFail("Stalled stream did not time out")
+            } catch let error as URLError { XCTAssertEqual(error.code, .timedOut) }
+        }
+    }
     func testConcreteStreamingTransportRejectsDeclaredOversizeBeforeReadingBody() async throws {
         let server = try SecurityHTTPServer(response: "HTTP/1.1 200 OK\r\nContent-Length: 1048576\r\nConnection: close\r\n\r\n" + String(repeating: "x", count: 1024), keepOpen: true)
         let url = try await server.start(); defer { server.stop() }

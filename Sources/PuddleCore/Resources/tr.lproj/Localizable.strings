@@ -16,6 +16,8 @@
 "Cancel" = "İptal";
 "Cancel test" = "Testi iptal et";
 "Capture a commitment" = "Bir taahhüt ekle";
+"Check Provider" = "Sağlayıcıyı Kontrol Et";
+"Check for Provider Receipt" = "Sağlayıcı Kaydını Kontrol Et";
 "Choose meeting notes" = "Toplantı notlarını seç";
 "Close" = "Kapat";
 "Completed" = "Tamamlanan";
@@ -26,10 +28,12 @@
 "Connections" = "Bağlantılar";
 "Context budget" = "Bağlam sınırı";
 "Copy" = "Kopyala";
+"Copy Request" = "İsteği Kopyala";
 "Delete" = "Sil";
 "Delete…" = "Sil…";
 "Demo mode" = "Demo modu";
 "Developer" = "Geliştirici";
+"Discard Request" = "İsteği Sil";
 "Disconnect Google" = "Google bağlantısını kes";
 "Dismiss" = "Kapat";
 "Dismiss error" = "Hatayı kapat";
@@ -61,6 +65,10 @@
 "Lock Puddle" = "Puddle’ı kilitle";
 "Mail" = "Posta";
 "Main" = "Ana";
+"Manage Atlassian access" = "Atlassian erişimini yönet";
+"Manage GitHub tokens" = "GitHub belirteçlerini yönet";
+"Manage Google access" = "Google erişimini yönet";
+"Manage Microsoft access" = "Microsoft erişimini yönet";
 "Meetings" = "Toplantılar";
 "Memory" = "Bellek";
 "Message Puddle" = "Puddle’a mesaj yaz";
@@ -81,6 +89,7 @@
 "Privacy" = "Gizlilik";
 "Private by default" = "Varsayılan olarak gizli";
 "Private session" = "Gizli oturum";
+"Provider access is not confirmed revoked by disconnecting. Remove Puddle’s grant or token in your provider’s account settings." = "Bağlantıyı kesmek, sağlayıcı erişiminin iptal edildiğini doğrulamaz. Sağlayıcınızın hesap ayarlarından Puddle iznini veya belirtecini kaldırın.";
 "Puddle" = "Puddle";
 "Puddle is locked" = "Puddle kilitli";
 "Quick meeting notes" = "Hızlı toplantı notları";
@@ -89,9 +98,11 @@
 "Read new replies aloud" = "Yeni yanıtları sesli oku";
 "Recovered meeting text could not be read; the file was preserved." = "Kurtarılan toplantı metni okunamadı; dosya korundu.";
 "Retry Loading State" = "Kaydedilmiş verileri yeniden yükle";
+"Retry Request" = "İsteği Yeniden Dene";
 "Retry last message" = "Son mesajı yeniden dene";
 "Retry loading saved state before starting transcription." = "Transkripsiyona başlamadan önce kaydedilmiş verileri yeniden yüklemeyi deneyin.";
 "Review Recovered Transcript" = "Kurtarılan metni incele";
+"Review Saved History" = "Kaydedilen Geçmişi İncele";
 "Review and save or discard the recovered transcript before starting another capture." = "Yeni bir kayıt başlatmadan önce kurtarılan transkripti inceleyip kaydedin veya silin.";
 "Routines" = "Rutinler";
 "Save" = "Kaydet";
@@ -107,6 +118,7 @@
 "Search tasks" = "Görevlerde ara";
 "Search transcript" = "Konuşma metninde ara";
 "Search workspace and commands" = "Çalışma alanında ve komutlarda ara";
+"Selected provider content is sent to your local model. Disconnect removes local credentials and current caches. Retrieved content can remain in saved conversations, notes, model-server logs and exported backups. Review History, Memory and Meetings to delete saved content; delete old exports and model-server logs separately." = "Seçilen sağlayıcı içeriği yerel modelinize gönderilir. Bağlantıyı kesmek yerel kimlik bilgilerini ve mevcut önbellekleri kaldırır. Alınan içerik kaydedilmiş sohbetlerde, notlarda, model sunucusu günlüklerinde ve dışa aktarılan yedeklerde kalabilir. Kaydedilmiş içeriği silmek için Geçmiş, Hafıza ve Toplantılar bölümlerini inceleyin; eski dışa aktarmaları ve model sunucusu günlüklerini ayrıca silin.";
 "Send message" = "Mesajı gönder";
 "Set up local AI" = "Yerel yapay zekâyı ayarla";
 "Settings" = "Ayarlar";
@@ -127,6 +139,7 @@
 "These meeting notes are no longer available." = "Bu toplantı notları artık kullanılamıyor.";
 "Title" = "Başlık";
 "Today" = "Bugün";
+"Uncertain — check provider" = "Belirsiz — sağlayıcıyı kontrol edin";
 "Unlock Puddle before starting transcription." = "Transkripsiyona başlamadan önce Puddle kilidini açın.";
 "Unlock with macOS" = "macOS ile kilidi aç";
 "Until I delete them" = "Ben silene kadar";
@@ -139,3 +152,4 @@
 "Work Context" = "İş Bağlamı";
 "Workspace" = "Çalışma Alanı";
 "Workspace changes or meeting text could not be saved" = "Çalışma alanı değişiklikleri veya toplantı metni kaydedilemedi";
+"Your request could not be saved. Keep Puddle open to recover it." = "İsteğiniz kaydedilemedi. Kurtarmak için Puddle uygulamasını açık tutun.";

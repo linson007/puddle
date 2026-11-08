@@ -73,6 +73,9 @@ final class PuddleStore: ObservableObject {
     var savedPrivateWorkspace: AppSnapshot?
     let networkPolicy = NetworkPolicy()
     @Published var errorMessage: String?
+    @Published var isShuttingDown = false
+    @Published var recoverablePrompts: [ChatLine] = []
+    private(set) var shutdownPendingWork = Set<UUID>()
     @Published var connected = false
     @Published var configured = false
     @Published var grantedScopes: Set<String> = []
@@ -260,6 +263,7 @@ final class PuddleStore: ObservableObject {
     }
 
     func start() async {
+        guard !isShuttingDown else { return }
         if let startupTask { await startupTask.value; return }
         guard !started else { return }
         started = true
@@ -328,6 +332,48 @@ final class PuddleStore: ObservableObject {
         return persistenceFailure == nil && !meetingCaptureNeedsQuitReview
     }
 
+    func prepareForTermination() async {
+        isShuttingDown = true; workspaceAccessRevision = UUID()
+        let tasks = [startupTask, aiTask, routineTask, knowledgeTask, workOAuthTask, outlookOAuthTask,
+                     meetingSummaryTask, syncTask, pollingTask, reminderTask, signInTask, localAISetup.operation, meetingWorkspace.searchTask].compactMap { $0 }
+        for task in tasks {
+            let id = UUID(); shutdownPendingWork.insert(id); task.cancel()
+            Task { [weak self] in await task.value; self?.shutdownPendingWork.remove(id) }
+        }
+        // Invalidate producers before awaiting any cleanup. Dispatched provider
+        // writes retain permission to save their receipts while we drain them.
+        startupTask?.cancel(); localAISetup.invalidateVerification()
+        cancelMeetingSummary(); meetingWorkspace.cancelImport(); developerWorkspace.cancelInspection()
+        systemDictation.stop(); voiceInput.cancel(); stopSpeaking()
+        await stopAI()
+        guard isShuttingDown, !Task.isCancelled else { return }
+        await suspendConnectionWork()
+        guard isShuttingDown, !Task.isCancelled else { return }
+        browserWorkspace.stop()
+        await browserWorkspace.waitForCleanup()
+        guard isShuttingDown, !Task.isCancelled else { return }
+        let deadline = ContinuousClock.now + .seconds(8)
+        while (!executingActions.isEmpty || !shutdownPendingWork.isEmpty), ContinuousClock.now < deadline {
+            do { try await Task.sleep(for: .milliseconds(25)) } catch { break }
+        }
+        guard isShuttingDown, !Task.isCancelled else { return }
+        if state.actionProposals.contains(where: { $0.status == .dispatching }) {
+            do { try await commit { $0.recoverInterruptedActions() } } catch { fail(error) }
+        }
+    }
+    func resumeAfterCancelledTermination() {
+        isShuttingDown = false; workspaceAccessRevision = UUID(); startPolling()
+    }
+    func discardRecoverablePrompt(_ id: UUID) { recoverablePrompts.removeAll { $0.id == id } }
+    func retryRecoverablePrompt(_ id: UUID) async {
+        guard let draft = recoverablePrompts.first(where: { $0.id == id }) else { return }
+        let existing = state.chat.first(where: { $0.id == id })
+        if await submit(draft.content, retryLine: existing, newLine: draft) { discardRecoverablePrompt(id) }
+    }
+    private func retainPrompt(_ line: ChatLine) {
+        recoverablePrompts.removeAll { $0.id == line.id }; recoverablePrompts.append(line)
+    }
+
     func openMeetingLink(_ address: String) async {
         meetingLinkStatus = nil
         guard !demo else { errorMessage = "Demo mode does not open real meeting links."; return }
@@ -373,7 +419,7 @@ final class PuddleStore: ObservableObject {
     }
 
     func connect(scopes: [String] = [OAuthFlow.scope, OAuthFlow.calendarScope]) async {
-        guard !privateSession, !isLocked else { fail(PuddleError("End the private session and unlock Puddle before changing connections.")); return }
+        guard !isShuttingDown, !privateSession, !isLocked else { fail(PuddleError("End the private session and unlock Puddle before changing connections.")); return }
         guard !isSigningIn, !isDisconnecting, !scopes.isEmpty else { return }
         if demo { await leaveDemo() }
         generation = UUID(); await stopAI(); syncTask?.cancel(); pollingTask?.cancel(); isSyncing = false; isRefreshingCalendar = false
@@ -422,7 +468,7 @@ final class PuddleStore: ObservableObject {
     func cancelSignIn() { signInTask?.cancel(); signIn?.cancel() }
 
     func disconnect() async {
-        guard !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !privateSession, !isLocked else { return }
         guard !isDisconnecting else { return }
         cancelSignIn(); generation = UUID(); await stopAI(); syncTask?.cancel(); pollingTask?.cancel()
         isDisconnecting = true
@@ -440,7 +486,7 @@ final class PuddleStore: ObservableObject {
     }
 
     func refresh() async {
-        guard !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !privateSession, !isLocked else { return }
         await processReminders()
         guard !demo, !isSyncing, !isRefreshingCalendar else { return }
         syncTask = Task {
@@ -450,6 +496,7 @@ final class PuddleStore: ObservableObject {
     }
 
     func sync() async {
+        guard !isShuttingDown else { return }
         if state.settings.mailProvider == .outlook { await syncOutlook(); return }
         guard mailConnected, !demo, !isSyncing else { return }
         isSyncing = true
@@ -489,7 +536,7 @@ final class PuddleStore: ObservableObject {
     }
 
     func refreshCalendar() async {
-        guard calendarConnected, !demo, !isRefreshingCalendar else { return }
+        guard !isShuttingDown, calendarConnected, !demo, !isRefreshingCalendar else { return }
         isRefreshingCalendar = true
         let expected = generation
         defer { if expected == generation { isRefreshingCalendar = false } }
@@ -504,7 +551,7 @@ final class PuddleStore: ObservableObject {
 
     func startPolling() {
         pollingTask?.cancel(); reminderTask?.cancel()
-        guard !privateSession, !isLocked else { return }
+        guard !isShuttingDown, !privateSession, !isLocked else { return }
         reminderTask = Task { [weak self] in
             while !Task.isCancelled {
                 do { try await Task.sleep(for: .seconds(10)) } catch { return }
@@ -571,14 +618,14 @@ final class PuddleStore: ObservableObject {
 
     @discardableResult private func submit(_ question: String, retryLine: ChatLine?, newLine: ChatLine? = nil) async -> Bool {
         let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty, !isThinking, !isLocked else { return false }
+        guard !question.isEmpty, !isThinking, !isLocked, !isShuttingDown else { return false }
         errorMessage = nil
         let history = retryLine.map { retry in Array(state.chat.prefix { $0.id != retry.id }) } ?? state.chat
         let userLine = retryLine ?? newLine ?? ChatLine(role: "user", content: question)
         let isMailReference = userLine.kind?.hasPrefix("mail-reference:") == true || userLine.kind == "external-reference"
         if retryLine == nil { state.chat.append(userLine) }
         if !showAssistantPanel { section = .chat }
-        guard await persist() else { return false }
+        guard await persist() else { retainPrompt(userLine); return false }
         beginAI { [self] in
             let expected = aiGeneration
             var context = AgentContext(instructions: state.assistantInstructions, memories: state.memories,
@@ -625,7 +672,9 @@ final class PuddleStore: ObservableObject {
             var reply = ChatLine(role: "assistant", content: answer); reply.metrics = turnMetrics; reply.profileName = profile.title
             state.chat.append(reply); streamingReply = ""
             record(demo ? "Completed a demo conversation turn." : "Completed a local assistant turn.")
-            if await persist(), state.settings.readRepliesAloud { readAloud(reply) }
+            if await persist() {
+                if state.settings.readRepliesAloud { readAloud(reply) }
+            } else { retainPrompt(userLine) }
         }
         return true
     }
@@ -697,10 +746,11 @@ final class PuddleStore: ObservableObject {
             throw PuddleError("Batch memory learning is handled before the conversation response.")
         case .searchMail:
             let query = try text("query", maximum: 500)
-            let messages = try await searchCurrentMail(query)
+            let page = try await searchCurrentMailPage(query)
+            let messages = page.messages
             try await receipt("Read \(messages.count) matching emails", references: messages.map { SourceReference(title: $0.subject, url: $0.sourceURL) })
             record("Assistant searched the selected mail provider.")
-            return LocalInferenceClient.emailContext(messages)
+            return "Result completeness: \(page.hasMore ? "bounded/incomplete; narrow the query" : "complete for this query").\n" + LocalInferenceClient.emailContext(messages)
         case .calendar:
             guard let days = parameters["days"] as? Int, (1...14).contains(days) else {
                 throw PuddleError("Calendar days must be between 1 and 14.")
@@ -979,7 +1029,7 @@ final class PuddleStore: ObservableObject {
         }
     }
     func processReminders() async {
-        guard !privateSession else { return }
+        guard !isShuttingDown, !privateSession else { return }
         let due = state.dueReminders()
         guard !due.isEmpty else { return }
         for task in due {
@@ -1004,6 +1054,7 @@ final class PuddleStore: ObservableObject {
     }
 
     private func beginAI(_ operation: @escaping @MainActor () async throws -> Void) {
+        guard !isShuttingDown else { return }
         stopSpeaking(); voiceInput.cancel()
         isThinking = true; toolActivities = []; streamingReply = ""; turnMetrics = nil
         let expected = UUID(); aiGeneration = expected
@@ -1072,7 +1123,7 @@ final class PuddleStore: ObservableObject {
     }
 
     func saveSettings(address: String, key: String, interval: Int, automatic: Bool, summarize: Bool, testConnection: Bool = false, modelID: String? = nil) async {
-        guard !privateSession, !isLocked else { fail(PuddleError("End the private session and unlock Puddle before changing connection settings.")); return }
+        guard !isShuttingDown, !privateSession, !isLocked else { fail(PuddleError("End the private session and unlock Puddle before changing connection settings.")); return }
         do {
             _ = try LocalInferenceClient(address: address, apiKey: key)
             guard demo || storageAvailable else { throw PuddleError("Retry loading saved state before changing connection settings.") }

@@ -15,7 +15,8 @@ extension PuddleStore {
         case .searchMail:
             guard mailConnected, !state.settings.networkDisabled else { throw PuddleError("Mail is not available for this routine.") }
             let query = String((arguments["query"] as? String ?? "").prefix(500))
-            return LocalInferenceClient.emailContext(try await searchCurrentMail(query))
+            let page = try await searchCurrentMailPage(query)
+            return "Result completeness: \(page.hasMore ? "bounded/incomplete; narrow the query" : "complete for this query").\n" + LocalInferenceClient.emailContext(page.messages)
         case .knowledge:
             let query = String((arguments["query"] as? String ?? "").prefix(500))
             return try encoded(LocalKnowledge.search(query, documents: state.knowledgeDocuments))

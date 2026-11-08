@@ -81,7 +81,7 @@ extension PuddleStore {
     }
 
     func joinGoogleMeet(_ link: MeetingJoinLink, noteID: UUID?, guestName: String) async {
-        guard !privateSession, !isLocked, !state.settings.networkDisabled else { return }
+        guard !isShuttingDown, !privateSession, !isLocked, !state.settings.networkDisabled else { return }
         guard !demo, storageAvailable, link.provider == .googleMeet, !meetAttendance.isActive, !meetAttendance.mayStillBeInCall else { return }
         var selected = noteID
         if selected == nil {

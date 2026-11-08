@@ -64,6 +64,7 @@ import PuddleCore
         let controller = controller, previous = cleanup
         cleanup = Task { await previous?.value; await controller.disconnect() }
     }
+    func waitForCleanup() async { await cleanup?.value }
     func showBrowser() {
         if let page { NSRunningApplication(processIdentifier: page.processID)?.activate() }
     }

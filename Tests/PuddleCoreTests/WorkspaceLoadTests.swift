@@ -13,6 +13,36 @@ private final class LoadSecrets: SecretStore, @unchecked Sendable {
 }
 
 final class WorkspaceLoadTests: XCTestCase {
+    func testNearCapacityEntropyReopensAndReportsPeakMemory() throws {
+        guard ProcessInfo.processInfo.environment["PUDDLE_RUN_CAPACITY_TESTS"] == "1" else {
+            throw XCTSkip("Set PUDDLE_RUN_CAPACITY_TESTS=1 for the isolated 108 MiB entropy/restart profile")
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("puddle-capacity-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let secrets = LoadSecrets(), store = EncryptedSnapshotStore(directory: root, secrets: secrets)
+        var state = AppSnapshot(), random: UInt64 = 0x5d1e_9a74_3b62_8fc1
+        // Deterministic high-entropy bytes; unlike repeated prose, compression
+        // cannot hide the logical workspace/portable-backup size difference.
+        for _ in 0..<(108 * 1024 * 1024 / 4096) {
+            var bytes = [UInt8](); bytes.reserveCapacity(3072)
+            for _ in 0..<3072 {
+                random ^= random << 13; random ^= random >> 7; random ^= random << 17
+                bytes.append(UInt8(truncatingIfNeeded: random))
+            }
+            state.chat.append(ChatLine(role: "user", content: Data(bytes).base64EncodedString()))
+        }
+        let start = ProcessInfo.processInfo.systemUptime
+        try store.save(state)
+        let saveSeconds = ProcessInfo.processInfo.systemUptime - start
+        let reopenStart = ProcessInfo.processInfo.systemUptime
+        let restored = try EncryptedSnapshotStore(directory: root, secrets: secrets).load()
+        let reopenSeconds = ProcessInfo.processInfo.systemUptime - reopenStart
+        XCTAssertEqual(restored.chat.count, state.chat.count)
+        XCTAssertEqual(restored.chat.first, state.chat.first); XCTAssertEqual(restored.chat.last, state.chat.last)
+        XCTAssertThrowsError(try WorkspaceBackup.encode(state), "The portable-backup ceiling must remain explicit for incompressible data")
+        var usage = rusage(); XCTAssertEqual(getrusage(RUSAGE_SELF, &usage), 0)
+        print("CAPACITY logical_text_bytes=\(state.chat.count * 4096) save_seconds=\(saveSeconds) reopen_seconds=\(reopenSeconds) peak_rss_bytes=\(usage.ru_maxrss)")
+    }
     private struct Profile {
         let name: String, conversations: Int, lines: Int, characters: Int, memories: Int, tasks: Int, meetings: Int, activeLines: Int
         static let regular = Profile(name: "regular-six-month", conversations: 900, lines: 24, characters: 600, memories: 2000, tasks: 1500, meetings: 180, activeLines: 1)

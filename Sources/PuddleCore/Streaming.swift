@@ -1,5 +1,7 @@
 import Foundation
 
+struct CompletionStreamFinished: Error {}
+
 /// Tool arguments are accumulated but never executed until a complete response arrives.
 actor CompletionStream {
     struct PartialCall {
@@ -12,13 +14,47 @@ actor CompletionStream {
     private var calls: [Int: PartialCall] = [:]
     private var finishReason: String?
     private var complete = false
+    private var eventData: [String] = []
+    private var eventBytes = 0
+    private var eventType = ""
 
     func consume(_ line: String, onPartial: @Sendable (String) async -> Void) async throws {
         try Task.checkCancellation()
-        let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !line.isEmpty, !line.hasPrefix(":"), !line.hasPrefix("event:") else { return }
-        let payload = line.hasPrefix("data:") ? String(line.dropFirst(5)).trimmingCharacters(in: .whitespaces) : line
-        if payload == "[DONE]" { return }
+        let line = line.hasSuffix("\r") ? String(line.dropLast()) : line
+        if line.isEmpty { try await dispatch(onPartial: onPartial); return }
+        if line.hasPrefix(":") { return }
+        // Some compatible servers return a complete JSON response instead of SSE.
+        if eventData.isEmpty, line.hasPrefix("{") { try await payload(line, onPartial: onPartial); return }
+        let fields = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        let field = String(fields[0])
+        var value = fields.count == 2 ? String(fields[1]) : ""
+        if value.hasPrefix(" ") { value.removeFirst() }
+        if field == "event" { eventType = String(value.prefix(128)) }
+        if field == "data" {
+            eventBytes += value.utf8.count + 1
+            guard eventBytes <= 256_000 else { throw PuddleError("The streaming response exceeded its event limit.") }
+            eventData.append(value)
+        }
+    }
+
+    func finish(onPartial: @Sendable (String) async -> Void) async throws {
+        // EOF is not an SSE event delimiter. Never execute an unterminated tool event.
+        guard eventData.isEmpty else { throw PuddleError("The model's response stream was incomplete. No pending tools were executed.") }
+    }
+
+    private func dispatch(onPartial: @Sendable (String) async -> Void) async throws {
+        let data = eventData.joined(separator: "\n"), type = eventType
+        eventData = []; eventBytes = 0; eventType = ""
+        guard type != "error" else { throw PuddleError("The local model interrupted its response. Try again.") }
+        guard !data.isEmpty else { return }
+        try await payload(data, onPartial: onPartial)
+    }
+
+    private func payload(_ payload: String, onPartial: @Sendable (String) async -> Void) async throws {
+        if payload == "[DONE]" {
+            guard complete else { throw PuddleError("The model's response stream was incomplete. No pending tools were executed.") }
+            throw CompletionStreamFinished()
+        }
         guard let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any] else {
             throw PuddleError("The local model sent an invalid streaming event.")
         }

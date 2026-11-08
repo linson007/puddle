@@ -10,9 +10,10 @@ public struct HTTPServiceError: LocalizedError, Sendable {
 public struct RetryingTransport: HTTPTransport {
     private let base: any HTTPTransport
     private let wait: @Sendable (TimeInterval) async throws -> Void
+    private let jitter: @Sendable () -> Double
     public init(base: any HTTPTransport, wait: @escaping @Sendable (TimeInterval) async throws -> Void = {
         try await Task.sleep(for: .seconds($0))
-    }) { self.base = base; self.wait = wait }
+    }, jitter: @escaping @Sendable () -> Double = { Double.random(in: 0...0.25) }) { self.base = base; self.wait = wait; self.jitter = jitter }
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         try await retry(request) { try await base.send(request) }
     }
@@ -24,10 +25,11 @@ public struct RetryingTransport: HTTPTransport {
         for attempt in 0..<3 {
             try Task.checkCancellation()
             let result = try await operation()
-            guard request.httpMethod == "GET", [429, 500, 502, 503, 504].contains(result.1.statusCode), attempt < 2 else { return result }
+            let rateLimited = result.1.statusCode == 403 && (result.1.value(forHTTPHeaderField: "Retry-After") != nil || result.1.value(forHTTPHeaderField: "X-RateLimit-Remaining") == "0")
+            guard (request.httpMethod ?? "GET") == "GET", [429, 500, 502, 503, 504].contains(result.1.statusCode) || rateLimited, attempt < 2 else { return result }
             let delay = retryDelay(result.1) ?? pow(2, Double(attempt))
             guard delay <= 30 else { return result } // Let the polling worker honor a longer delay.
-            try await wait(delay)
+            try await wait(min(30, delay + max(0, min(0.25, jitter()))))
         }
         throw PuddleError("Retry limit reached.")
     }
@@ -35,7 +37,7 @@ public struct RetryingTransport: HTTPTransport {
 
 func retryDelay(_ response: HTTPURLResponse) -> TimeInterval? {
     guard let value = response.value(forHTTPHeaderField: "Retry-After") else { return nil }
-    if let seconds = Double(value) { return max(0, seconds) }
+    if let seconds = Double(value), seconds.isFinite { return max(0, seconds) }
     let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = TimeZone(secondsFromGMT: 0); formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
     return formatter.date(from: value).map { max(0, $0.timeIntervalSinceNow) }
@@ -56,7 +58,7 @@ extension HTTPTransport {
     public func stream(_ request: URLRequest, onLine: @Sendable (String) async throws -> Void) async throws -> HTTPURLResponse {
         let (data, response) = try await send(request)
         try checkHTTP(response, data: data, service: "Local AI")
-        for line in String(decoding: data, as: UTF8.self).components(separatedBy: .newlines) {
+        for line in String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n") {
             try Task.checkCancellation(); try await onLine(line)
         }
         return response
@@ -67,7 +69,10 @@ extension HTTPTransport {
 /// sent to the local inference server must never follow a redirect elsewhere.
 public final class URLSessionTransport: HTTPTransport, Sendable {
     private let session: URLSession
-    public init() {
+    private let streamIdleTimeout: TimeInterval
+    public convenience init() { self.init(streamIdleTimeout: 60) }
+    public init(streamIdleTimeout: TimeInterval) {
+        self.streamIdleTimeout = max(0.05, min(60, streamIdleTimeout))
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = false
         configuration.httpCookieStorage = nil
@@ -103,18 +108,35 @@ public final class URLSessionTransport: HTTPTransport, Sendable {
     }
 
     public func stream(_ request: URLRequest, onLine: @Sendable (String) async throws -> Void) async throws -> HTTPURLResponse {
+        // URLSession's request timeout bounds waiting for the first byte and
+        // subsequent idle intervals; the session also caps total resource time.
+        var request = request
+        request.timeoutInterval = min(request.timeoutInterval, streamIdleTimeout)
         let (bytes, response) = try await session.bytes(for: request)
+        defer { bytes.task.cancel() }
         guard let response = response as? HTTPURLResponse else { throw PuddleError("Unreadable streaming response.") }
         if !(200..<300).contains(response.statusCode) {
             var data = Data()
             for try await byte in bytes { data.append(byte); if data.count >= 65536 { break } }
             try checkHTTP(response, data: data, service: "Local AI")
         }
-        for try await line in bytes.lines {
+        // Preserve empty lines: they delimit SSE events. Bound the buffer before
+        // decoding, including a server sending one endless line without a newline.
+        var line = Data()
+        var previousCR = false
+        for try await byte in bytes {
             try Task.checkCancellation()
-            guard line.utf8.count <= 256_000 else { throw PuddleError("The streaming response exceeded its event limit.") }
-            try await onLine(line)
+            if byte == 10, previousCR { previousCR = false; continue }
+            if byte == 10 || byte == 13 {
+                try await onLine(String(decoding: line, as: UTF8.self)); line.removeAll(keepingCapacity: true)
+                previousCR = byte == 13
+            } else {
+                previousCR = false
+                guard line.count < 256_000 else { throw PuddleError("The streaming response exceeded its event limit.") }
+                line.append(byte)
+            }
         }
+        if !line.isEmpty { try await onLine(String(decoding: line, as: UTF8.self)) }
         return response
     }
 

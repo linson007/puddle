@@ -49,6 +49,49 @@ the `xcode-27` label. See the [runner catalog](https://github.com/actions/runner
 | CI macOS 27 (`xcode-27`) | Default Xcode 27 / bundled Swift 6 | Debug, newest Speech format behavior |
 | macOS 14 | Deployment target only | Availability checking; native runtime review remains manual |
 
+The macOS 14 runtime row is a **blocking public-release gate**. For the exact
+notarized artifact, record install/first launch, chat plus streamed tool follow-up,
+Keychain denial/unlock, offline restart, save/reopen, notifications, supported
+non-Speech paths, update and backup restore on a clean macOS 14 machine. Record
+hardware/RAM, OS/build, artifact SHA-256, tester/date and failures. Keep the row
+pending until observed; deployment-target compilation does not accept this gate.
+On every accepted runtime, repeat first-run tasks with keyboard only and VoiceOver,
+increased contrast and reduced motion, including failed-save Retry/Copy/Discard,
+privacy consent/disconnect and update recovery. Do not widen advertised support
+from fixture coverage alone.
+
+The 8 November readiness follow-up adds an isolated entropy/capacity profile:
+
+```sh
+PUDDLE_RUN_CAPACITY_TESTS=1 sh scripts/swift.sh test \
+  --filter WorkspaceLoadTests.testNearCapacityEntropyReopensAndReportsPeakMemory
+```
+
+One debug run on macOS 27.0.1 (26A434), Apple Silicon, 24 GiB physical RAM,
+Xcode 26.6 / Swift 6.3.3 saved 108 MiB of deterministic high-entropy message text
+in 0.841 s, reopened in 0.405 s, and reported peak process RSS 1,037,975,552 bytes.
+This is a reproducible regression profile, not a minimum-hardware budget or a cold
+filesystem-cache measurement. It also confirms that a large incompressible
+workspace can exceed the separate portable-backup cap: export must fail clearly,
+without claiming a successful backup. Run this profile separately when comparing
+RSS; process high-water memory includes earlier tests and serialization buffers.
+
+Encrypted saves request file `fsync`/`F_FULLFSYNC`, atomically rename, then sync
+the parent directory. Flush/rename failures propagate. A directory-sync failure
+after rename has an uncertain commit outcome: retain transcript pages and reload
+before retrying. Cross-process advisory locks and stale-generation checks prevent
+independent stores from blindly overwriting a newer index. Tests inject publication
+interruptions and hold a real child-process lock. Actual power-loss tests on each
+supported filesystem remain required.
+
+The decoder retains the source schema and applies the supported migration steps
+before stamping the current schema. The first encrypted rewrite keeps
+`workspace-premigration-schema-N.vault`; its transcript pages are retained while
+that file exists. This can increase disk usage. Keep the complete workspace
+directory for device-bound recovery; do not remove its lock file while a process
+may be using it. Downgrade means installing the older signed binary and restoring
+a backup it can decode; automatic reverse migration is not supported.
+
 The suite contains roughly 500 tests; counts and optional skips vary by build
 configuration, SDK and opt-ins. Use the XCTest `Executed … tests` totals for both
 core and app bundles in a fresh run, not the separate Swift Testing “0 tests”

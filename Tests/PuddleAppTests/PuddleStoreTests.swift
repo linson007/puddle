@@ -75,6 +75,32 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testFailedQuickRequestIsRecoverableAndDoesNotStartModelWork() async throws {
+        let (store, disk, http, _) = fixture(); await store.start()
+        disk.failWrite = true
+        let accepted = await store.ask("Preserve this quick request")
+        XCTAssertFalse(accepted); XCTAssertFalse(store.isThinking)
+        XCTAssertTrue(store.state.chat.isEmpty)
+        let draft = try XCTUnwrap(store.recoverablePrompts.first)
+        XCTAssertEqual(draft.content, "Preserve this quick request")
+        let requests = await http.requests
+        XCTAssertFalse(requests.contains { $0.url?.path == "/v1/chat/completions" })
+        disk.failWrite = false
+        await store.retryRecoverablePrompt(draft.id); await store.aiTask?.value
+        XCTAssertTrue(store.recoverablePrompts.isEmpty)
+        XCTAssertEqual(try disk.load().chat.first?.content, draft.content)
+        await store.suspendConnectionWork()
+    }
+    func testTerminationBlocksNewRequestsAndRestoresAccessWhenKeptOpen() async throws {
+        let (store, _, _, _) = fixture(); await store.start()
+        await store.prepareForTermination()
+        let accepted = await store.ask("Must not start during quit")
+        XCTAssertFalse(accepted); XCTAssertThrowsError(try store.workspaceAccess())
+        XCTAssertTrue(store.shutdownPendingWork.isEmpty)
+        store.resumeAfterCancelledTermination()
+        XCTAssertFalse(store.isShuttingDown)
+        await store.suspendConnectionWork()
+    }
     func testPendingWriteFailureStillRollsBackAfterLockRevokesAccess() async throws {
         let (store, disk, _, _) = fixture()
         await store.start()

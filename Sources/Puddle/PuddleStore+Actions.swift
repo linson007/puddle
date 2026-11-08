@@ -65,10 +65,11 @@ extension PuddleStore {
         } catch { fail(error); return false }
     }
     func executeAction(_ id: UUID, reviewedDigest: String) async {
-        guard !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isSigningIn, !isDisconnecting, !executingActions.contains(id),
+        guard !isShuttingDown, !demo, !privateSession, !isLocked, !state.settings.networkDisabled, !isSigningIn, !isDisconnecting, !executingActions.contains(id),
               var proposal = state.actionProposals.first(where: { $0.id == id }), proposal.account == accountForAction(proposal) else {
             fail(PuddleError("Connect the account shown in the proposal before executing it. Demo actions never contact providers.")); return
         }
+        executingActions.insert(id); defer { executingActions.remove(id) }
         let access = workspaceAccessRevision
         let actionTransport = PolicyTransport(base: transport, policy: networkPolicy, bindToCurrentPolicy: true)
         do {
@@ -96,7 +97,6 @@ extension PuddleStore {
             proposal = current; try proposal.authorize(digest: reviewedDigest)
             try await commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal } }
         } catch { fail(error); return }
-        executingActions.insert(id); defer { executingActions.remove(id) }
         do {
             try checkWorkspaceAccess(access)
             guard !isSigningIn, !isDisconnecting, proposal.account == accountForAction(proposal),
@@ -130,6 +130,24 @@ extension PuddleStore {
     func discardAction(_ id: UUID) async {
         do { try await commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }), next.actionProposals[index].status == .draft { next.actionProposals[index].status = .declined } } }
         catch { fail(error) }
+    }
+    func reconcileAction(_ id: UUID) async {
+        guard let action = state.actionProposals.first(where: { $0.id == id }), action.status == .uncertain,
+              action.provider != .outlook, !executingActions.contains(id), !state.settings.networkDisabled else { return }
+        do {
+            let access = try workspaceAccess()
+            let result = try await GoogleActionClient(session: google, transport: transport).reconcile(action)
+            try checkWorkspaceAccess(access)
+            try await commit { next in
+                guard let index = next.actionProposals.firstIndex(where: { $0.id == id }), next.actionProposals[index].status == .uncertain,
+                      next.actionProposals[index].digest == action.digest else { throw PuddleError("The action changed while checking its provider.") }
+                if let result {
+                    next.actionProposals[index].status = .completed; next.actionProposals[index].completedAt = Date()
+                    next.actionProposals[index].resultID = result.id; next.actionProposals[index].resultURL = result.url; next.actionProposals[index].resultETag = result.etag
+                    next.actionProposals[index].detail = "Found the stable action record at the provider. No write was replayed. A sent-mail record does not prove delivery."
+                } else { next.actionProposals[index].detail = "No matching provider record was confirmed. This does not prove failure. Follow the manual provider check before creating another action." }
+            }
+        } catch { fail(error) }
     }
     func proposeCalendarUndo(_ action: ActionProposal) {
         guard canUndoCalendarAction(action), case .calendar(let original) = action.payload,

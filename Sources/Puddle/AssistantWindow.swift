@@ -68,6 +68,17 @@ struct AssistantWindow: View {
                             .accessibilityLabel(L10n.text("Dismiss error"))
                     }.padding(16).background(.orange.opacity(0.07))
                 }
+                ForEach(store.recoverablePrompts) { draft in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Your request could not be saved. Keep Puddle open to recover it.").font(.callout)
+                        Text(draft.displayText ?? draft.content).lineLimit(3).textSelection(.enabled)
+                        HStack {
+                            Button("Retry Request") { Task { await store.retryRecoverablePrompt(draft.id) } }.disabled(store.isThinking)
+                            Button("Copy Request") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(draft.content, forType: .string) }
+                            Button("Discard Request", role: .destructive) { store.discardRecoverablePrompt(draft.id) }
+                        }
+                    }.padding(16).frame(maxWidth: .infinity, alignment: .leading).background(.orange.opacity(0.07))
+                }
                 Group {
                     switch store.section {
                     case .today: TodayView(store: store)
@@ -478,6 +489,7 @@ private struct ConnectionsView: View {
                         Label(store.calendarConnected ? "Calendar available" : "Calendar not connected", systemImage: "calendar")
                     }.font(.caption).foregroundStyle(.secondary)
                     if let account = store.state.account { Text(account).font(.caption).foregroundStyle(.secondary) }
+                    ConnectionPrivacyNotice(store: store, provider: "Google")
                     GoogleAccountsView(store: store)
                     HStack {
                         Button(store.isSigningIn ? "Connecting Google…" : store.connected ? "Manage Google Permissions…" : "Connect Google") { Task { await store.requestGoogleConnection() } }
