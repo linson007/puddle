@@ -10,6 +10,36 @@ private final class VaultSecrets: SecretStore, @unchecked Sendable {
     func delete(_ key: String) throws { _ = lock.withLock { values.removeValue(forKey: key) } }
 }
 final class EncryptedWorkspaceTests: XCTestCase {
+    func testIndependentStoresCannotOverwriteOrDeleteNewerMeetingRecovery() throws {
+        let root = try directory(), secrets = VaultSecrets()
+        let first = EncryptedSnapshotStore(directory: root, secrets: secrets), second = EncryptedSnapshotStore(directory: root, secrets: secrets)
+        XCTAssertTrue(try first.loadMeetingRecoveries().isEmpty); XCTAssertTrue(try second.loadMeetingRecoveries().isEmpty)
+        let original = [MeetingCaptureRecovery(noteID: UUID(), text: "New recovery from first store")]
+        try first.saveMeetingRecoveries(original)
+        XCTAssertThrowsError(try second.saveMeetingRecoveries([]))
+        XCTAssertThrowsError(try second.saveMeetingRecoveries([.init(noteID: UUID(), text: "Stale replacement")]))
+        XCTAssertEqual(try second.loadMeetingRecoveries(), original)
+        try second.saveMeetingRecoveries([])
+        XCTAssertThrowsError(try first.saveMeetingRecoveries(original))
+        XCTAssertTrue(try first.loadMeetingRecoveries().isEmpty)
+        try first.saveMeetingRecoveries(original)
+    }
+    func testUnreadableRecoveryCannotQuarantineAChangedGeneration() throws {
+        let root = try directory(), secrets = VaultSecrets(), first = EncryptedSnapshotStore(directory: root, secrets: secrets)
+        try first.save(AppSnapshot())
+        let recovery = root.appendingPathComponent("meeting-recovery.vault")
+        try Data("damaged".utf8).write(to: recovery)
+        XCTAssertThrowsError(try first.loadMeetingRecoveries())
+        let second = EncryptedSnapshotStore(directory: root, secrets: secrets)
+        try second.preserveUnreadableMeetingRecoveries()
+        let current = [MeetingCaptureRecovery(noteID: UUID(), text: "Recovered by another process")]
+        try second.saveMeetingRecoveries(current)
+        XCTAssertThrowsError(try first.preserveUnreadableMeetingRecoveries())
+        XCTAssertEqual(try second.loadMeetingRecoveries(), current)
+        XCTAssertEqual(try first.loadMeetingRecoveries(), current)
+        try first.saveMeetingRecoveries(current)
+        XCTAssertEqual(try second.loadMeetingRecoveries(), current)
+    }
     func testFirstMigrationRewriteRetainsVerifiedOriginalAndItsPages() throws {
         let root = try directory(), secrets = VaultSecrets(), disk = EncryptedSnapshotStore(directory: root, secrets: secrets)
         var initial = AppSnapshot(); initial.chat = [ChatLine(role: "user", content: "Original schema fixture")]

@@ -162,6 +162,26 @@ final class WorkspaceWriterTests: XCTestCase {
             XCTAssertEqual(try Data(contentsOf: XCTUnwrap(preserved.first)), damaged)
         }
     }
+    func testReloadInvalidatesCheckpointWriteElision() async throws {
+        let disk = RecoveryWriteDisk(), writer = WorkspaceWriter(disk)
+        let values = [MeetingCaptureRecovery(noteID: UUID(), text: "Retry after reloading an external generation")]
+        try await writer.checkpoint(values, revision: 1)
+        _ = try await writer.load()
+        try await writer.checkpoint(values, revision: 2)
+        XCTAssertEqual(disk.writes, [values, values])
+    }
+    func testRecoveryOwnershipConflictNeverQuarantinesValidText() async throws {
+        let writer = WorkspaceWriter(ConflictingRecoveryDisk())
+        do { _ = try await writer.load(); XCTFail("A conflicting recovery must require reload") }
+        catch { XCTAssertTrue(error is WorkspaceConflict) }
+    }
+}
+
+private struct ConflictingRecoveryDisk: SnapshotPersistence {
+    func load() -> AppSnapshot { AppSnapshot() }
+    func save(_ snapshot: AppSnapshot) {}
+    func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] { throw WorkspaceConflict.busy }
+    func preserveUnreadableMeetingRecoveries() { XCTFail("Ownership conflict is not corrupt recovery data") }
 }
 
 // All mutable state is protected by lock, including test-side access.

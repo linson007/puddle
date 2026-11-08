@@ -200,12 +200,15 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         }
         let url = directory.appendingPathComponent("meeting-recovery.vault")
         try TranscriptVault.rejectNonregular(url)
-        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        cache.recoveryMetadata = FileManager.default.fileExists(atPath: url.path) ? try TranscriptVault.fingerprint(url) : nil
+        cache.recoveryGenerationObserved = true
+        guard FileManager.default.fileExists(atPath: url.path) else { cache.unreadableMeetingRecovery = false; return [] }
         guard try TranscriptVault.fingerprint(url).bytes <= MeetingRecoveryLimits.maximumBytes + 64 else {
             throw PuddleError("The meeting recovery file exceeds its size limit. It was preserved.")
         }
         let values = try JSONDecoder().decode([MeetingCaptureRecovery].self, from: open(Data(contentsOf: url), key: key(create: false)))
         try MeetingRecoveryLimits.validate(values)
+        cache.unreadableMeetingRecovery = false
         return values
     }
     public func saveMeetingRecoveries(_ values: [MeetingCaptureRecovery]) throws { try withOwnership { try saveMeetingRecoveryContents(values) } }
@@ -217,8 +220,13 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         // If quarantine previously failed, preserve the unreadable file before
         // allowing a checkpoint to replace it.
         if cache.unreadableMeetingRecovery { try preserveUnreadableMeetingRecoveries() }
+        let current = FileManager.default.fileExists(atPath: url.path) ? try TranscriptVault.fingerprint(url) : nil
+        guard (cache.recoveryGenerationObserved && cache.recoveryMetadata == current) || (!cache.recoveryGenerationObserved && current == nil) else {
+            throw WorkspaceConflict.staleRecovery
+        }
         if values.isEmpty {
             if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url); try DurableFile.syncDirectory(directory) }
+            cache.recoveryGenerationObserved = true; cache.recoveryMetadata = nil
             return
         }
         let data = try JSONEncoder().encode(values)
@@ -229,6 +237,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path) ||
             FileManager.default.fileExists(atPath: directory.appendingPathComponent("meeting-recovery.vault").path)
         try write(seal(data, key: key(create: !exists)), to: url)
+        cache.recoveryGenerationObserved = true; cache.recoveryMetadata = try TranscriptVault.fingerprint(url)
     }
     public func preserveUnreadableMeetingRecoveries() throws { try withOwnership { try preserveUnreadableMeetingRecoveryContents() } }
     private func preserveUnreadableMeetingRecoveryContents() throws {
@@ -236,12 +245,17 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         cache.unreadableMeetingRecovery = true
         let url = directory.appendingPathComponent("meeting-recovery.vault")
         try TranscriptVault.rejectNonregular(url)
+        if cache.recoveryGenerationObserved {
+            let current = FileManager.default.fileExists(atPath: url.path) ? try TranscriptVault.fingerprint(url) : nil
+            guard current == cache.recoveryMetadata else { throw WorkspaceConflict.staleRecovery }
+        }
         if FileManager.default.fileExists(atPath: url.path) {
             let preserved = directory.appendingPathComponent("meeting-recovery-unreadable-\(UUID()).vault")
             try FileManager.default.moveItem(at: url, to: preserved)
             try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: preserved.path)
         }
         cache.unreadableMeetingRecovery = false
+        cache.recoveryGenerationObserved = true; cache.recoveryMetadata = nil
         try pruneMeetingRecoveryQuarantine()
     }
     private func pruneMeetingRecoveryQuarantine() throws {
