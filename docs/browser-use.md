@@ -128,3 +128,12 @@ Tampered/unsigned/other-publisher helpers are refused. Test helper updates again
 the same requirement before advertising their versions. Local administrators or
 code already executing as the user remain within the host trust boundary; this
 check does not provide process containment or protect a compromised host.
+
+The full `make verify-local` browser acceptance path also requires the accepted
+`PUDDLE_CUA_DRIVER_REQUIREMENT`, or `--driver-requirement` when invoking
+`scripts/verify-local.py` directly. The runner checks the installed helper's
+signature/requirement before discovery or browser work; the XCTest helper path
+uses the same explicit requirement because its main bundle is the test host.
+Missing/mismatched identity is a failure, not an accepted compatibility result.
+This test-only injection does not add an environment override to the shipping app.
+Use `scripts/verify-models.py` when only the model matrix is being evaluated.

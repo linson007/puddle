@@ -1,0 +1,11 @@
+{
+  "configurations": [
+    {
+      "name": "local-server-a",
+      "address": "http://127.0.0.1:1234/v1",
+      "model": "REPLACE_WITH_EXACT_MODEL_ID",
+      "runtime_version": "REPLACE_WITH_RUNTIME_NAME_AND_VERSION",
+      "model_revision": "REPLACE_WITH_REVISION_AND_QUANTIZATION"
+    }
+  ]
+}
