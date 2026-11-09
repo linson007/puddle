@@ -618,16 +618,19 @@ final class PuddleStore: ObservableObject {
 
     @discardableResult private func submit(_ question: String, retryLine: ChatLine?, newLine: ChatLine? = nil) async -> Bool {
         let question = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty, !isThinking, !isLocked, !isShuttingDown else { return false }
+        guard !question.isEmpty, let claim = claimAI() else { return false }
         errorMessage = nil
         let history = retryLine.map { retry in Array(state.chat.prefix { $0.id != retry.id }) } ?? state.chat
         let userLine = retryLine ?? newLine ?? ChatLine(role: "user", content: question)
         let isMailReference = userLine.kind?.hasPrefix("mail-reference:") == true || userLine.kind == "external-reference"
         if retryLine == nil { state.chat.append(userLine) }
         if !showAssistantPanel { section = .chat }
-        guard await persist() else { retainPrompt(userLine); return false }
-        beginAI { [self] in
-            let expected = aiGeneration
+        guard await persist() else { retainPrompt(userLine); releaseAIClaim(claim); return false }
+        // Stop, lock, a newer turn or cancellation may have invalidated the
+        // reservation while its initial save was pending. Never revive it.
+        guard !Task.isCancelled, aiGeneration == claim else { releaseAIClaim(claim); return false }
+        return beginAI(claim: claim) { [self] in
+            let expected = claim
             var context = AgentContext(instructions: state.assistantInstructions, memories: state.memories,
                                        mailConnected: mailConnected, calendarConnected: calendarConnected,
                                        memoryLearning: state.settings.automaticallyLearn && !isMailReference && !privateSession)
@@ -676,7 +679,6 @@ final class PuddleStore: ObservableObject {
                 if state.settings.readRepliesAloud { readAloud(reply) }
             } else { retainPrompt(userLine) }
         }
-        return true
     }
 
     private func checkTurn(_ expected: UUID?) throws {
@@ -1041,10 +1043,10 @@ final class PuddleStore: ObservableObject {
     func savePersona(_ text: String) async { state.assistantInstructions = String(text.prefix(4000)); await persist() }
 
     func summarize(_ id: String) async {
-        guard !isThinking, let message = mailInbox.first(where: { $0.id == id }) else { return }
-        beginAI { [self] in
+        guard let message = mailInbox.first(where: { $0.id == id }), let claim = claimAI() else { return }
+        beginAI(claim: claim) { [self] in
             let answer = demo ? DemoInbox.summary(for: message) : try await client().summarize(message)
-            try Task.checkCancellation()
+            try checkTurn(claim)
             if state.settings.mailProvider == .outlook, let index = state.outlookMessages.firstIndex(where: { $0.id == id }) {
                 state.outlookMessages[index].summary = answer; await persist()
             } else if let index = state.messages.firstIndex(where: { $0.id == id }) {
@@ -1053,17 +1055,32 @@ final class PuddleStore: ObservableObject {
         }
     }
 
-    private func beginAI(_ operation: @escaping @MainActor () async throws -> Void) {
-        guard !isShuttingDown else { return }
+    private func claimAI() -> UUID? {
+        guard !isThinking, !isLocked, !isShuttingDown, !Task.isCancelled else { return nil }
+        let claim = UUID(); aiGeneration = claim; isThinking = true
         stopSpeaking(); voiceInput.cancel()
-        isThinking = true; toolActivities = []; streamingReply = ""; turnMetrics = nil
-        let expected = UUID(); aiGeneration = expected
+        toolActivities = []; streamingReply = ""; turnMetrics = nil
+        return claim
+    }
+    private func releaseAIClaim(_ claim: UUID) {
+        guard aiGeneration == claim else { return }
+        isThinking = false; streamingReply = ""
+    }
+    @discardableResult private func beginAI(claim: UUID, _ operation: @escaping @MainActor () async throws -> Void) -> Bool {
+        guard aiGeneration == claim, isThinking, !isShuttingDown, !isLocked, !Task.isCancelled else {
+            releaseAIClaim(claim); return false
+        }
+        let expected = claim
         aiTask = Task {
-            do { try await operation() }
+            do { try checkTurn(expected); try await operation() }
             catch is CancellationError {}
             catch { if aiGeneration == expected { fail(error) } }
-            if aiGeneration == expected { isThinking = false; streamingReply = ""; await finishBrowserErrandTurn(paused: false) }
+            if aiGeneration == expected {
+                streamingReply = ""; await finishBrowserErrandTurn(paused: false)
+                releaseAIClaim(expected)
+            }
         }
+        return true
     }
     func stopAI() async {
         stopSpeaking(); voiceInput.cancel()

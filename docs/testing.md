@@ -92,6 +92,13 @@ state. Reload before retrying; a writer reload invalidates checkpoint write
 elision. Ownership conflicts fail the load instead of being treated as damaged
 meeting text.
 
+Assistant turn ownership starts before the submitted prompt's first save can
+suspend. A competing submit or mail summary is rejected without appending another
+request or starting model work. Failed saves release their own reservation and
+retain the recoverable request; Stop, lock, parent cancellation or a newer turn
+prevent a late save from reviving the old generation. Blocked-save fixtures in
+`PuddleStoreTests` exercise these interleavings without a live model or account.
+
 `scripts/test_storage_crash.py` compiles the production durability/lock primitives
 into a disposable child process. It exits abruptly before and after rename, then
 opens the generation from a fresh process and verifies the expected whole file
