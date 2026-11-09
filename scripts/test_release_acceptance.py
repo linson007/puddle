@@ -79,6 +79,14 @@ class ReleaseAcceptanceTests(unittest.TestCase):
         self.info['CFBundleVersion'] = '11'; self.write_archive()
         with self.assertRaises(ValueError): acceptance.bound_record(self.archive, self.record)
 
+    def test_placeholder_or_omitted_operations_block_readiness_after_complete_evidence(self):
+        self.complete_fixture()
+        ledger = acceptance.read_json(self.record)
+        ledger['operations']['release_owner'] = 'pending'; acceptance.write_json(self.record, ledger)
+        self.assertIn('operations: release_owner required', acceptance.readiness(self.archive, self.record)['issues'])
+        del ledger['operations']['previous_installer_sha256']; acceptance.write_json(self.record, ledger)
+        with self.assertRaises(ValueError): acceptance.readiness(self.archive, self.record)
+
     def test_completed_check_needs_tester_environment_notes_and_nonempty_evidence(self):
         with self.assertRaises(ValueError): acceptance.attest(self.archive, self.record, 'distribution', 'passed')
         self.evidence.write_bytes(b'')
