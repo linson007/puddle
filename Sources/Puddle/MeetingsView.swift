@@ -30,6 +30,7 @@ struct MeetingsView: View {
                         else if workspace.searchResults.isEmpty { Text("No meeting notes match this search.").font(.callout).foregroundStyle(.secondary) }
                         else {
                             Text("\(workspace.searchResults.count) matching meetings").font(.caption).foregroundStyle(.secondary)
+                            if workspace.searchHasMore { Text(L10n.text("More meetings match. Narrow your search.")).font(.caption).foregroundStyle(.secondary) }
                             ScrollView {
                                 LazyVStack(alignment: .leading, spacing: 6) {
                                     ForEach(workspace.searchResults) { result in

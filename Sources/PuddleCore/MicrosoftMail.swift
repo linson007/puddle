@@ -86,7 +86,7 @@ public actor MicrosoftMailSession {
         let response = try await token(config: config, fields: ["grant_type": "authorization_code", "code": code, "code_verifier": attempt.verifier, "redirect_uri": attempt.redirect.absoluteString], previous: nil, scopes: attempt.scopes)
         var request = URLRequest(url: URL(string: "https://graph.microsoft.com/v1.0/me?$select=id,mail,userPrincipalName")!)
         request.setValue("Bearer \(response.accessToken)", forHTTPHeaderField: "Authorization")
-        let (data, http) = try await transport.send(request); try checkHTTP(http, data: data, service: "Microsoft")
+        let (data, http) = try await transport.sendBounded(request, maximumBytes: 256 * 1024, until: nil); try checkHTTP(http, data: data, service: "Microsoft")
         struct Identity: Decodable { let id: String; let mail: String?; let userPrincipalName: String? }
         let identity = try JSONDecoder().decode(Identity.self, from: data), email = identity.mail ?? identity.userPrincipalName ?? ""
         guard !identity.id.isEmpty, MailDraft.validAddress(email) else { throw PuddleError("Microsoft did not return a usable mailbox identity.") }
@@ -102,7 +102,7 @@ public actor MicrosoftMailSession {
         var fields = original; fields["client_id"] = config.clientID; fields["scope"] = scopes.joined(separator: " ")
         var request = URLRequest(url: URL(string: "https://login.microsoftonline.com/\(config.tenant)/oauth2/v2.0/token")!)
         request.httpMethod = "POST"; request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type"); request.httpBody = formBody(fields)
-        let (data, http) = try await transport.send(request); try checkHTTP(http, data: data, service: "Microsoft")
+        let (data, http) = try await transport.sendBounded(request, maximumBytes: 256 * 1024, until: nil); try checkHTTP(http, data: data, service: "Microsoft")
         struct Tokens: Decodable { let access_token: String; let refresh_token: String?; let expires_in: Double; let scope: String? }
         let tokens = try JSONDecoder().decode(Tokens.self, from: data)
         let granted = Set((tokens.scope ?? scopes.joined(separator: " ")).split(separator: " ").map { String($0).components(separatedBy: "/").last ?? String($0) })

@@ -28,7 +28,7 @@ class LocalizationGuardTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'Localization').mkdir()
-            (root / 'Localization/locales.json').write_text('["en", "tr"]')
+            (root / 'Localization/locales.json').write_text('["en"]')
             (root / 'Sources/Puddle').mkdir(parents=True)
             catalog = {'strings': {'Today': {'localizations': {
                 locale: {'stringUnit': {'state': 'translated', 'value': value}}
@@ -58,7 +58,7 @@ class LocalizationGuardTests(unittest.TestCase):
                 (root / 'Sources/PuddleCore/Notice.swift').write_text('L10n.text("Missing core notice")')
                 with self.assertRaises(SystemExit):
                     self.run_export('--check')
-                catalog['strings']['Today']['localizations'].pop('tr')
+                catalog['strings']['Today']['localizations'].pop('en')
                 (root / 'Localization/Localizable.xcstrings').write_text(json.dumps(catalog))
                 with self.assertRaises(SystemExit):
                     self.run_export('--check')
@@ -67,6 +67,18 @@ class LocalizationGuardTests(unittest.TestCase):
     def run_export(*arguments):
         with patch('sys.argv', ['localizations.py', *arguments]):
             localizations.main()
+
+    def testAdditionalShippingLocaleCannotUseUntranslatedBaselineDebt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Localization').mkdir()
+            (root / 'Localization/locales.json').write_text('["en", "tr"]')
+            (root / 'Localization/Localizable.xcstrings').write_text(json.dumps({'strings': {}}))
+            (root / 'Sources/Puddle').mkdir(parents=True)
+            (root / 'Sources/Puddle/Screen.swift').write_text('Text("Untranslated screen")')
+            with patch.object(localizations, 'ROOT', root), patch.object(localizations, 'BASELINE', root / 'baseline.json'):
+                with self.assertRaisesRegex(SystemExit, 'complete UI coverage'):
+                    self.run_export('--update-baseline')
 
     def testRawStringsDoNotConfuseCoverage(self):
         source = 'let json = #"{"name":"Text(ignored)"}"#; Text(#"Visible raw title"#); L10n.text("Core notice")'

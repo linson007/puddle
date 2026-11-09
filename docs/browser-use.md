@@ -137,3 +137,10 @@ uses the same explicit requirement because its main bundle is the test host.
 Missing/mismatched identity is a failure, not an accepted compatibility result.
 This test-only injection does not add an environment override to the shipping app.
 Use `scripts/verify-models.py` when only the model matrix is being evaluated.
+
+A driver transport failure clears its session and the app's connected state.
+Use Start Cua Browser to create a fresh transport, then inspect the page before
+repeating any action; Puddle never replays the failed action automatically.
+The helper receives only runtime identity/path, locale and temporary-directory
+environment values, with standard permission mode forced. Shell-exported API
+keys and provider tokens are not inherited.

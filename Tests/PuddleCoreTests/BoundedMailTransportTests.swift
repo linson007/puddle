@@ -28,6 +28,38 @@ private actor BoundedMailHTTP: HTTPTransport {
     }
 }
 final class BoundedMailTransportTests: XCTestCase {
+    func testOAuthModelAndActionBoundariesNeverCallUnboundedSend() async throws {
+        let secrets = MemorySecrets()
+        try secrets.write(JSONEncoder().encode(GoogleClientConfiguration(clientID: "fixture.apps.googleusercontent.com")), key: "google-client")
+        try secrets.write(JSONEncoder().encode(GoogleCredentials(accessToken: "expired", refreshToken: "fixture", expiresAt: .distantPast, scope: OAuthFlow.scope)), key: "google-tokens")
+        let googleHTTP = BoundedMailHTTP(rejectBody: true)
+        do { _ = try await GoogleSession(store: secrets, transport: googleHTTP).accessToken(); XCTFail("Huge token body accepted") } catch {}
+        let googleBounds = await googleHTTP.bounds, googleUnbounded = await googleHTTP.unbounded
+        XCTAssertEqual(googleBounds, [256 * 1024]); XCTAssertEqual(googleUnbounded, 0)
+
+        let microsoftHTTP = BoundedMailHTTP(rejectBody: true), microsoft = MicrosoftMailSession(secrets: MemorySecrets(), transport: microsoftHTTP)
+        let config = try MicrosoftClientConfiguration(clientID: UUID().uuidString)
+        try await microsoft.configure(config)
+        let attempt = try MicrosoftOAuthAttempt(configuration: config, callback: URL(string: "http://127.0.0.1:4321/oauth/callback")!, allowSend: false, allowOrganize: false)
+        do { try await microsoft.exchange(code: "fixture", attempt: attempt); XCTFail("Huge Microsoft token body accepted") } catch {}
+        let microsoftBounds = await microsoftHTTP.bounds, microsoftUnbounded = await microsoftHTTP.unbounded
+        XCTAssertEqual(microsoftBounds, [256 * 1024]); XCTAssertEqual(microsoftUnbounded, 0)
+
+        let modelHTTP = BoundedMailHTTP(rejectBody: true)
+        do { _ = try await LocalInferenceClient(address: "http://127.0.0.1:8000", transport: modelHTTP).model(); XCTFail("Huge model body accepted") } catch {}
+        let modelBounds = await modelHTTP.bounds, modelUnbounded = await modelHTTP.unbounded
+        XCTAssertEqual(modelBounds, [8 * 1024 * 1024]); XCTAssertEqual(modelUnbounded, 0)
+
+        let actionHTTP = BoundedMailHTTP(rejectBody: true)
+        let credentials = GoogleCredentials(accessToken: "fixture", refreshToken: "fixture", expiresAt: .distantFuture, scope: OAuthFlow.mailSendScope,
+            account: GoogleAccount(id: "fixture", email: "fixture@example.test", name: nil))
+        try secrets.write(JSONEncoder().encode(credentials), key: "google-tokens")
+        var proposal = ActionProposal(account: "fixture@example.test", payload: .email(MailDraft(to: "recipient@example.test", subject: "Fixture", body: "Fixture")))
+        try proposal.authorize(digest: proposal.digest)
+        do { _ = try await GoogleActionClient(session: GoogleSession(store: secrets), transport: actionHTTP).execute(proposal); XCTFail("Huge action body accepted") } catch {}
+        let actionBounds = await actionHTTP.bounds, actionUnbounded = await actionHTTP.unbounded
+        XCTAssertEqual(actionBounds, [1024 * 1024]); XCTAssertEqual(actionUnbounded, 0)
+    }
     private func google() throws -> GoogleSession {
         let secrets = MemorySecrets()
         try secrets.write(JSONEncoder().encode(GoogleCredentials(accessToken: "fixture", refreshToken: "fixture", expiresAt: Date().addingTimeInterval(3600), scope: OAuthFlow.scope)), key: "google-tokens")

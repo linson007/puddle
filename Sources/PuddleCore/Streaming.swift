@@ -55,7 +55,9 @@ actor CompletionStream {
             guard complete else { throw PuddleError("The model's response stream was incomplete. No pending tools were executed.") }
             throw CompletionStreamFinished()
         }
-        guard let object = try JSONSerialization.jsonObject(with: Data(payload.utf8)) as? [String: Any] else {
+        let data = Data(payload.utf8)
+        try JSONNesting.validate(data)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw PuddleError("The local model sent an invalid streaming event.")
         }
         if object["error"] != nil { throw PuddleError("The local model interrupted its response. Try again.") }

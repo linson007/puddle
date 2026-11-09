@@ -105,7 +105,7 @@ enum TranscriptVault {
         func validated(_ url: URL) throws -> (Data, [ChatLine]) {
             let info = try fingerprint(url)
             guard info.bytes <= maximumBytes + 1024 else { throw PuddleError("A saved transcript page exceeds its size limit.") }
-            let data = try Data(contentsOf: url)
+            let data = try BoundedFile.read(url, maximumBytes: maximumBytes + 1024)
             guard digest(data) == page.sha256 else { throw PuddleError("A saved transcript failed its integrity check. Workspace files were preserved.") }
             let plaintext = try open(data)
             guard plaintext.count == page.bytes else { throw PuddleError("A saved transcript has an invalid size.") }
@@ -119,7 +119,7 @@ enum TranscriptVault {
         catch { (data, lines) = try validated(replica); try replaceDamaged(file, with: data, cache: cache) }
         let replicaInfo = try? fingerprint(replica)
         if replicaInfo == nil || cache.fingerprints[cacheKey(replica)] != replicaInfo {
-            if let copy = try? Data(contentsOf: replica), digest(copy) == page.sha256 { cache.fingerprints[cacheKey(replica)] = replicaInfo }
+            if let copy = try? BoundedFile.read(replica, maximumBytes: maximumBytes + 1024), digest(copy) == page.sha256 { cache.fingerprints[cacheKey(replica)] = replicaInfo }
             else { try replaceDamaged(replica, with: data, cache: cache) }
         }
         return lines

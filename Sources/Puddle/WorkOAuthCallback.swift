@@ -13,23 +13,35 @@ import PuddleCore
     private var attempt: (any BrowserOAuthAttempt)?
     private var timeout: Task<Void, Never>?
     private var connections: [UUID: NWConnection] = [:]
-    func start() async throws -> URL {
+    func start(readinessTimeout: Duration = .seconds(15), startListener: ((NWListener) -> Void)? = nil) async throws -> URL {
+        try Task.checkCancellation()
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
         let listener = try NWListener(using: parameters, on: .any); self.listener = listener
-        return try await withCheckedThrowingContinuation { continuation in
+        timeout = Task { [weak self] in
+            do { try await Task.sleep(for: readinessTimeout) } catch { return }
+            guard let self else { return }
+            let error = PuddleError("The local sign-in callback did not become ready. Check firewall settings and connect again.")
+            self.ready?.resume(throwing: error); self.ready = nil
+            self.finish(.failure(error)); self.close()
+        }
+        return try await withTaskCancellationHandler {
+          try await withCheckedThrowingContinuation { continuation in
+            guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
             ready = continuation
             listener.stateUpdateHandler = { [weak self] state in Task { @MainActor in
                 guard let self else { return }
                 switch state {
                 case .ready:
                     guard let port = listener.port else { return }
+                    self.timeout?.cancel()
                     self.ready?.resume(returning: URL(string: "http://127.0.0.1:\(port.rawValue)/oauth/callback")!); self.ready = nil
                     self.timeout = Task { [weak self] in
                         do { try await Task.sleep(for: .seconds(300)) } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); return }
                         self?.finish(.failure(PuddleError("Browser sign-in timed out. Connect again when ready.")))
+                        self?.close()
                     }
-                case .failed: self.ready?.resume(throwing: PuddleError("The local sign-in callback could not start. Check firewall settings.")); self.ready = nil
+                case .failed: self.ready?.resume(throwing: PuddleError("The local sign-in callback could not start. Check firewall settings.")); self.ready = nil; self.close()
                 default: break
                 }
             } }
@@ -41,8 +53,9 @@ import PuddleCore
                 }
                 self.receive(connection, id: id, accumulated: Data())
             } }
-            listener.start(queue: queue)
-        }
+            if let startListener { startListener(listener) } else { listener.start(queue: queue) }
+          }
+        } onCancel: { Task { @MainActor in self.cancel() } }
     }
     func wait(for attempt: any BrowserOAuthAttempt) async throws -> String {
         self.attempt = attempt

@@ -36,7 +36,21 @@ public enum PublicNewsletterHost {
     }
     public static func isPublic(_ address: String) -> Bool {
         let address = address.lowercased()
-        if address.contains(":") { return (address.hasPrefix("2") || address.hasPrefix("3")) && !address.hasPrefix("2001:db8:") }
+        if address.contains(":") {
+            var value = in6_addr()
+            guard inet_pton(AF_INET6, address, &value) == 1 else { return false }
+            let bytes = withUnsafeBytes(of: value) { Array($0) }
+            guard bytes[0] & 0xe0 == 0x20 else { return false } // Global unicast only.
+            // Transition, documentation, benchmarking and ORCHID destinations
+            // are not ordinary public hosts, even when an embedded IPv4 is public.
+            if bytes[0] == 0x20, bytes[1] == 0x02 { return false }
+            if bytes[0] == 0x20, bytes[1] == 0x01 {
+                if bytes[2] == 0x0d, bytes[3] == 0xb8 { return false }
+                if bytes[2] < 0x02 { return false } // IANA protocol assignments, 2001::/23.
+            }
+            if bytes[0] == 0x3f, bytes[1] == 0xff, bytes[2] < 0x10 { return false } // Documentation, 3fff::/20.
+            return true
+        }
         let parts = address.split(separator: ".").compactMap { Int($0) }
         guard parts.count == 4, parts.allSatisfy({ (0...255).contains($0) }) else { return false }
         let a = parts[0], b = parts[1], c = parts[2]

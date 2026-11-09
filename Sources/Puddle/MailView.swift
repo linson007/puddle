@@ -146,7 +146,7 @@ struct MailView: View {
                 if let summary = message.summary {
                     VStack(alignment: .leading, spacing: 10) {
                         Label("Puddle summary", systemImage: "sparkles").font(.headline)
-                        Text(.init(summary)).font(.callout).textSelection(.enabled)
+                        Text(verbatim: summary).font(.callout).textSelection(.enabled)
                     }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                         .background(PuddleStyle.teal.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
                 }

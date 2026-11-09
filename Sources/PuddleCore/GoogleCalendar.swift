@@ -83,9 +83,16 @@ public struct GoogleCalendarClient: Sendable {
     }
     public func calendars() async throws -> [GoogleCalendarInfo] {
         // Compatibility caller must never silently treat the first page as all calendars.
-        let page = try await calendarsPage()
-        guard !page.hasMore else { throw PuddleError("The calendar list is incomplete. Use the primary calendar or narrow your connected calendars before choosing one.") }
-        return page.calendars
+        var calendars: [GoogleCalendarInfo] = [], next: String?, seen = Set<String>()
+        for _ in 0..<10 {
+            try Task.checkCancellation()
+            let page = try await calendarsPage(pageToken: next)
+            calendars.append(contentsOf: page.calendars)
+            guard let token = page.nextPageToken else { return calendars }
+            guard seen.insert(token).inserted else { throw PuddleError("Google Calendar returned a repeated calendar page.") }
+            next = token
+        }
+        throw PuddleError("The calendar list exceeds 1000 calendars. Use the primary calendar or narrow your connected calendars before choosing one.")
     }
     public func calendarsPage(pageToken: String? = nil) async throws -> GoogleCalendarListPage {
         var parts = URLComponents(string: "https://www.googleapis.com/calendar/v3/users/me/calendarList")!

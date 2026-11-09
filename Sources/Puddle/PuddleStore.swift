@@ -71,6 +71,7 @@ final class PuddleStore: ObservableObject {
     @Published var privateSession = false { didSet { if oldValue != privateSession { workspaceAccessRevision = UUID() } } }
     @Published var isLocked = false { didSet { if oldValue != isLocked { workspaceAccessRevision = UUID() } } }
     var savedPrivateWorkspace: AppSnapshot?
+    var isChangingWorkspace = false
     let networkPolicy = NetworkPolicy()
     @Published var errorMessage: String?
     @Published var isShuttingDown = false
@@ -137,7 +138,7 @@ final class PuddleStore: ObservableObject {
     @Published var meetingLinkStatus: String?
     private var turnMetrics: TurnMetrics?
     private var modelConnection: ModelConnection?
-    private let reminderScheduler: any ReminderScheduling
+    let reminderScheduler: any ReminderScheduling
     private var approvalContinuation: CheckedContinuation<Bool, Never>?
     private var started = false
     private var startupTask: Task<Void, Never>?
@@ -470,27 +471,35 @@ final class PuddleStore: ObservableObject {
     func disconnect() async {
         guard !isShuttingDown, !privateSession, !isLocked else { return }
         guard !isDisconnecting else { return }
-        cancelSignIn(); generation = UUID(); await stopAI(); syncTask?.cancel(); pollingTask?.cancel()
         isDisconnecting = true
-        connected = false; grantedScopes = []; isSyncing = false; isRefreshingCalendar = false; selectedID = nil
-        Task {
-            defer { isDisconnecting = false }
-            do {
-                try await google.disconnect()
-                state.account = nil; state.messages = []; state.calendarEvents = []; state.lastSync = nil; state.mailHistoryID = nil; state.calendarHasMore = false; state.calendarLastSync = nil
-                record("Google disconnected. Assistant conversation, memory, and tasks retained.")
-                await persist(); startPolling()
-                await loadGoogleAccounts()
-            } catch { fail(error) }
+        defer { isDisconnecting = false; startPolling() }
+        cancelSignIn(); generation = UUID(); await stopAI(); syncTask?.cancel(); pollingTask?.cancel()
+        isSyncing = false; isRefreshingCalendar = false
+        do {
+            try await google.disconnect()
+            connected = false; grantedScopes = []; selectedID = nil
+            state.account = nil; state.messages = []; state.calendarEvents = []; state.lastSync = nil; state.mailHistoryID = nil; state.calendarHasMore = false; state.calendarLastSync = nil
+            record("Google disconnected. Assistant conversation, memory, and tasks retained.")
+            await persist()
+            await loadGoogleAccounts()
+        } catch {
+            connected = (try? await google.hasCredentials()) ?? true
+            grantedScopes = (try? await google.grantedScopes()) ?? grantedScopes
+            fail(error)
         }
     }
 
     func refresh() async {
         guard !isShuttingDown, !privateSession, !isLocked else { return }
-        await processReminders()
-        guard !demo, !isSyncing, !isRefreshingCalendar else { return }
+        let previous = syncTask, expected = generation
+        previous?.cancel()
         syncTask = Task {
+            await previous?.value
+            guard !Task.isCancelled, generation == expected, !isShuttingDown, !privateSession, !isLocked, !isDisconnecting else { return }
+            await processReminders()
+            guard !Task.isCancelled, generation == expected, !demo else { return }
             if mailConnected { await sync() }
+            guard !Task.isCancelled, generation == expected else { return }
             if calendarConnected { await refreshCalendar() }
         }
     }
@@ -783,6 +792,10 @@ final class PuddleStore: ObservableObject {
             guard sourceID.isEmpty || source != nil else { throw PuddleError("Use a cached source message ID or an empty string for a new email.") }
             let draft = MailDraft(to: try text("to", maximum: 2000), subject: try text("subject", maximum: 500),
                 body: try text("body", maximum: 20_000), threadID: source?.threadID, inReplyTo: source?.internetMessageID)
+            let trusted = userLine.flatMap { line in
+                line.kind == "external-reference" || line.kind?.hasPrefix("mail-reference:") == true ? nil : line.content
+            } ?? ""
+            try DraftGrounding.validate(draft.body, userContext: trusted)
             let proposal = ActionProposal(account: mailAccount ?? "", payload: .email(draft), sourceURL: source?.sourceURL, provider: state.settings.mailProvider)
             try await commit {
                 $0.actionProposals.insert(proposal, at: 0)
@@ -791,7 +804,8 @@ final class PuddleStore: ObservableObject {
             return "Saved local draft \(proposal.id). Ask the user to open Actions → Edit & Review. No email has been sent."
         case .knowledge:
             let query = try text("query", maximum: 2000)
-            let passages = LocalKnowledge.search(query, documents: state.knowledgeDocuments)
+            let passages = try await LocalKnowledge.searchAsync(query, documents: state.knowledgeDocuments)
+            try checkTurn(turn)
             try await receipt("Read \(passages.count) indexed document passages. Refresh sources for current file contents.", references: passages.map { SourceReference(title: $0.title + ":\($0.line)", url: $0.url) })
             return encoded(passages)
         case .workContext:
@@ -971,10 +985,22 @@ final class PuddleStore: ObservableObject {
         }
     }
 
-    private func approve(title: String, detail: String) async -> Bool {
-        await withCheckedContinuation { continuation in
-            approvalContinuation = continuation
-            pendingApproval = Approval(title: title, detail: detail)
+    func approve(title: String, detail: String) async -> Bool {
+        // Only one review can be displayed. Refuse overlapping requests without
+        // replacing the continuation belonging to the visible review.
+        guard approvalContinuation == nil, !Task.isCancelled, !isLocked, !isShuttingDown else { return false }
+        let approval = Approval(title: title, detail: detail)
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                guard !Task.isCancelled else { continuation.resume(returning: false); return }
+                approvalContinuation = continuation
+                pendingApproval = approval
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard self?.pendingApproval?.id == approval.id else { return }
+                self?.resolveApproval(false)
+            }
         }
     }
 
@@ -1024,14 +1050,14 @@ final class PuddleStore: ObservableObject {
     }
     func scheduleReminders() {
         guard !demo, !privateSession, storageAvailable else { return }
-        let tasks = state.tasks, enabled = state.settings.notifications
+        let tasks = state.tasks
         Task {
-            do { try await reminderScheduler.reconcile(tasks: tasks, enabled: enabled) }
+            do { try await reminderScheduler.reconcile(tasks: tasks, enabled: state.settings.notifications && !isLocked && !privateSession) }
             catch { fail(PuddleError("The task is saved, but macOS could not schedule its notification: \(error.localizedDescription)")) }
         }
     }
     func processReminders() async {
-        guard !isShuttingDown, !privateSession else { return }
+        guard !isShuttingDown, !privateSession, !isLocked else { return }
         let due = state.dueReminders()
         guard !due.isEmpty else { return }
         for task in due {
@@ -1056,7 +1082,7 @@ final class PuddleStore: ObservableObject {
     }
 
     private func claimAI() -> UUID? {
-        guard !isThinking, !isLocked, !isShuttingDown, !Task.isCancelled else { return nil }
+        guard !isThinking, !isLocked, !isShuttingDown, !isChangingWorkspace, !Task.isCancelled else { return nil }
         let claim = UUID(); aiGeneration = claim; isThinking = true
         stopSpeaking(); voiceInput.cancel()
         toolActivities = []; streamingReply = ""; turnMetrics = nil
@@ -1183,7 +1209,10 @@ final class PuddleStore: ObservableObject {
     }
 
     func enterDemo() async {
+        guard !privateSession, !isLocked, !isShuttingDown, !isChangingWorkspace else { return }
+        isChangingWorkspace = true; defer { isChangingWorkspace = false }
         await waitForPersistence()
+        guard !privateSession, !isLocked, !isShuttingDown else { return }
         browserWorkspace.stop()
         cancelAtlassianSignIn(); workSources.cancel(); githubConnection = nil; atlassianConnection = nil; workConnectionErrors = [:]
         developerWorkspace.reset()
@@ -1191,6 +1220,7 @@ final class PuddleStore: ObservableObject {
         cancelSignIn(); syncTask?.cancel(); pollingTask?.cancel(); await stopAI(); generation = UUID()
         isSyncing = false; isRefreshingCalendar = false
         inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil
+        guard !privateSession, !isLocked, !isShuttingDown else { return }
         demo = true; connected = false; selectedID = nil; errorMessage = nil; section = .today
         state = AppSnapshot(); state.account = "you@example.test"
         state.merge(DemoInbox.messages)
@@ -1209,11 +1239,15 @@ final class PuddleStore: ObservableObject {
         startPolling()
     }
     func leaveDemo() async {
+        guard !privateSession, !isLocked, !isShuttingDown, !isChangingWorkspace else { return }
+        isChangingWorkspace = true; defer { isChangingWorkspace = false }
         browserWorkspace.stop()
         cancelAtlassianSignIn(); workSources.cancel()
         developerWorkspace.reset()
         resetMeetingWorkspace()
-        await stopAI(); generation = UUID(); demo = false; section = .chat; selectedID = nil; errorMessage = nil
+        await stopAI()
+        guard !privateSession, !isLocked, !isShuttingDown else { return }
+        generation = UUID(); demo = false; section = .chat; selectedID = nil; errorMessage = nil
         inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil
         guard await loadState() else { return }
         Task {

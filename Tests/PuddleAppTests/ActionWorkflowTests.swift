@@ -19,6 +19,8 @@ private actor ActionHTTP: HTTPTransport {
     var holdWrites = false
     func hold() { holdWrites = true }
     var writes: [URLRequest] = []; var loseResponse = false
+    var failureText: String?
+    func configureFailure(_ text: String) { failureText = text }
     var confirmedAction: ActionProposal?
     var unrelatedReceipt = false
     func confirm(_ action: ActionProposal) { confirmedAction = action }
@@ -30,6 +32,7 @@ private actor ActionHTTP: HTTPTransport {
             writes.append(request)
             if holdWrites { await writeGate.pause() }
             if loseResponse { throw URLError(.networkConnectionLost) }
+            if let failureText { throw PuddleError(failureText) }
             body = #"{"id":"sent-fixture","threadId":"thread-fixture"}"#
         } else if request.url?.path == "/v1/models" { body = #"{"data":[{"id":"fixture"}]}"# }
         else if let action = confirmedAction, request.url?.path.hasSuffix("/messages") == true {
@@ -44,6 +47,19 @@ private actor ActionHTTP: HTTPTransport {
     }
 }
 @MainActor final class ActionWorkflowTests: XCTestCase {
+    func testProviderErrorTextIsNotPersistedOrShownOnUncertainAction() async throws {
+        let (store, disk, http) = try fixture(); await store.start()
+        await http.configureFailure("PRIVATE_PROVIDER_TOKEN\n" + String(repeating: "detail", count: 4000))
+        let proposal = action(); _ = await store.saveAction(proposal)
+        await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
+        let detail = try XCTUnwrap(disk.snapshot.actionProposals.first?.detail)
+        XCTAssertEqual(disk.snapshot.actionProposals.first?.status, .uncertain)
+        XCTAssertLessThan(detail.count, 200); XCTAssertFalse(detail.contains("PRIVATE_PROVIDER_TOKEN"))
+        XCTAssertEqual(store.errorMessage, detail)
+        await store.executeAction(proposal.id, reviewedDigest: proposal.digest)
+        let writes = await http.writes; XCTAssertEqual(writes.count, 1)
+        await store.suspendConnectionWork()
+    }
     func testQuitWaitsForDispatchedProviderReceiptBeforeReplying() async throws {
         let (store, disk, http) = try fixture(); await store.start(); await http.hold()
         let proposal = action(); _ = await store.saveAction(proposal)

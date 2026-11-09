@@ -180,3 +180,9 @@ changed-installer and retry workflows run in `ReleaseUpdateWorkflowTests` with
 synthetic metadata and a disposable download folder. `make verify-local` covers
 these alongside the live local checks; actual HTTPS hosting, Developer ID,
 notarization and clean-Mac install/upgrade remain owner-environment gates.
+
+Manual update verification propagates cancellation to its background worker and
+checks cancellation between hash chunks. Immediately before opening an installer,
+Puddle rechecks the actual file through a bounded no-follow descriptor. This
+intentional disk recheck detects changes after download without buffering another
+full installer in memory.

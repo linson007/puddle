@@ -84,11 +84,7 @@ public final class URLSessionTransport: HTTPTransport, Sendable {
     deinit { session.invalidateAndCancel() }
 
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        let (data, response) = try await session.data(for: request)
-        guard let response = response as? HTTPURLResponse else {
-            throw PuddleError("The service returned an unreadable response.")
-        }
-        return (data, response)
+        try await sendBounded(request, maximumBytes: 8 * 1024 * 1024, until: nil)
     }
 
     public func sendBounded(_ request: URLRequest, maximumBytes: Int, until: (@Sendable (Data, HTTPURLResponse) -> Bool)?) async throws -> (Data, HTTPURLResponse) {

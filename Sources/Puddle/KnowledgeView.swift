@@ -43,8 +43,10 @@ struct KnowledgeView: View {
             }.padding(28).frame(maxWidth: 960, alignment: .leading).frame(maxWidth: .infinity)
         }.task(id: store.knowledgeSearchQuery + ":" + store.state.knowledgeDocuments.map { $0.sha256 }.joined()) {
             let documents = store.state.knowledgeDocuments, query = store.knowledgeSearchQuery
-            let found = await Task.detached(priority: .userInitiated) { LocalKnowledge.search(query, documents: documents) }.value
-            if !Task.isCancelled { matches = found }
+            do {
+                let found = try await LocalKnowledge.searchAsync(query, documents: documents)
+                if !Task.isCancelled { matches = found }
+            } catch { if !Task.isCancelled { store.fail(error) } }
         }.confirmationDialog("Remove this source and its indexed text?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
             Button("Remove Source", role: .destructive) { Task { if let source = removing { await store.removeKnowledgeSource(source.id) }; removing = nil } }
         }

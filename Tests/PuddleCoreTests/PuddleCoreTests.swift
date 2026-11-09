@@ -68,9 +68,9 @@ final class OAuthTests: XCTestCase {
     }
     func testCallbackRequiresUniqueMatchingStateAndCode() throws {
         let flow = OAuthFlow(verifier: "verifier", state: "correct")
-        XCTAssertEqual(try flow.code(from: URL(string: "http://127.0.0.1/?state=correct&code=a%2Bb")!), "a+b")
+        XCTAssertEqual(try flow.code(from: URL(string: "http://127.0.0.1/?state=correct&code=a%2Bb")!, redirect: URL(string: "http://127.0.0.1/")!), "a+b")
         for query in ["state=wrong&code=code", "state=correct&state=correct&code=code", "state=correct", "state=correct&code=a&code=b", "state=correct&error=access_denied"] {
-            XCTAssertThrowsError(try flow.code(from: URL(string: "http://127.0.0.1/?\(query)")!))
+            XCTAssertThrowsError(try flow.code(from: URL(string: "http://127.0.0.1/?\(query)")!, redirect: URL(string: "http://127.0.0.1/")!))
         }
     }
     func testFormEncodingDoesNotConfusePlusAndAmpersand() {
@@ -106,6 +106,15 @@ final class OAuthTests: XCTestCase {
         XCTAssertEqual(Set(tokens), ["updated"])
         let count = await transport.requests.count
         XCTAssertEqual(count, 1)
+    }
+    func testRejectedOldTokenUsesCurrentRotatedCredentialsWithoutRefreshing() async throws {
+        let transport = FixtureTransport { _ in XCTFail("A current token must not refresh with stale credentials"); return (Data(), 500) }
+        let (google, secrets) = try session(transport: transport, expired: true)
+        let rotated = GoogleCredentials(accessToken: "current-access", refreshToken: "rotated-refresh", expiresAt: .distantFuture, scope: OAuthFlow.scope)
+        try secrets.write(JSONEncoder().encode(rotated), key: "google-tokens")
+        let access = try await google.accessToken(rejected: "old-access")
+        XCTAssertEqual(access, "current-access")
+        let count = await transport.requests.count; XCTAssertEqual(count, 0)
     }
     func testExchangeRejectsMissingReadPermission() async throws {
         let transport = FixtureTransport { _ in (try json(["access_token": "new", "refresh_token": "refresh", "expires_in": 3600, "scope": "email"]), 200) }

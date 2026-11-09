@@ -68,9 +68,9 @@ public final class ProjectFiles: Sendable {
               !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }) else { return false }
         for component in parts {
             let value = component.lowercased()
-            if ignoredDirectories.contains(value) || value.hasPrefix(".env") || value.hasPrefix("client_secret") ||
+            if ignoredDirectories.contains(value) || [".netrc", ".npmrc", ".pypirc", ".htpasswd", ".dockercfg", ".kube"].contains(value) || value.hasPrefix(".docker") || value.hasPrefix(".env") || value.hasPrefix("client_secret") ||
                 value.contains("credentials") || value == "secrets" || value.hasPrefix("secrets.") ||
-                value.hasPrefix("id_rsa") || value.hasPrefix("id_ed25519") || value.hasSuffix(".pem") ||
+                value.hasPrefix("id_rsa") || value.hasPrefix("id_ed25519") || value.hasPrefix("id_dsa") || value.hasPrefix("id_ecdsa") || value.hasSuffix(".pem") ||
                 value.hasSuffix(".key") || value.hasSuffix(".p12") || value.hasSuffix(".pfx") || value.hasSuffix(".keystore") { return false }
         }
         guard !directory else { return true }
@@ -200,7 +200,7 @@ public final class ProjectFiles: Sendable {
         let patterns = [#"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"#, #"\bAKIA[0-9A-Z]{16}\b"#,
             #"\bgh[pousr]_[A-Za-z0-9]{20,}\b"#, #"\bgithub_pat_[A-Za-z0-9_]{20,}\b"#,
             #"\bsk-(?:proj-)?[A-Za-z0-9_-]{24,}\b"#,
-            #"(?i)(?:password|api[_-]?key|client[_-]?secret|access[_-]?token)\s*[=:]\s*["'][^"'\s]{12,}["']"#]
+            #"(?i)(?:password|passwd|api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|token|secret|_auth(?:token)?)["']?\s*(?:[=:]|\s)\s*["']?[^"'\s,;}{]{8,}"#]
         return patterns.contains { text.range(of: $0, options: .regularExpression) != nil }
     }
 

@@ -1,15 +1,12 @@
 # Localization
 
-English is the source language. Turkish is the first additional locale. The
-initial scope covers primary navigation, common buttons, local AI setup,
-settings, meeting capture controls and common recovery errors. Detailed provider
-instructions, specialist screens, dynamic provider errors and generated text may
-still use English. This is an incremental translation, not a claim that every
-screen is fully translated. User content, persistent enum values, protocol keys
-and model identifiers must retain their original values.
+English is the only shipping locale. Turkish translations remain in the catalog
+as work in progress and are not advertised or bundled until the remaining UI
+literal debt is translated. This avoids presenting a mostly English application
+as a supported Turkish localization.
 
 Edit [Localizable.xcstrings](../Localization/Localizable.xcstrings) in Xcode or a
-JSON editor. Each scoped key needs translated English and Turkish string units.
+JSON editor. Shipping keys need complete English string units; preserve Turkish draft translations in the catalog.
 Run:
 
 ```sh
@@ -21,9 +18,9 @@ sh scripts/swift.sh test --filter LocalizationTests
 The exporter commits `.strings` resources for SwiftPM builds that do not invoke
 Xcode's catalog compiler. CI rejects missing translations and stale exports.
 `L10n.text` resolves strings from the package resource bundle; unknown keys keep
-the readable English key. The app bundle includes both locales and the package
+the readable English key. The app bundle includes the shipping locales and the package
 resource bundle. The build also copies the same `.strings` exports into the main
-app's `en.lproj` and `tr.lproj`, where SwiftUI's literal `Text`, `Button`, `Label`
+app's shipping `.lproj` folders, where SwiftUI's literal `Text`, `Button`, `Label`
 and other `LocalizedStringKey` initializers look them up. Both lookup paths use
 the same catalog keys. `scripts/verify-bundle.py` requires identical catalog
 exports in the main and package bundles. A bare `swift run` executable does not
@@ -48,19 +45,14 @@ When deliberately accepting or reducing existing debt, run
 Do not regenerate it simply to pass CI for new untranslated labels. Scanner and
 negative CI cases run with `python3 -m unittest discover -s scripts -p 'test_*.py'`.
 
-To review Turkish, select it for Puddle in macOS System Settings → General →
-Language & Region → Applications, or launch a separate demo instance:
-
-```sh
-open -n build/Puddle.app --args --demo -AppleLanguages '(tr)'
-```
-
-Check sidebar, Settings, task actions, local AI setup, meeting controls and error
-layout. Switching language must not rename saved tasks, memories or profiles.
-Add supported locales to `Localization/locales.json` and translate their catalog
-entries, then run the exporter. Export, build and verification read that manifest;
+Add supported locales to `Localization/locales.json` only after translating the catalog
+entries and eliminating untranslated UI literals, then run the exporter. Export, build and verification read that manifest;
 the build generates `CFBundleLocalizations` from it. `make build` checks exports
 before compiling, assembles a fresh app, and replaces the previous bundle only
 after signing succeeds. Verification rejects stale resources and locale folders.
 Before translating interpolated text, define
 format/plural keys in the catalog rather than concatenating translated fragments.
+
+The exporter refuses any additional shipping locale while direct UI literals
+remain untranslated, even if that debt appears in the baseline. Catalog work may
+continue without adding a language to the shipping manifest.

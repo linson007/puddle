@@ -47,7 +47,7 @@ public struct GoogleActionClient: Sendable {
         if let etag { request.setValue(etag, forHTTPHeaderField: "If-Match") }
         if method != "DELETE" { request.httpBody = try JSONSerialization.data(withJSONObject: body) }
         // Writes are dispatched exactly once. Transport failures require reconciliation, never automatic retry.
-        let (data, response) = try await transport.send(request)
+        let (data, response) = try await transport.sendBounded(request, maximumBytes: 1024 * 1024, until: nil)
         if response.statusCode == 412 { throw PuddleError("The event changed elsewhere. Refresh it and review a new proposal.") }
         try checkHTTP(response, data: data, service: "Google")
         if case .calendarRemoval(let value) = action.payload { return ActionResult(id: value.eventID, url: action.sourceURL) }

@@ -78,16 +78,20 @@ struct PrivacyLockView: View {
 
 extension PuddleStore {
     func beginPrivateSession() async {
+        guard !isChangingWorkspace else { return }
+        isChangingWorkspace = true; defer { isChangingWorkspace = false }
         await waitForPersistence()
         guard !demo, !privateSession, !meetingCapture.isActive, !isLocked, executingActions.isEmpty else { return }
         await stopAI(); cancelMeetingSummary(); await suspendConnectionWork(); browserWorkspace.stop(); meetAttendance.leave(); systemDictation.stop()
+        guard !demo, !isLocked, !isShuttingDown else { return }
         savedPrivateWorkspace = state; privateSession = true
         state.chat = []; state.conversations = []; state.actionProposals = []; state.currentConversationID = UUID()
         state.settings.automaticallyLearn = false; state.settings.automaticallyCheck = false
         networkPolicy.allowExternalConnections(false); section = .chat; errorMessage = nil
     }
     func endPrivateSession() async {
-        guard privateSession, let saved = savedPrivateWorkspace else { return }
+        guard !isChangingWorkspace, privateSession, let saved = savedPrivateWorkspace else { return }
+        isChangingWorkspace = true; defer { isChangingWorkspace = false }
         await stopAI(); cancelMeetingSummary(); resetMeetingWorkspace()
         state = saved; savedPrivateWorkspace = nil; privateSession = false; errorMessage = nil
         networkPolicy.allowExternalConnections(!state.settings.networkDisabled && !isLocked); startPolling()
@@ -110,12 +114,14 @@ extension PuddleStore {
         // Revoke access before cleanup can suspend for a durable checkpoint.
         isLocked = true; networkPolicy.allowExternalConnections(false)
         systemDictation.stop(); meetingCapture.stopImmediately(); meetAttendance.leave()
+        await clearReminderNotifications()
         await stopAI(); cancelMeetingSummary(); await suspendConnectionWork(); browserWorkspace.stop()
     }
     func unlockWorkspace() {
         isLocked = false; networkPolicy.allowExternalConnections(!state.settings.networkDisabled && !privateSession)
         if !privateSession { startPolling() }
         if !privateSession { systemDictation.configure(state.settings) }
+        scheduleReminders()
     }
     var expiredArchiveIDs: Set<UUID> {
         guard state.settings.archiveRetentionDays > 0 else { return [] }

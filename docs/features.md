@@ -527,7 +527,8 @@ agendas, notes, transcripts, summary quotes, and action items. Search ignores
 case, accents, and character width. Results show a matching passage and mark
 unsaved drafts; draft text replaces its saved version in search. Searches run
 off the main UI thread with cancellation, and filtering never discards a draft
-or changes the selected note. Previous summaries remain searchable and labeled.
+or changes the selected note. At most 80 matching meetings are returned; a notice
+asks for a narrower query when more match. Previous summaries remain searchable and labeled.
 
 Notes include an editable title, meeting date, participants, agenda, personal
 notes, and a separate transcript field. Choose **Save** to keep edits across
@@ -753,3 +754,9 @@ signed-manifest manual updates require owner configuration; see [release setup](
 See [testing](testing.md) for automated and manual verification.
 The [security and guardrail record](security-testing-2026-10-30.md) documents
 the source review, corrections, adversarial tests and remaining release gates.
+
+Reminder notifications use generic text and a task ID, without the commitment
+title. Locking clears pending reminders and Puddle's delivered reminder banners;
+unlocking reschedules eligible future reminders. While locked, edits do not
+schedule notifications. Assistant replies and generated mail summaries display
+literal text, so model-provided Markdown links do not open destinations.

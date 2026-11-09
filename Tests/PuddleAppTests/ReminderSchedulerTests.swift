@@ -6,9 +6,11 @@ import PuddleCore
 
 @MainActor private final class FakeNotifications: NotificationScheduling {
     var requests: [String: UNNotificationRequest] = [:]
+    var delivered = Set<String>()
     func pendingIdentifiers() async -> [String] { Array(requests.keys) }
     func removePending(_ identifiers: [String]) { for id in identifiers { requests[id] = nil } }
     func add(_ request: UNNotificationRequest) async throws { requests[request.identifier] = request }
+    func clearDeliveredReminders() async { delivered = delivered.filter { !$0.hasPrefix("puddle.reminder.") } }
 }
 
 @MainActor final class ReminderSchedulerTests: XCTestCase {
@@ -16,13 +18,14 @@ import PuddleCore
         let center = FakeNotifications(), scheduler = ReminderScheduler(center: center)
         var task = AssistantTask(title: "Original", dueAt: Date().addingTimeInterval(600))
         let identifier = "puddle.reminder.\(task.id.uuidString)"
+        center.delivered = [identifier, "unrelated"]
         try await scheduler.reconcile(tasks: [task], enabled: true)
-        XCTAssertEqual(center.requests[identifier]?.content.body, "Original")
+        XCTAssertEqual(center.requests[identifier]?.content.body, "A commitment is due. Open Puddle to review.")
         XCTAssertTrue(center.requests[identifier]?.trigger is UNTimeIntervalNotificationTrigger)
         task.title = "Changed"
         try await scheduler.reconcile(tasks: [task], enabled: true)
         XCTAssertEqual(center.requests.count, 1)
-        XCTAssertEqual(center.requests[identifier]?.content.body, "Changed")
+        XCTAssertEqual(center.requests[identifier]?.content.body, "A commitment is due. Open Puddle to review.")
         task.completed = true
         try await scheduler.reconcile(tasks: [task], enabled: true)
         XCTAssertTrue(center.requests.isEmpty)
@@ -30,6 +33,7 @@ import PuddleCore
         try await scheduler.reconcile(tasks: [task], enabled: true)
         try await scheduler.reconcile(tasks: [task], enabled: false)
         XCTAssertTrue(center.requests.isEmpty)
+        XCTAssertEqual(center.delivered, ["unrelated"])
     }
 
     func testReconciliationDoesNotRescheduleOverdueOrAlreadyNotifiedTasks() async throws {

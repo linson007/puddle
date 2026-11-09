@@ -50,6 +50,15 @@ public protocol CuaBrowserControlling: Sendable {
     func disconnect() async
 }
 
+public struct CuaConnectionError: LocalizedError, Sendable {
+    let actionMayHaveHappened: Bool
+    init(actionMayHaveHappened: Bool = false) { self.actionMayHaveHappened = actionMayHaveHappened }
+    public var errorDescription: String? {
+        (actionMayHaveHappened ? "The browser action was dispatched and may have happened. " : "") +
+        "The browser connection stopped. Reconnect in Browser, then inspect the page before repeating an action."
+    }
+}
+
 /// Browser-only adapter: no raw JavaScript, shell, desktop input, uploads or
 /// attachment to personal browser profiles is exposed to the model.
 public actor CuaBrowser: CuaBrowserControlling {
@@ -205,7 +214,8 @@ public actor CuaBrowser: CuaBrowserControlling {
         do {
             let page = try await snapshot(query: "")
             return CuaBrowserPage(text: "Action result (verify the requested outcome):\n\(result.text)\nFresh page state:\n\(page.text)", summary: page.summary, processID: page.processID, elements: page.elements, actions: page.actions)
-        } catch is CancellationError { throw CancellationError() }
+        } catch is CuaConnectionError { throw CuaConnectionError(actionMayHaveHappened: true) }
+        catch is CancellationError { throw CancellationError() }
         catch { throw PuddleError("The browser action was dispatched, but its result could not be observed. It may have happened. Read the page before repeating it.") }
     }
 
@@ -236,7 +246,13 @@ public actor CuaBrowser: CuaBrowserControlling {
     private func rpc(_ method: String, _ args: [String: ConnectorJSON]) async throws -> ConnectorJSON {
         guard let transport else { throw PuddleError("The Cua browser is disconnected.") }
         let expected = generation
-        let result = try await transport.rpc(method, parameters: .object(args), notification: false)
+        let result: ConnectorJSON
+        do { result = try await transport.rpc(method, parameters: .object(args), notification: false) }
+        catch {
+            if generation == expected { await disconnect() }
+            if PuddleDiagnostics.isCancellation(error) || Task.isCancelled { throw CancellationError() }
+            throw CuaConnectionError()
+        }
         try check(expected)
         return result
     }
@@ -246,7 +262,7 @@ public actor CuaBrowser: CuaBrowserControlling {
         if withSession { args["session"] = .string(session) }
         let result = try await rpc("tools/call", ["name": .string(name), "arguments": .object(args)])
         let text = result["content"]?.array?.compactMap { $0["type"]?.string == "text" ? $0["text"]?.string : nil }.joined(separator: "\n") ?? ""
-        let value = result["structuredContent"] ?? (try? JSONDecoder().decode(ConnectorJSON.self, from: Data(text.utf8))) ?? .null
+        let value = result["structuredContent"] ?? (try? WorkConnectorHTTP.decode(Data(text.utf8))) ?? .null
         guard result["isError"]?.bool != true, value["refusal"] == nil, value["status"]?.string != "refused" else {
             let problem = value["refusal"] ?? value["error"] ?? value
             let code = String((problem["code"]?.string ?? "request_refused").prefix(100))

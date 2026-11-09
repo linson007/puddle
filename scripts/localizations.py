@@ -130,6 +130,8 @@ def main():
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(expected)
     missing, locations = coverage(catalog)
+    if any(locale != 'en' for locale in locales) and missing:
+        raise SystemExit('Additional shipping locales require complete UI coverage; translate the remaining literals before advertising another language.')
     if args.update_baseline:
         entries = [dict(path=path, call=call, key=key, count=count)
                    for (path, call, key), count in sorted(missing.items())]

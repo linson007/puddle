@@ -10,12 +10,27 @@ import UserNotifications
     func pendingIdentifiers() async -> [String]
     func removePending(_ identifiers: [String])
     func add(_ request: UNNotificationRequest) async throws
+    func clearDeliveredReminders() async
 }
 
+extension NotificationScheduling { func clearDeliveredReminders() async {} }
+
 @MainActor final class SystemNotifications: NotificationScheduling {
-    func pendingIdentifiers() async -> [String] { await UNUserNotificationCenter.current().pendingNotificationRequests().map(\.identifier) }
-    func removePending(_ identifiers: [String]) { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers) }
+    func pendingIdentifiers() async -> [String] {
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return [] }
+        return await UNUserNotificationCenter.current().pendingNotificationRequests().map(\.identifier)
+    }
+    func removePending(_ identifiers: [String]) {
+        guard !identifiers.isEmpty else { return }
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: identifiers)
+    }
     func add(_ request: UNNotificationRequest) async throws { try await UNUserNotificationCenter.current().add(request) }
+    func clearDeliveredReminders() async {
+        guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+        let center = UNUserNotificationCenter.current()
+        let ids = await center.deliveredNotifications().map(\.request.identifier).filter { $0.hasPrefix("puddle.reminder.") }
+        center.removeDeliveredNotifications(withIdentifiers: ids)
+    }
 }
 
 /// Serialize reconciliation so a slow earlier request cannot restore a deleted reminder.
@@ -30,11 +45,11 @@ import UserNotifications
             _ = try? await previous?.value
             let owned = await center.pendingIdentifiers().filter { $0.hasPrefix("puddle.reminder.") }
             center.removePending(owned)
-            guard enabled else { return }
+            guard enabled else { await center.clearDeliveredReminders(); return }
             for task in tasks where !task.completed && task.notifiedAt == nil {
                 guard let due = task.dueAt, due > Date() else { continue }
                 let content = UNMutableNotificationContent()
-                content.title = "Puddle reminder"; content.body = task.title; content.sound = .default
+                content.title = "Puddle reminder"; content.body = "A commitment is due. Open Puddle to review."; content.sound = .default
                 content.userInfo = ["taskID": task.id.uuidString]
                 let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, due.timeIntervalSinceNow), repeats: false)
                 try await center.add(UNNotificationRequest(identifier: "puddle.reminder.\(task.id.uuidString)", content: content, trigger: trigger))
@@ -42,5 +57,12 @@ import UserNotifications
         }
         work = task
         try await task.value
+    }
+}
+
+extension PuddleStore {
+    func clearReminderNotifications() async {
+        do { try await reminderScheduler.reconcile(tasks: [], enabled: false) }
+        catch { fail(PuddleError("Puddle could not clear reminder notifications. Check Notification Center.")) }
     }
 }

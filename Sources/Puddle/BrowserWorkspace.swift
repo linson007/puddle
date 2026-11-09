@@ -55,7 +55,10 @@ import PuddleCore
             if revision == expected { stop() }
             throw CancellationError()
         } catch {
-            if revision == expected { self.error = error.localizedDescription }
+            if revision == expected {
+                if error is CuaConnectionError { stop() }
+                self.error = error.localizedDescription
+            }
             throw error
         }
     }

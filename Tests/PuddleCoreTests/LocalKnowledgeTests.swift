@@ -14,7 +14,7 @@ final class LocalKnowledgeTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: folder.appendingPathComponent("linked.txt"), withDestinationURL: file)
         let source = try KnowledgeSource(url: folder), first = try LocalKnowledge.refresh(source, previous: [])
         XCTAssertEqual(first.1.count, 1)
-        let matches = LocalKnowledge.search("blue design", documents: first.1)
+        let matches = try LocalKnowledge.search("blue design", documents: first.1)
         XCTAssertEqual(matches.count, 1); XCTAssertEqual(matches[0].url.resolvingSymlinksInPath(), file.resolvingSymlinksInPath())
         try Data("Changed launch plan: Tuesday now.".utf8).write(to: file)
         let next = try LocalKnowledge.refresh(source, previous: first.1)

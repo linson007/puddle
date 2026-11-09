@@ -22,6 +22,7 @@ struct PendingTranscriptImport: Identifiable {
     @Published var summaryError: String?
     @Published var searchQuery = ""
     @Published private(set) var searchResults: [MeetingSearchResult] = []
+    @Published private(set) var searchHasMore = false
     @Published private(set) var isSearching = false
     @Published private(set) var searchError: String?
     private(set) var searchTask: Task<Void, Never>?
@@ -49,23 +50,23 @@ struct PendingTranscriptImport: Identifiable {
     func reset() {
         cancelImport(); drafts = [:]; appliedRecoveries = [:]; selectedID = nil; status = nil
         summarizingID = nil; summaryProgress = ""; summaryError = nil
-        searchGeneration = UUID(); searchTask?.cancel(); searchQuery = ""; searchResults = []; isSearching = false; searchError = nil
+        searchGeneration = UUID(); searchTask?.cancel(); searchQuery = ""; searchResults = []; searchHasMore = false; isSearching = false; searchError = nil
     }
 
     func updateSearch(notes: [MeetingNote]) {
         searchTask?.cancel(); searchGeneration = UUID(); let expected = searchGeneration
-        searchError = nil
+        searchError = nil; searchHasMore = false
         let query = searchQuery, drafts = drafts
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { searchResults = []; isSearching = false; return }
         isSearching = true
         searchTask = Task { [weak self] in
             do {
                 try await Task.sleep(for: .milliseconds(120))
-                let worker = Task.detached(priority: .userInitiated) { try MeetingSearch.results(notes: notes, drafts: drafts, query: query) }
+                let worker = Task.detached(priority: .userInitiated) { try MeetingSearch.page(notes: notes, drafts: drafts, query: query) }
                 let results = try await withTaskCancellationHandler { try await worker.value } onCancel: { worker.cancel() }
                 try Task.checkCancellation()
                 guard let self, self.searchGeneration == expected else { return }
-                self.searchResults = results; self.isSearching = false
+                self.searchResults = results.results; self.searchHasMore = results.hasMore; self.isSearching = false
             } catch is CancellationError {}
             catch {
                 guard let self, self.searchGeneration == expected else { return }
