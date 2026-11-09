@@ -64,6 +64,7 @@ final class PuddleStore: ObservableObject {
     var saveCaptureOnCompletion: UUID?
     var activeBrowserErrandID: UUID?
     var routineTask: Task<Void, Never>?
+    var routineLaunching = false
     var routineGeneration = UUID()
     var knowledgeTask: Task<Void, Never>?
     @Published var knowledgeSearchQuery = ""

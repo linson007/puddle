@@ -42,6 +42,41 @@ private actor IncorrectBriefingHTTP: HTTPTransport {
     }
 }
 
+private final class BlockingRoutineDisk: SnapshotPersistence, @unchecked Sendable {
+    private let lock = NSCondition()
+    private var saved = AppSnapshot()
+    private var entered: XCTestExpectation?
+    private var holding = false
+    var snapshot: AppSnapshot {
+        get { lock.withLock { saved } }
+        set { lock.withLock { saved = newValue } }
+    }
+    func load() throws -> AppSnapshot { snapshot }
+    func save(_ next: AppSnapshot) throws {
+        lock.withLock {
+            entered?.fulfill(); entered = nil
+            while holding { lock.wait() }
+            saved = next
+        }
+    }
+    func blockNextSave(_ expectation: XCTestExpectation) { lock.withLock { entered = expectation; holding = true } }
+    func releaseSave() { lock.withLock { holding = false; lock.broadcast() } }
+}
+private actor GatedRoutineHTTP: HTTPTransport {
+    let gate = AsyncTestGate()
+    var generations = 0
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        let body: String
+        if request.url?.path == "/v1/models" { body = #"{"data":[{"id":"fixture"}]}"# }
+        else if request.httpMethod == "POST" {
+            generations += 1
+            await gate.pause()
+            body = #"{"choices":[{"message":{"content":"Fixture daily review."},"finish_reason":"stop"}]}"#
+        } else { body = "{}" }
+        return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
 @MainActor final class RoutineWorkflowTests: XCTestCase {
     private final class Scheduler: ReminderScheduling { func reconcile(tasks: [AssistantTask], enabled: Bool) async throws {} }
     func testDefaultRoutinePersistsCorrectCountdownAndNeverSchedulesAnUndatedTitle() async throws {
@@ -90,5 +125,72 @@ private actor IncorrectBriefingHTTP: HTTPTransport {
         await store.start()
         do { _ = try await store.readRoutineTool(AgentToolCall(name: AgentTool.remind.rawValue, arguments: "{}")); XCTFail("Write tool accepted") } catch {}
         XCTAssertTrue(store.state.tasks.isEmpty)
+    }
+    func testOverlappingRunNowRequestsStartOneRoutineRunWhileTheFirstRecordIsSaving() async throws {
+        let disk = BlockingRoutineDisk(), http = RoutineHTTP(), routine = AssistantRoutine()
+        disk.snapshot.routines = [routine]
+        let store = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: http, reminderScheduler: Scheduler())
+        await store.start()
+        let saving = expectation(description: "First routine record is saving")
+        disk.blockNextSave(saving)
+        let first = Task { await store.runRoutineNow(routine.id) }
+        await fulfillment(of: [saving], timeout: 5)
+        let second = Task { await store.runRoutineNow(routine.id) }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(store.state.routineRuns.count, 1)
+        disk.releaseSave()
+        await first.value; await second.value
+        for _ in 0..<200 where store.routineTask != nil { try await Task.sleep(for: .milliseconds(5)) }
+        let count = await http.generations; XCTAssertEqual(count, 1)
+    }
+    func testQuitDuringRoutineRunInterruptsItAndRelaunchNeverReplaysIt() async throws {
+        let disk = BlockingRoutineDisk(), http = GatedRoutineHTTP(), routine = AssistantRoutine()
+        disk.snapshot.routines = [routine]
+        let store = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: http, reminderScheduler: Scheduler())
+        await store.start()
+        await store.runRoutineNow(routine.id)
+        await fulfillment(of: [http.gate.entered], timeout: 5)
+        let run = store.routineTask
+        let lifecycle = PuddleLifecycle(); lifecycle.store = store
+        lifecycle.terminationTimeout = .milliseconds(50); lifecycle.confirmQuit = { _, _ in true }
+        let answered = expectation(description: "Quit answered while the routine is blocked")
+        var replies = 0
+        XCTAssertEqual(lifecycle.requestTermination { allow in XCTAssertTrue(allow); replies += 1; answered.fulfill() }, .terminateLater)
+        let firstTask = lifecycle.terminationTask
+        await fulfillment(of: [answered], timeout: 5)
+        await http.gate.release(); await run?.value; await firstTask?.value
+        XCTAssertEqual(replies, 1)
+        XCTAssertEqual(store.state.routineRuns.first?.status, .interrupted)
+        XCTAssertFalse(store.state.routineRuns.first?.result.contains("Fixture daily review.") ?? true)
+        XCTAssertEqual(disk.snapshot.routineRuns.first?.status, .interrupted)
+        let count = await http.generations; XCTAssertEqual(count, 1)
+        let relaunchHTTP = RoutineHTTP()
+        let restarted = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: relaunchHTTP, reminderScheduler: Scheduler())
+        await restarted.start()
+        XCTAssertEqual(restarted.state.routineRuns.first?.status, .interrupted)
+        XCTAssertNil(restarted.routineTask)
+        let relaunchCount = await relaunchHTTP.generations; XCTAssertEqual(relaunchCount, 0)
+        await restarted.suspendConnectionWork(); await store.suspendConnectionWork()
+    }
+    func testQuitWhileRoutineRecordIsSavingNeverStartsTheRun() async throws {
+        let disk = BlockingRoutineDisk(), http = RoutineHTTP(), routine = AssistantRoutine()
+        disk.snapshot.routines = [routine]
+        let store = PuddleStore(cache: disk, secrets: RoutineSecrets(), transport: http, reminderScheduler: Scheduler())
+        await store.start()
+        let saving = expectation(description: "Routine record is saving")
+        disk.blockNextSave(saving)
+        let launch = Task { await store.runRoutineNow(routine.id) }
+        await fulfillment(of: [saving], timeout: 5)
+        let lifecycle = PuddleLifecycle(); lifecycle.store = store
+        lifecycle.terminationTimeout = .milliseconds(50); lifecycle.confirmQuit = { _, _ in true }
+        let answered = expectation(description: "Quit answered while the record is saving")
+        XCTAssertEqual(lifecycle.requestTermination { _ in answered.fulfill() }, .terminateLater)
+        let firstTask = lifecycle.terminationTask
+        await fulfillment(of: [answered], timeout: 5)
+        disk.releaseSave(); await launch.value; await firstTask?.value
+        XCTAssertNil(store.routineTask)
+        let count = await http.generations; XCTAssertEqual(count, 0)
+        XCTAssertEqual(store.state.routineRuns.first?.status, .interrupted)
+        await store.suspendConnectionWork()
     }
 }
