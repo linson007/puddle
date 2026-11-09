@@ -64,6 +64,15 @@ This follow-up does not change the public-distribution hold. Record exact artifa
 hash, OS, hardware, provider/model/helper versions, tester, date and observed
 results for every external gate. Do not mark a row accepted from fixture counts.
 
+The follow-ups are split into independent PRs: [storage recovery and crash drills
+(#82)](https://github.com/linson007/puddle/pull/82) and [model/helper compatibility
+acceptance (#83)](https://github.com/linson007/puddle/pull/83). The
+[release acceptance record](releases.md#artifact-bound-acceptance-record) tracks
+the remaining environment evidence against the exact final archive. It starts
+with every gate pending and prevents the scripted promotion check from passing
+without complete evidence and operational ownership. Creating a record or merging
+the tooling does not establish live acceptance or lift the distribution hold.
+
 ## Work before live-model acceptance
 
 The owner chose page reading, URL navigation and scrolling for the first release
