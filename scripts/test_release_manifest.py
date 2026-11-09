@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+import release_acceptance
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -47,6 +49,7 @@ class ReleaseManifestTests(unittest.TestCase):
         self.info.write_bytes(plistlib.dumps({'CFBundleIdentifier': 'app.puddle.release-fixture',
             'CFBundleExecutable': 'Puddle', 'CFBundlePackageType': 'APPL',
             'CFBundleShortVersionString': '1.0.0', 'CFBundleVersion': '10',
+            'LSMinimumSystemVersion': '14.0', 'PuddleUpdateManifestURL': 'https://release.example.test/stable.json',
             'PuddleUpdatePublicKey': self.public}))
         subprocess.run(['/usr/bin/codesign', '--force', '--sign', '-', str(self.app)],
                        capture_output=True, check=True, timeout=30)
@@ -71,7 +74,7 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertEqual(len(base64.b64decode(envelope['signature'])), 64)
         envelope['signature'] = base64.b64encode(bytes(64)).decode()
         self.manifest.write_text(json.dumps(envelope))
-        rejected = subprocess.run([str(self.verifier), str(self.archive), str(self.manifest), self.public],
+        rejected = subprocess.run([str(self.verifier), str(self.archive), str(self.manifest), self.public, str(self.root / 'acceptance.json')],
                                   capture_output=True, text=True, timeout=30)
         self.assertNotEqual(rejected.returncode, 0)
         self.assertIn('signature verification failed', rejected.stderr)
@@ -80,6 +83,16 @@ class ReleaseManifestTests(unittest.TestCase):
         result = self.sign('2.0.0')
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.manifest.exists())
+
+    def test_pending_acceptance_stops_the_remote_check_before_publication(self):
+        signed = self.sign()
+        self.assertEqual(signed.returncode, 0, signed.stderr)
+        record = release_acceptance.create_record(self.archive, self.root / 'acceptance', ['synthetic-model'])
+        rejected = subprocess.run([str(self.verifier), str(self.archive), str(self.manifest), self.public, str(record)],
+                                  capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertIn('Release acceptance is incomplete', rejected.stderr)
+        self.assertIn('native-macos-14', rejected.stdout)
 
     def test_tampered_bundle_does_not_create_manifest(self):
         info = plistlib.loads(self.info.read_bytes())
