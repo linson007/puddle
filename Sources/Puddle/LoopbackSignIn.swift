@@ -24,12 +24,13 @@ final class LoopbackSignIn {
     func signIn(client: GoogleClientConfiguration, session: GoogleSession, scopes: [String], browser: GoogleSignInBrowser = .safari) async throws {
         let flow = try OAuthFlow(scopes: scopes)
         self.flow = flow
+        defer { timeout?.cancel(); listener?.cancel(); listener = nil }
         let redirect = try await start()
+        timeout?.cancel()
         timeout = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(180)) } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); return }
             self?.finish(.failure(PuddleError("Google sign-in timed out. Connect again when you’re ready.")))
         }
-        defer { timeout?.cancel(); listener?.cancel(); listener = nil }
         try await open(flow.authorizationURL(client: client, redirect: redirect), in: browser)
         let code = try await withCheckedThrowingContinuation { continuation in
             if let result { continuation.resume(with: result) }
@@ -64,12 +65,22 @@ final class LoopbackSignIn {
         timeout?.cancel(); listener?.cancel()
     }
 
-    private func start() async throws -> URL {
+    func start(readinessTimeout: Duration = .seconds(15), startListener: ((NWListener) -> Void)? = nil) async throws -> URL {
+        try Task.checkCancellation()
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
         let listener = try NWListener(using: parameters, on: .any)
         self.listener = listener
-        return try await withCheckedThrowingContinuation { continuation in
+        timeout = Task { [weak self] in
+            do { try await Task.sleep(for: readinessTimeout) } catch { return }
+            guard let self else { return }
+            let error = PuddleError("The local Google sign-in callback did not become ready. Check firewall settings and connect again.")
+            self.readyContinuation?.resume(throwing: error); self.readyContinuation = nil
+            self.finish(.failure(error)); self.listener?.cancel()
+        }
+        return try await withTaskCancellationHandler {
+          try await withCheckedThrowingContinuation { continuation in
+            guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
             readyContinuation = continuation
             listener.stateUpdateHandler = { [weak self] state in
                 Task { @MainActor in
@@ -77,9 +88,11 @@ final class LoopbackSignIn {
                     switch state {
                     case .ready:
                         guard let port = listener.port else { return }
+                        self.timeout?.cancel()
                         self.readyContinuation?.resume(returning: URL(string: "http://127.0.0.1:\(port.rawValue)/")!)
                         self.readyContinuation = nil
                     case .failed:
+                        self.timeout?.cancel()
                         self.readyContinuation?.resume(throwing: PuddleError("Puddle could not open its local sign-in callback. Check firewall settings and try again."))
                         self.readyContinuation = nil
                     default: break
@@ -89,8 +102,9 @@ final class LoopbackSignIn {
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in self?.receive(connection, accumulated: Data()) }
             }
-            listener.start(queue: queue)
-        }
+            if let startListener { startListener(listener) } else { listener.start(queue: queue) }
+          }
+        } onCancel: { Task { @MainActor in self.cancel() } }
     }
 
     private func receive(_ connection: NWConnection, accumulated: Data) {
@@ -109,7 +123,9 @@ final class LoopbackSignIn {
                 let pieces = text.components(separatedBy: "\r\n")[0].split(separator: " ")
                 guard pieces.count == 3, pieces[0] == "GET", pieces[1].hasPrefix("/"),
                       !pieces[1].hasPrefix("//"),
-                      let url = URL(string: "http://127.0.0.1\(pieces[1])"), url.path == "/",
+                      let port = self.listener?.port,
+                      let redirect = URL(string: "http://127.0.0.1:\(port.rawValue)/"),
+                      let url = URL(string: "http://127.0.0.1:\(port.rawValue)\(pieces[1])"), url.path == "/",
                       let flow = self.flow else {
                     self.respond(connection, success: false); return
                 }
@@ -118,7 +134,7 @@ final class LoopbackSignIn {
                     self.respond(connection, success: false); return
                 }
                 do {
-                    let code = try flow.code(from: url)
+                    let code = try flow.code(from: url, redirect: redirect)
                     self.respond(connection, success: true)
                     self.finish(.success(code))
                 } catch { PuddleDiagnostics.failure(.oauth, "Connect account", error);

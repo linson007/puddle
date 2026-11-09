@@ -805,3 +805,48 @@ live providers to read/draft/review. Public signing/hosting, real-account consen
 and manual macOS authentication remain owner steps; an ad hoc build and fixture
 responses do not substitute for them.
 
+
+## Open-issue boundary regressions
+
+`IssueBoundaryTests` and `IssueLifecycleTests` use disposable sparse files,
+injected credentials/transports and blocked tasks. They cover pre-read size/type
+checks, vault fallback/quarantine, stale orphan cleanup, backup import/merge caps,
+credential withholding, JSON depth, callback identity, sensitive-memory formats,
+draft claims, transition IPv6, capped meeting search, calendar pagination,
+knowledge cancellation, private/demo transitions, disconnect failure, replacement
+sync cancellation, reminder locking and listener readiness deadlines. Existing
+HTTP, transcript, browser, action and memory fixtures cover the corresponding
+production paths, ordinary inputs and replay protections.
+
+Backup export and import share validation: at most 10,000 memories and tasks,
+5,000 meetings and conversations, 1,000 browser errands, 50 routines and 500 runs.
+A conversation has at most 10,000 lines; each line is at most 1 MiB of UTF-8, with
+100 receipts, bounded receipt fields and 100 references per receipt. Existing
+500/5,000/10,000 session/action/work-context limits still apply. Merge preserves
+current work and counts over-limit imported entries as skipped; export refuses
+content that the importer would reject. The total logical and archive-byte limits
+remain separate.
+
+Automatic memory filtering rejects recognized payment/identity numbers and
+credential formats before extraction; it does not erase previously saved memories.
+Malformed memory tool calls are skipped individually and produce a content-free
+diagnostic. The filter is conservative and cannot identify every possible secret.
+Generated chat and mail summaries render as literal text; separately constructed
+source links remain available. Generated email proposals use the same completion
+claim checks as draft generation. External-reference text cannot authorize a
+claim about the user's completed work.
+
+Disconnect remains explicitly local. The Connections privacy notice explains
+provider grant removal and links the provider's account settings (#54). Microsoft's
+[session revocation API](https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0)
+revokes sessions across applications, so it is not a per-connection replacement.
+Google [revocation](https://developers.google.com/identity/protocols/oauth2/web-server#tokenrevoke)
+also has project-wide grant implications. Google refresh ownership (#64) is
+actor-isolated: there is no suspension between reading credentials and publishing
+the shared refresh task; the existing coalescing/rotation/generation tests cover
+that path. Neither report justifies a guessed provider endpoint or a redundant
+refresh retry.
+
+These fixtures do not accept the signed/live/native release gates in #85–#94.
+Those remain pending until their specified accounts, artifacts, hardware and
+human observations are available.

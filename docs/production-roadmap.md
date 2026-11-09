@@ -42,7 +42,7 @@ new work should solve an observed failure or a repeated user need.
 The supplied `production-readiness-assessment.md` reviewed an earlier, dirty
 checkout. Its recommendations remain useful, but its claims about English-only
 shipping and uncommitted OAuth revocation do not describe the current baseline.
-English and Turkish are shipped. Current provider disconnects remove local
+English is shipped; Turkish catalog translations remain work in progress. Current provider disconnects remove local
 credentials; they do not establish remote revocation.
 
 | Finding | Repository change | Remaining release evidence |
@@ -58,7 +58,7 @@ credentials; they do not establish remote revocation.
 | 9: capacity | An opt-in 108 MiB deterministic entropy/reopen profile reports save/load time and peak RSS, and checks the separate portable-backup limit. | Low-RAM/slow-disk hardware, genuinely cold OS caches and practical latency/memory budgets. The logical cap is a storage guardrail. |
 | 10: connectors | GitHub reads share bounded jittered retry; allowlisted Atlassian MCP reads opt into retry despite POST framing. Work reads coalesce identical requests and cap distinct concurrent reads. Outlook query pages and Calendar-list pages expose completeness/continuations; the assistant receives a completeness warning. | Disposable-account pagination, rate-limit and quota acceptance. Calendar selection fails explicitly if its list is truncated. |
 | 11: fleet operations | Previewable diagnostics include bounded redacted operation IDs/timestamps/error codes and recovery flags. Release instructions define cohorts, feed pause and restore steps. | Appoint monitored security/support owners and response targets, configure production hosting/key custody, and rehearse the incident/update-pause runbook. |
-| 12: OS/human acceptance | Minimum-OS and accessibility acceptance remain explicit blocking rows in the release checklist; new recovery/privacy controls ship in English and Turkish. | macOS 14 runtime, first-run, VoiceOver, keyboard, contrast and reduced-motion acceptance. CI compilation and fixtures do not close these rows. |
+| 12: OS/human acceptance | Minimum-OS and accessibility acceptance remain explicit blocking rows in the release checklist; new recovery/privacy controls ship in English. | macOS 14 runtime, first-run, VoiceOver, keyboard, contrast and reduced-motion acceptance. CI compilation and fixtures do not close these rows. |
 
 This follow-up does not change the public-distribution hold. Record exact artifact
 hash, OS, hardware, provider/model/helper versions, tester, date and observed

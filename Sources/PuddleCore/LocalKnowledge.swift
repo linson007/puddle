@@ -112,13 +112,23 @@ public enum LocalKnowledge {
         limited = limited || text.count > maximum
         return (String(text.prefix(maximum)), limited)
     }
-    public static func search(_ query: String, documents: [KnowledgeDocument]) -> [KnowledgePassage] {
+    public static func searchAsync(_ query: String, documents: [KnowledgeDocument]) async throws -> [KnowledgePassage] {
+        try await CancellableWork.run { try search(query, documents: documents) }
+    }
+    public static func search(_ query: String, documents: [KnowledgeDocument]) throws -> [KnowledgePassage] {
+        guard query.count <= 2000 else { throw PuddleError("Use a knowledge query up to 2000 characters.") }
         let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.count <= 50 else { throw PuddleError("Use up to 50 words in a knowledge query.") }
         guard !words.isEmpty else { return [] }
         var passages: [KnowledgePassage] = []
+        var windows = 0
         for document in documents {
+            try Task.checkCancellation()
             let lines = document.text.components(separatedBy: .newlines)
             for start in stride(from: 0, to: lines.count, by: 8) {
+                try Task.checkCancellation()
+                windows += 1
+                guard windows <= 25_000 else { throw PuddleError("Knowledge search reached its work limit. Choose fewer indexed sources and try again.") }
                 let quote = String(lines[start..<min(start + 16, lines.count)].joined(separator: "\n").prefix(3000))
                 if words.allSatisfy({ (document.name + " " + quote).localizedCaseInsensitiveContains($0) }) {
                     passages.append(KnowledgePassage(documentID: document.id, title: document.name, url: document.url, line: start + 1, quote: quote, limited: document.limited))

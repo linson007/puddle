@@ -33,7 +33,20 @@ public enum ReleaseVerification {
         return release.build > currentBuild ? release : nil
     }
     public static func verifyDownload(_ data: Data, release: PuddleRelease) throws {
-        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        var hash = SHA256()
+        for offset in stride(from: 0, to: data.count, by: 1024 * 1024) {
+            try Task.checkCancellation()
+            hash.update(data: data.subdata(in: offset..<min(offset + 1024 * 1024, data.count)))
+        }
+        try Task.checkCancellation()
+        let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
+        guard digest.caseInsensitiveCompare(release.sha256) == .orderedSame else { throw PuddleError("The download failed its SHA-256 check. It was not opened.") }
+    }
+    public static func verifyDownload(at file: URL, release: PuddleRelease, maximumBytes: Int) throws {
+        var hash = SHA256()
+        try BoundedFile.chunks(file, maximumBytes: maximumBytes) { hash.update(data: $0) }
+        try Task.checkCancellation()
+        let digest = hash.finalize().map { String(format: "%02x", $0) }.joined()
         guard digest.caseInsensitiveCompare(release.sha256) == .orderedSame else { throw PuddleError("The download failed its SHA-256 check. It was not opened.") }
     }
 }

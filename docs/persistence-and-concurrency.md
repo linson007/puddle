@@ -123,3 +123,12 @@ limited to these construction invariants:
 When changing any constructor, preserve the stated invariant or replace its
 unwrap with a thrown `PuddleError`. The DEBUG-only `UITestWorkspace` fatal error
 continues to fail fast on invalid fixture configuration.
+
+Workspace, legacy and transcript reads use held no-follow descriptors, validate
+regular-file type and length before reading, and enforce the limit while reading
+in case a file grows. Nonregular workspace generations are quarantined without
+following their targets; a valid peer generation is required for recovery.
+Missing keys and future schemas still fail closed. Under the workspace ownership
+lock, a save removes recognized `.backup-<UUID>.vault` and `.puddle-write-<UUID>`
+orphans older than 24 hours, including transcript/recovery staging files. Fresh
+staging files, committed generations and arbitrary filenames are retained.

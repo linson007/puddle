@@ -35,7 +35,7 @@ public struct NameMemoryProposal: Equatable, Sendable {
               let range = Range(match.range(at: 1), in: text) else { return nil }
         let name = text[range].trimmingCharacters(in: .whitespacesAndNewlines)
         let words = name.split(whereSeparator: \.isWhitespace)
-        let excluded: Set<String> = ["not", "a", "secret", "unknown", "and", "but", "because", "please", "remember", "name", "is", "from", "in", "later", "tomorrow", "today", "soon", "back", "when", "after", "at", "on", "i", "we", "you", "he", "she", "they", "like", "prefer", "work", "live", "want", "use"]
+        let excluded: Set<String> = ["not", "a", "an", "the", "my", "your", "our", "their", "its", "his", "her", "this", "that", "are", "secret", "unknown", "and", "but", "because", "please", "remember", "name", "is", "from", "in", "later", "tomorrow", "today", "soon", "back", "when", "after", "at", "on", "i", "we", "you", "he", "she", "they", "like", "prefer", "work", "live", "want", "use"]
         let punctuation = CharacterSet(charactersIn: " .'-’‐")
         guard !name.isEmpty, name.count <= 80, words.count <= 6,
               name.unicodeScalars.contains(where: { CharacterSet.letters.contains($0) }),

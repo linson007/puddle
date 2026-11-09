@@ -97,6 +97,8 @@ public struct WorkspaceRestoreReport: Equatable, Sendable {
 /// Portable local work only. Credentials and cached connected-account data never enter this format.
 public enum WorkspaceBackup {
     public static let maximumBytes = 64 * 1024 * 1024
+    public static let maximumMemories = 10_000, maximumTasks = 10_000, maximumMeetings = 5_000
+    public static let maximumConversations = 5_000, maximumErrands = 1_000
     private struct Envelope: Codable {
         let format: String
         let version: Int
@@ -110,7 +112,9 @@ public enum WorkspaceBackup {
 
     public static func encode(_ snapshot: AppSnapshot, now: Date = Date()) throws -> Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        let payload = try encoder.encode(WorkspaceContent(snapshot))
+        let content = WorkspaceContent(snapshot)
+        try validate(content)
+        let payload = try encoder.encode(content)
         guard payload.count <= TranscriptVault.maximumBytes else { throw PuddleError("This workspace exceeds the 120 MB logical backup limit. Export large transcripts separately.") }
         let compressed = try (payload as NSData).compressed(using: .lzfse) as Data
         let data = try encoder.encode(Envelope(format: "puddle-workspace", version: 2, createdAt: now, payload: compressed, sha256: digest(compressed), compression: "lzfse", uncompressedBytes: payload.count))
@@ -148,11 +152,19 @@ public enum WorkspaceBackup {
             decoded.count = size; payload = decoded
         }
         let content = try JSONDecoder().decode(WorkspaceContent.self, from: payload)
+        try validate(content)
+        return WorkspaceBackupPreview(createdAt: envelope.createdAt, content: content)
+    }
+
+    private static func validate(_ content: WorkspaceContent) throws {
         guard (4...AppSnapshot.currentSchemaVersion).contains(content.schemaVersion) else { throw SnapshotVersionError() }
         func unique<T: Hashable>(_ values: [T]) -> Bool { Set(values).count == values.count }
         guard unique(content.memories.map(\.id)), unique(content.tasks.map(\.id)), unique(content.meetings.map(\.id)),
               unique(content.workProjects.map(\.id)), unique(content.people.map(\.id)), unique(content.workDecisions.map(\.id)),
               content.workProjects.count <= 5000, content.people.count <= 10000, content.workDecisions.count <= 10000,
+              content.memories.count <= maximumMemories, content.tasks.count <= maximumTasks,
+              content.meetings.count <= maximumMeetings, content.conversations.count <= maximumConversations,
+              content.browserErrands.count <= maximumErrands, content.routines.count <= 50, content.routineRuns.count <= 500,
               unique(content.browserErrands.map(\.id)), unique(content.routines.map(\.id)), unique(content.routineRuns.map(\.id)),
               unique(content.actionProposals.map(\.id)), content.actionProposals.count <= 5000,
               unique(content.conversations.map(\.id)), unique(content.developmentSessions.map(\.id)), content.developmentSessions.count <= 500 else { throw PuddleError("The backup contains repeated identifiers or too many development sessions and cannot be merged safely.") }
@@ -165,12 +177,15 @@ public enum WorkspaceBackup {
         for decision in content.workDecisions { _ = try decision.validated() }
         guard content.assistantInstructions.count <= 4000,
               content.memories.allSatisfy({ !$0.title.isEmpty && $0.title.count <= 200 && $0.content.count <= 4000 }),
-              content.conversations.allSatisfy({ unique($0.lines.map(\.id)) && $0.lines.allSatisfy {
-                  ["user", "assistant"].contains($0.role) && ($0.displayText?.count ?? 0) <= 4000
+              content.conversations.allSatisfy({ $0.lines.count <= 10_000 && unique($0.lines.map(\.id)) && $0.lines.allSatisfy {
+                  ["user", "assistant"].contains($0.role) && $0.content.utf8.count <= 1024 * 1024 && ($0.displayText?.count ?? 0) <= 4000 &&
+                  ($0.receipts?.count ?? 0) <= 100 && ($0.receipts ?? []).allSatisfy { receipt in
+                      receipt.id.count <= 500 && receipt.tool.count <= 200 && receipt.status.count <= 100 && receipt.detail.count <= 4000 &&
+                      receipt.references.count <= 100 && receipt.references.allSatisfy { $0.title.count <= 1000 && $0.url.absoluteString.count <= 8192 }
+                  }
               } }) else {
             throw PuddleError("The backup has invalid workspace content. Your workspace has not changed.")
         }
-        return WorkspaceBackupPreview(createdAt: envelope.createdAt, content: content)
     }
 
     public static func merging(_ backup: WorkspaceBackupPreview, into current: AppSnapshot, now: Date = Date()) -> (AppSnapshot, WorkspaceRestoreReport) {
@@ -204,13 +219,13 @@ public enum WorkspaceBackup {
         }
         var errandIDs = Set(current.browserErrands.map(\.id))
         for var job in backup.content.browserErrands {
-            guard errandIDs.insert(job.id).inserted else { report.skipped += 1; continue }
+            guard next.browserErrands.count < maximumErrands, errandIDs.insert(job.id).inserted else { report.skipped += 1; continue }
             if job.status == .running { job.status = .paused }
             next.browserErrands.append(job); report.errandsAdded += 1
         }
         var actionIDs = Set(current.actionProposals.map(\.id))
         for var action in backup.content.actionProposals {
-            guard actionIDs.insert(action.id).inserted else { report.skipped += 1; continue }
+            guard next.actionProposals.count < 5000, actionIDs.insert(action.id).inserted else { report.skipped += 1; continue }
             if action.status == .dispatching { action.status = .uncertain; action.detail = "Restored an interrupted action. Check its provider before taking further action." }
             // Imported proposals always require a fresh exact-content review.
             action.authorizedDigest = nil
@@ -218,12 +233,12 @@ public enum WorkspaceBackup {
         }
         var memoryIDs = Set(current.memories.map(\.id)), memoryTitles = Set(current.memories.map { MemoryLearning.identity($0.title) })
         for memory in backup.content.memories {
-            if memoryIDs.contains(memory.id) || memoryTitles.contains(MemoryLearning.identity(memory.title)) { report.skipped += 1; continue }
+            if next.memories.count >= maximumMemories || memoryIDs.contains(memory.id) || memoryTitles.contains(MemoryLearning.identity(memory.title)) { report.skipped += 1; continue }
             next.memories.append(memory); memoryIDs.insert(memory.id); memoryTitles.insert(MemoryLearning.identity(memory.title)); report.memoriesAdded += 1
         }
         var taskIDs = Set(current.tasks.map(\.id))
         for var task in backup.content.tasks {
-            guard taskIDs.insert(task.id).inserted else { report.skipped += 1; continue }
+            guard next.tasks.count < maximumTasks, taskIDs.insert(task.id).inserted else { report.skipped += 1; continue }
             task.focusDate = nil
             if let id = task.projectID, !projectIDs.contains(id) { task.projectID = nil }
             // Imported overdue work stays visible without replaying old reminder notifications.
@@ -232,14 +247,15 @@ public enum WorkspaceBackup {
         }
         var meetingIDs = Set(current.meetings.map(\.id))
         for var note in backup.content.meetings {
-            guard meetingIDs.insert(note.id).inserted else { report.skipped += 1; continue }
+            guard next.meetings.count < maximumMeetings, meetingIDs.insert(note.id).inserted else { report.skipped += 1; continue }
             if let id = note.projectID, !projectIDs.contains(id) { note.projectID = nil }
             next.meetings.append(note); report.meetingsAdded += 1
         }
         var conversationIDs = Set(current.conversationHistory.map(\.id)); conversationIDs.insert(current.currentConversationID)
+        var conversationCount = current.conversationHistory.count
         for conversation in backup.content.conversations {
-            guard conversationIDs.insert(conversation.id).inserted else { report.skipped += 1; continue }
-            next.conversations.append(conversation); report.conversationsAdded += 1
+            guard conversationCount < maximumConversations, conversationIDs.insert(conversation.id).inserted else { report.skipped += 1; continue }
+            next.conversations.append(conversation); conversationCount += 1; report.conversationsAdded += 1
         }
         let needsContext = current.profile == ExecutiveProfile()
         var library = current.profileLibrary

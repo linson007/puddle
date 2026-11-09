@@ -91,7 +91,7 @@ extension PuddleStore {
     func selectMailProvider(_ provider: MailProvider) async {
         guard !isShuttingDown, !privateSession, !isLocked else { return }
         await stopAI(); await suspendConnectionWork()
-        do { try await commit { $0.settings.mailProvider = provider }; selectedID = nil; startPolling(); Task { await sync() } }
+        do { try await commit { $0.settings.mailProvider = provider }; selectedID = nil; startPolling(); await refresh() }
         catch { PuddleDiagnostics.failure(.oauth, "Connect account", error); fail(error) }
     }
     func syncOutlook() async {

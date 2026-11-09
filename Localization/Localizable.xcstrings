@@ -2618,6 +2618,16 @@
           }
         }
       }
+    },
+    "More meetings match. Narrow your search.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More meetings match. Narrow your search."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

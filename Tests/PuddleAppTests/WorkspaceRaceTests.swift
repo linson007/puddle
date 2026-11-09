@@ -69,6 +69,21 @@ private struct RaceHTTP: HTTPTransport {
 }
 
 @MainActor final class WorkspaceRaceTests: XCTestCase {
+    func testDemoTransitionWaitingForPersistenceCannotStartAnotherAssistantTurn() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        let entered = expectation(description: "Save holds workspace transition")
+        disk.blockWrite(entered)
+        let save = Task { await subject.addTask(title: "Before transition", dueAt: nil) }
+        await fulfillment(of: [entered], timeout: 5)
+        let transition = Task { await subject.enterDemo() }
+        try await waitForTestEvent("Demo transition owns workspace") { await subject.isChangingWorkspace }
+        let accepted = await subject.ask("Must not start during transition")
+        XCTAssertFalse(accepted); XCTAssertTrue(subject.state.chat.isEmpty)
+        XCTAssertThrowsError(try subject.workspaceAccess())
+        disk.release(); _ = await save.value; await transition.value
+        XCTAssertTrue(subject.demo)
+        await subject.suspendConnectionWork()
+    }
     private func store(_ disk: RaceDisk, capture: RaceCapture = RaceCapture()) -> PuddleStore {
         PuddleStore(cache: disk, secrets: RaceSecrets(), transport: RaceHTTP(), reminderScheduler: RaceReminders(), meetingAudioCapture: capture)
     }

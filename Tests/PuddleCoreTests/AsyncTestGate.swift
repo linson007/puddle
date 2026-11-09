@@ -1,3 +1,5 @@
+// Mirrored in Tests/PuddleAppTests/AsyncTestGate.swift and Tests/PuddleCoreTests/AsyncTestGate.swift.
+// Keep both copies identical; scripts/test_test_support.py checks they stay synchronized.
 import Foundation
 import XCTest
 

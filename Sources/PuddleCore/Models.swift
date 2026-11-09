@@ -423,15 +423,15 @@ public struct SnapshotStore: SnapshotPersistence {
     public func loadResult() throws -> SnapshotLoadResult {
         guard FileManager.default.fileExists(atPath: file.path) else {
             if FileManager.default.fileExists(atPath: backup.path) {
-                return SnapshotLoadResult(snapshot: try JSONDecoder().decode(AppSnapshot.self, from: Data(contentsOf: backup)),
+                return SnapshotLoadResult(snapshot: try JSONDecoder().decode(AppSnapshot.self, from: BoundedFile.read(backup)),
                                           notice: "The main state file was missing. Puddle loaded its previous-state backup; the latest changes may be missing.")
             }
             return SnapshotLoadResult(snapshot: AppSnapshot())
         }
-        do { return SnapshotLoadResult(snapshot: try JSONDecoder().decode(AppSnapshot.self, from: Data(contentsOf: file))) }
+        do { return SnapshotLoadResult(snapshot: try JSONDecoder().decode(AppSnapshot.self, from: BoundedFile.read(file))) }
         catch let error as SnapshotVersionError { throw error }
         catch {
-            guard let data = try? Data(contentsOf: backup),
+            guard let data = try? BoundedFile.read(backup),
                   let restored = try? JSONDecoder().decode(AppSnapshot.self, from: data) else {
                 throw PuddleError("Puddle could not read its saved state. Your files are preserved. Restore state.json from a backup and choose Retry Loading State in Settings.")
             }
@@ -450,7 +450,7 @@ public struct SnapshotStore: SnapshotPersistence {
         let data = try JSONEncoder().encode(state)
         // Never replace unreadable or future-version data with an empty startup state.
         if FileManager.default.fileExists(atPath: file.path) {
-            let previous = try Data(contentsOf: file)
+            let previous = try BoundedFile.read(file)
             _ = try JSONDecoder().decode(AppSnapshot.self, from: previous)
             try write(previous, to: backup)
         }

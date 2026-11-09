@@ -76,6 +76,30 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testOverlappingApprovalDeclinesSecondWithoutOrphaningFirst() async throws {
+        let (store, _, _, _) = fixture()
+        let first = Task { await store.approve(title: "First", detail: "Visible review") }
+        try await waitForTestEvent("First approval visible") { await store.pendingApproval != nil }
+        let id = store.pendingApproval?.id
+        let second = await store.approve(title: "Second", detail: "Overlapping review")
+        XCTAssertFalse(second); XCTAssertEqual(store.pendingApproval?.id, id)
+        store.resolveApproval(true)
+        let allowed = await first.value
+        XCTAssertTrue(allowed); XCTAssertNil(store.pendingApproval)
+    }
+    func testCancelledApprovalResumesAndCannotDismissNewerReview() async throws {
+        let (store, _, _, _) = fixture()
+        let first = Task { await store.approve(title: "Cancelled", detail: "Old review") }
+        try await waitForTestEvent("Old approval visible") { await store.pendingApproval != nil }
+        first.cancel()
+        let allowed = await first.value
+        XCTAssertFalse(allowed); XCTAssertNil(store.pendingApproval)
+        let second = Task { await store.approve(title: "Current", detail: "New review") }
+        try await waitForTestEvent("New approval visible") { await store.pendingApproval != nil }
+        store.resolveApproval(true)
+        let currentAllowed = await second.value
+        XCTAssertTrue(currentAllowed)
+    }
     func testPendingPromptSaveReservesTurnAgainstAnotherSubmit() async throws {
         let (store, disk, http, _) = fixture(); await store.start()
         let entered = expectation(description: "First prompt is saving"), rejected = expectation(description: "Competing submit returns")

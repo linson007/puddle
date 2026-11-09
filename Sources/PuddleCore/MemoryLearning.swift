@@ -39,7 +39,7 @@ public enum MemoryLearning {
     }
 
     public static func containsSensitiveData(_ text: String) -> Bool {
-        let pattern = #"(?i)\b(?:password|passcode|api[ _-]?key|private[ _-]?key|secret|access[ _-]?token|refresh[ _-]?token|bearer)\b|\b(?:sk-|ghp_|github_pat_)[A-Za-z0-9_-]{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----"#
+        let pattern = #"(?i)\b(?:password|passcode|api[ _-]?key|private[ _-]?key|secret|access[ _-]?token|refresh[ _-]?token|bearer)\b|\b(?:sk[-_]|ghp_|github_pat_|xox[bpasr]-)[A-Za-z0-9_-]{8,}|\bAKIA[0-9A-Z]{16}\b|\bAIza[A-Za-z0-9_-]{20,}|\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)?|\b\d{3}-\d{2}-\d{4}\b|\b(?:\d[ -]?){12,18}\d\b|\b\d{12,}\b|\b(?:token|routing|bank[ _-]?account)\s*(?:number|no\.?)?\s*(?:[:=]|\bis\b)\s*\S{8,}|-----BEGIN [A-Z ]*PRIVATE KEY-----"#
         return text.range(of: pattern, options: .regularExpression) != nil
     }
 
@@ -80,7 +80,10 @@ public struct MemoryLearner: Sendable {
     public init(client: LocalInferenceClient) { self.client = client }
 
     public func updates(from userMessage: String, memories: [MemoryNote], model: String? = nil) async throws -> [MemoryUpdate] {
-        guard MemoryLearning.shouldLearn(userMessage) else { return [] }
+        guard MemoryLearning.shouldLearn(userMessage) else {
+            if MemoryLearning.containsSensitiveData(userMessage) { PuddleDiagnostics.memoryLearningSkipped() }
+            return []
+        }
         var updates: [MemoryUpdate] = []
         if let name = NameMemoryProposal.from(userMessage) {
             let update = try MemoryUpdate.validated(title: NameMemoryProposal.title, content: name.name,
@@ -116,8 +119,15 @@ public struct MemoryLearner: Sendable {
                                                         AgentMessage(role: "user", content: String(userMessage.prefix(12_000)))],
                                               tools: [.learnMemories], model: selectedModel, requireToolCall: true)
         guard step.finishReason != "length" else { throw PuddleError("The memory update was incomplete.") }
-        let candidates = try step.calls.filter { $0.type == "function" && $0.function.name == AgentTool.learnMemories.rawValue }
-            .flatMap { try $0.parameters()["memories"] as? [[String: Any]] ?? [] }
+        var candidates: [[String: Any]] = []
+        for call in step.calls where call.type == "function" && call.function.name == AgentTool.learnMemories.rawValue {
+            do {
+                guard let values = try call.parameters()["memories"] as? [[String: Any]] else {
+                    PuddleDiagnostics.memoryLearningSkipped(); continue
+                }
+                candidates.append(contentsOf: values.prefix(max(0, 5 - candidates.count)))
+            } catch { PuddleDiagnostics.memoryLearningSkipped() }
+        }
         for parameters in candidates.prefix(5) {
             guard let title = parameters["title"] as? String, let content = parameters["content"] as? String,
                   let source = parameters["source"] as? String,

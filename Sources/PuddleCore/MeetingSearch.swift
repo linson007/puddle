@@ -9,7 +9,14 @@ public struct MeetingSearchResult: Identifiable, Equatable, Sendable {
 }
 
 public enum MeetingSearch {
+    public struct Page: Sendable {
+        public let results: [MeetingSearchResult]
+        public let hasMore: Bool
+    }
     public static func results(notes: [MeetingNote], drafts: [UUID: MeetingDraft] = [:], query: String) throws -> [MeetingSearchResult] {
+        try page(notes: notes, drafts: drafts, query: query).results
+    }
+    public static func page(notes: [MeetingNote], drafts: [UUID: MeetingDraft] = [:], query: String) throws -> Page {
         guard query.count <= 200 else { throw PuddleError("Use a search query up to 200 characters.") }
         let terms = normalize(query).split(whereSeparator: \.isWhitespace).map(String.init)
         var results: [MeetingSearchResult] = []
@@ -24,6 +31,7 @@ public enum MeetingSearch {
             }
             let normalized = fields.map { normalize($0.1) }
             guard terms.allSatisfy({ term in normalized.contains { $0.contains(term) } }) else { continue }
+            if results.count == 80 { return Page(results: results, hasMore: true) }
             let index = normalized.firstIndex { field in terms.contains { field.contains($0) } } ?? 0
             let text = fields[index].1
             let match = terms.compactMap { text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) }.first
@@ -32,7 +40,7 @@ public enum MeetingSearch {
             results.append(MeetingSearchResult(id: note.id, title: draft.title, field: fields[index].0,
                 snippet: (start == text.startIndex ? "" : "…") + snippet, hasUnsavedChanges: draft != MeetingDraft(note)))
         }
-        return results
+        return Page(results: results, hasMore: false)
     }
     private static func normalize(_ value: String) -> String {
         value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "en_US_POSIX"))

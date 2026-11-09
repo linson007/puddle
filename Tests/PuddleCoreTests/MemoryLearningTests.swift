@@ -6,16 +6,17 @@ private actor LearningFixture: HTTPTransport {
     var requests: [URLRequest] = []
     let calls: [AgentToolCall]
     let finish: String
-    init(_ calls: [AgentToolCall] = [], finish: String = "tool_calls") { self.calls = calls; self.finish = finish }
+    let rawCalls: Bool
+    init(_ calls: [AgentToolCall] = [], finish: String = "tool_calls", rawCalls: Bool = false) { self.calls = calls; self.finish = finish; self.rawCalls = rawCalls }
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         requests.append(request)
         let body: Data
         if request.url?.path == "/v1/models" { body = Data(#"{"data":[{"id":"test-qwen"}]}"#.utf8) }
         else {
-            let memories = try calls.map { try $0.parameters() }
+            let memories = rawCalls ? [] : try calls.map { try $0.parameters() }
             let batch = AgentToolCall(name: AgentTool.learnMemories.rawValue,
                 arguments: String(decoding: try JSONSerialization.data(withJSONObject: ["memories": memories]), as: UTF8.self))
-            let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode([batch]))
+            let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(rawCalls ? calls : [batch]))
             body = try JSONSerialization.data(withJSONObject: ["choices": [["message": ["content": "", "tool_calls": encoded], "finish_reason": finish]]])
         }
         return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
@@ -23,6 +24,12 @@ private actor LearningFixture: HTTPTransport {
 }
 
 final class MemoryLearningTests: XCTestCase {
+    func testMalformedCallDoesNotDiscardValidMemoryCall() async throws {
+        let valid = AgentToolCall(name: AgentTool.learnMemories.rawValue, arguments: #"{"memories":[{"title":"Response style","content":"concise replies","source":"I prefer concise replies"}]}"#)
+        let invalid = AgentToolCall(name: AgentTool.learnMemories.rawValue, arguments: "{invalid")
+        let updates = try await learner(LearningFixture([invalid, valid], rawCalls: true)).updates(from: "I prefer concise replies", memories: [])
+        XCTAssertEqual(updates.map(\.content), ["concise replies"])
+    }
     private func update(_ title: String, _ content: String, _ source: String) throws -> AgentToolCall {
         let fields = ["title": title, "content": content, "source": source]
         return AgentToolCall(name: AgentTool.remember.rawValue, arguments: String(decoding: try JSONEncoder().encode(fields), as: UTF8.self))

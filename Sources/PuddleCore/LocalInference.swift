@@ -173,7 +173,7 @@ public struct LocalInferenceClient: Sendable {
     }
 
     private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        do { return try await transport.send(request) }
+        do { return try await transport.sendBounded(request, maximumBytes: 8 * 1024 * 1024, until: nil) }
         catch let error as URLError {
             if error.code == .cancelled { throw CancellationError() }
             throw PuddleError("The local AI server is not reachable at \(baseURL.absoluteString). Start your local server, then test the connection again.")

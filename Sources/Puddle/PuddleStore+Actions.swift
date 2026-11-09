@@ -121,7 +121,8 @@ extension PuddleStore {
             if mailConnected { await sync() }; if calendarConnected { await refreshCalendar() }
         } catch {
             proposal.status = .uncertain
-            proposal.detail = "Execution could not be confirmed: \(error.localizedDescription). Check the source before attempting another action. This proposal cannot replay."
+            PuddleDiagnostics.failure(.network, "Execute reviewed action", error)
+            proposal.detail = "Execution could not be confirmed. Check the source before attempting another action. This proposal cannot replay."
             do { try await commit { next in if let index = next.actionProposals.firstIndex(where: { $0.id == id }) { next.actionProposals[index] = proposal } } }
             catch { fail(PuddleError("The provider may have completed the action, but its receipt could not be saved. Check the provider before retrying.")); return }
             fail(PuddleError(proposal.detail ?? "The action failed. Review its status before retrying."))

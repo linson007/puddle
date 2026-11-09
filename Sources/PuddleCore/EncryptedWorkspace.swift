@@ -77,7 +77,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         cache.recoveredPages = false
         cache.generationObserved = true
         let fm = FileManager.default
-        guard fm.fileExists(atPath: file.path) || fm.fileExists(atPath: backup.path) else {
+        guard BoundedFile.exists(file) || BoundedFile.exists(backup) else {
             cache.primaryDigest = nil; cache.primaryMetadata = nil; cache.primaryKeyDigest = nil
             cache.transcripts = [:]; cache.committedNames = []; cache.migrationSourceVersion = nil
             let legacy = SnapshotStore(directory: directory)
@@ -92,7 +92,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         let key = try key(create: false)
         let result: SnapshotLoadResult
         do {
-            let data = try Data(contentsOf: file)
+            let data = try BoundedFile.read(file)
             let snapshot = try decode(data, key: key)
             cache.primaryDigest = fingerprint(data, key: key)
             cache.primaryMetadata = try TranscriptVault.fingerprint(file)
@@ -100,10 +100,10 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             result = SnapshotLoadResult(snapshot: snapshot, notice: cache.recoveredPages ? "Recovered damaged transcript pages from encrypted recovery copies. All messages were retained; damaged files were preserved." : nil)
         } catch let error as SnapshotVersionError { throw error }
         catch {
-            guard let data = try? Data(contentsOf: backup), let snapshot = try? decode(data, key: key) else {
+            guard let data = try? BoundedFile.read(backup), let snapshot = try? decode(data, key: key) else {
                 throw PuddleError("Puddle could not decrypt its workspace or recovery copy. Unlock Keychain or restore a portable backup. All files were preserved.")
             }
-            if fm.fileExists(atPath: file.path) { try fm.moveItem(at: file, to: directory.appendingPathComponent("workspace-unreadable-\(UUID()).vault")) }
+            if BoundedFile.exists(file) { try fm.moveItem(at: file, to: directory.appendingPathComponent("workspace-unreadable-\(UUID()).vault")) }
             try write(data, to: file)
             cache.primaryDigest = fingerprint(data, key: key)
             cache.primaryMetadata = try TranscriptVault.fingerprint(file)
@@ -118,36 +118,58 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
     }
     private func saveContents(_ state: AppSnapshot) throws {
         cache.lock.lock(); defer { cache.lock.unlock() }
-        let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path)
+        if BoundedFile.exists(file) || BoundedFile.exists(backup) {
+            guard cache.generationObserved else { throw PuddleError("Load the existing workspace before saving changes.") }
+        }
+        try pruneAbandonedWrites()
+        let fm = FileManager.default
+        var damagedPrimary = false, quarantined = false
+        for url in [file, backup] where BoundedFile.exists(url) {
+            if (try? TranscriptVault.fingerprint(url)) == nil {
+                try fm.moveItem(at: url, to: directory.appendingPathComponent("workspace-unreadable-\(UUID()).vault"))
+                quarantined = true
+                damagedPrimary = damagedPrimary || url == file
+            }
+        }
+        if damagedPrimary {
+            guard BoundedFile.exists(backup) else { throw PuddleError("The workspace paths were quarantined. Restore a portable backup before saving. Encrypted files were preserved.") }
+            _ = try loadContents()
+            // Recovery is not authorization to write the caller's old snapshot.
+            // Require a fresh load, even when this store previously owned it.
+            cache.generationObserved = false
+            throw PuddleError("Recovered the previous workspace after quarantining an invalid path. Reload it before saving changes; your current snapshot was not written.")
+        }
+        let exists = BoundedFile.exists(file) || BoundedFile.exists(backup)
+        guard exists || !quarantined else { throw PuddleError("The workspace paths were quarantined. Restore a portable backup before saving. Encrypted files were preserved.") }
+        if !exists, cache.generationObserved, cache.primaryDigest != nil {
+            throw PuddleError("The saved workspace was removed. Reload before saving changes.")
+        }
         let key = try key(create: !exists)
         if exists {
             guard cache.generationObserved else { throw PuddleError("Load the existing workspace before saving changes.") }
-            let current = try Data(contentsOf: file)
+            let current = try BoundedFile.read(file)
             guard cache.primaryDigest == fingerprint(current, key: key) else {
                 throw PuddleError("The workspace changed in another process. Reload it before saving; your stale snapshot was not written.")
             }
-        } else if cache.generationObserved, cache.primaryDigest != nil {
-            throw PuddleError("The saved workspace was removed. Reload before saving changes.")
         }
-        let fm = FileManager.default
         var previous: URL?
-        if fm.fileExists(atPath: file.path) {
+        if BoundedFile.exists(file) {
             let metadata = try TranscriptVault.fingerprint(file)
             if cache.primaryMetadata != metadata || cache.primaryKeyDigest != fingerprint(header, key: key) {
-                let data = try Data(contentsOf: file)
+                let data = try BoundedFile.read(file)
                 if cache.primaryDigest != fingerprint(data, key: key) { _ = try decode(data, key: key) }
             }
             previous = file
-        } else if fm.fileExists(atPath: backup.path) {
-            _ = try decode(Data(contentsOf: backup), key: key)
+        } else if BoundedFile.exists(backup) {
+            _ = try decode(BoundedFile.read(backup), key: key)
         }
         let oldNames = cache.committedNames
         if let source = cache.migrationSourceVersion, let previous {
             let preserved = directory.appendingPathComponent("workspace-premigration-schema-\(source).vault")
             if !fm.fileExists(atPath: preserved.path) {
-                let original = try Data(contentsOf: previous)
+                let original = try BoundedFile.read(previous)
                 try DurableFile.write(original, to: preserved)
-                guard try Data(contentsOf: preserved) == original else { throw PuddleError("Pre-migration verification failed. The original workspace was preserved.") }
+                guard try BoundedFile.read(preserved) == original else { throw PuddleError("Pre-migration verification failed. The original workspace was preserved.") }
             }
         }
         let prepared = try TranscriptVault.prepare(state, directory: transcripts, cache: cache,
@@ -156,8 +178,8 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         do {
             let encrypted = try seal(prepared.data, key: key)
             if let previous {
-                if fm.fileExists(atPath: backup.path) { _ = try TranscriptVault.fingerprint(backup) }
-                try DurableFile.write(Data(contentsOf: previous), to: backup)
+                if BoundedFile.exists(backup) { _ = try TranscriptVault.fingerprint(backup) }
+                try DurableFile.write(BoundedFile.read(previous), to: backup)
             }
             try write(encrypted, to: file) { if $0 == .afterRename { indexPublished = true } }
             cache.generationObserved = true
@@ -191,6 +213,24 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             }
         }
     }
+    private func pruneAbandonedWrites() throws {
+        let fm = FileManager.default
+        for folder in [directory, transcripts, transcripts.appendingPathComponent("recovery", isDirectory: true)] {
+          guard let info = try? folder.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey]), info.isDirectory == true, info.isSymbolicLink != true else { continue }
+          let urls = try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey])
+          for url in urls {
+            let name = url.lastPathComponent
+            let id: String
+            if name.hasPrefix(".backup-"), name.hasSuffix(".vault") { id = String(name.dropFirst(8).dropLast(6)) }
+            else if name.hasPrefix(".puddle-write-") { id = String(name.dropFirst(14)) }
+            else { continue }
+            guard UUID(uuidString: id) != nil, (try? TranscriptVault.fingerprint(url)) != nil,
+                  let date = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  date < Date().addingTimeInterval(-86400) else { continue }
+            try fm.removeItem(at: url)
+          }
+        }
+    }
     public func loadMeetingRecoveries() throws -> [MeetingCaptureRecovery] { try withOwnership { return try loadMeetingRecoveryContents() } }
     private func loadMeetingRecoveryContents() throws -> [MeetingCaptureRecovery] {
         cache.lock.lock(); defer { cache.lock.unlock() }
@@ -206,7 +246,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         guard try TranscriptVault.fingerprint(url).bytes <= MeetingRecoveryLimits.maximumBytes + 64 else {
             throw PuddleError("The meeting recovery file exceeds its size limit. It was preserved.")
         }
-        let values = try JSONDecoder().decode([MeetingCaptureRecovery].self, from: open(Data(contentsOf: url), key: key(create: false)))
+        let values = try JSONDecoder().decode([MeetingCaptureRecovery].self, from: open(BoundedFile.read(url), key: key(create: false)))
         try MeetingRecoveryLimits.validate(values)
         cache.unreadableMeetingRecovery = false
         return values
@@ -234,7 +274,7 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
             throw PuddleError("Meeting recovery storage is full. Review existing recoveries before retrying. Previous recovery files were preserved.")
         }
         // Never create a new key over an existing workspace/recovery file.
-        let exists = FileManager.default.fileExists(atPath: file.path) || FileManager.default.fileExists(atPath: backup.path) ||
+        let exists = BoundedFile.exists(file) || BoundedFile.exists(backup) ||
             FileManager.default.fileExists(atPath: directory.appendingPathComponent("meeting-recovery.vault").path)
         try write(seal(data, key: key(create: !exists)), to: url)
         cache.recoveryGenerationObserved = true; cache.recoveryMetadata = try TranscriptVault.fingerprint(url)
@@ -282,9 +322,9 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         for legacy in files where legacy.lastPathComponent.hasPrefix("state") && legacy.pathExtension == "json" {
             let info = try legacy.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
             guard info.isRegularFile == true, info.isSymbolicLink != true else { continue }
-            let data = try Data(contentsOf: legacy), destination = directory.appendingPathComponent("legacy-" + legacy.lastPathComponent + ".vault")
+            let data = try BoundedFile.read(legacy), destination = directory.appendingPathComponent("legacy-" + legacy.lastPathComponent + ".vault")
             let encrypted = try seal(data, key: key); try write(encrypted, to: destination)
-            guard try open(Data(contentsOf: destination), key: key) == data else { throw PuddleError("Legacy encryption verification failed. Original files were preserved.") }
+            guard try open(BoundedFile.read(destination), key: key) == data else { throw PuddleError("Legacy encryption verification failed. Original files were preserved.") }
             try fm.removeItem(at: legacy)
         }
     }

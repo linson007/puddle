@@ -83,7 +83,7 @@ struct ReleaseUpdateConfiguration {
             let (data, response) = try await transport.sendBounded(URLRequest(url: release.downloadURL, timeoutInterval: 180), maximumBytes: maximumDownloadBytes, until: nil)
             try checkCurrent(expected)
             guard response.statusCode == 200 else { throw PuddleError("Download returned HTTP \(response.statusCode).") }
-            try await Task.detached { try ReleaseVerification.verifyDownload(data, release: release) }.value
+            try await CancellableWork.run { try ReleaseVerification.verifyDownload(data, release: release) }
             try checkCurrent(expected)
             let directory = downloadRoot.appendingPathComponent("\(release.build)-\(UUID())", isDirectory: true)
             do {
@@ -103,13 +103,10 @@ struct ReleaseUpdateConfiguration {
         start("Rechecking the downloaded installer…") { [self] expected in
             do {
                 let limit = maximumDownloadBytes
-                try await Task.detached {
-                    let info = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
-                    guard info.isRegularFile == true, info.isSymbolicLink != true, (info.fileSize ?? Int.max) <= limit else {
-                        throw PuddleError("The downloaded installer changed. Download a verified copy again.")
-                    }
-                    try ReleaseVerification.verifyDownload(Data(contentsOf: file), release: release)
-                }.value
+                try await CancellableWork.run {
+                    try Task.checkCancellation()
+                    try ReleaseVerification.verifyDownload(at: file, release: release, maximumBytes: limit)
+                }
                 try checkCurrent(expected)
                 status = open(file) ? "Opened the verified installer. Installation stays under your control." : "The installer could not open. Locate it in Downloads → Puddle Updates."
             } catch {

@@ -21,6 +21,10 @@ private actor LiveBrowserRPCTrace: CuaRPCTransport {
 private actor BrowserRPCFixture: CuaRPCTransport {
     var calls: [(String, ConnectorJSON)] = []
     var closed = false
+    var failRPC = false
+    var failAfterAction = false
+    func failNextRPC() { failRPC = true }
+    func failFollowingAction() { failAfterAction = true }
     var refused = false
     var missingTools = false
     var snapshot = 0
@@ -40,6 +44,7 @@ private actor BrowserRPCFixture: CuaRPCTransport {
     }
     func close() async { closed = true }
     func rpc(_ method: String, parameters: ConnectorJSON, notification: Bool) async throws -> ConnectorJSON {
+        if failRPC { failRPC = false; throw URLError(.timedOut) }
         guard !closed else { throw PuddleError("Fixture closed") }
         calls.append((method, parameters))
         if method == "initialize" { return .object(["protocolVersion": .string("2025-06-18")]) }
@@ -76,6 +81,7 @@ private actor BrowserRPCFixture: CuaRPCTransport {
                 value = .object(["status": .string("ok"), "binding_quality": .string("exact"), "mutation_allowed": .bool(true), "target_id": .string("owned-target" + suffix), "tabs": .array(tabs)])
             }
         case "browser_navigate", "browser_click", "browser_type", "browser_pointer":
+            if failAfterAction { failRPC = true }
             actionCount += 1; value = .object(["status": .string("ok"), "effect": .string("unverifiable")])
         default: value = .object(["status": .string("ok")])
         }
@@ -84,6 +90,33 @@ private actor BrowserRPCFixture: CuaRPCTransport {
 }
 
 final class CuaBrowserTests: XCTestCase {
+    private final class Factory: @unchecked Sendable {
+        private let lock = NSLock()
+        private var connections: [BrowserRPCFixture]
+        init(_ connections: [BrowserRPCFixture]) { self.connections = connections }
+        func next() -> BrowserRPCFixture { lock.withLock { connections.removeFirst() } }
+    }
+    func testTransportFailureReleasesSessionAndReconnectUsesFreshTransport() async throws {
+        let first = BrowserRPCFixture(), second = BrowserRPCFixture(), factory = Factory([first, second])
+        let browser = CuaBrowser(factory: { _ in factory.next() })
+        _ = try await browser.connect(executable: executable)
+        await first.failNextRPC()
+        do { _ = try await browser.observe(); XCTFail("Failed transport reused") } catch is CuaConnectionError {}
+        let closed = await first.closed; XCTAssertTrue(closed)
+        do { _ = try await browser.observe(); XCTFail("Old binding retained") } catch {}
+        let page = try await browser.connect(executable: executable)
+        XCTAssertTrue(page.summary.contains("Fixture"))
+        await browser.disconnect()
+    }
+    func testPostDispatchObservationFailureRetainsReconnectSignalAndUncertainty() async throws {
+        let connection = BrowserRPCFixture(), browser = CuaBrowser(factory: { _ in connection })
+        _ = try await browser.connect(executable: executable)
+        await connection.failFollowingAction()
+        do { _ = try await browser.act(.navigate("https://example.com")); XCTFail("Observation should fail") }
+        catch let error as CuaConnectionError { XCTAssertTrue(error.localizedDescription.contains("may have happened")) }
+        let closed = await connection.closed, actions = await connection.actionCount
+        XCTAssertTrue(closed); XCTAssertEqual(actions, 1)
+    }
     private let executable = URL(fileURLWithPath: "/fixture/cua-driver")
 
     func testDeferredClickAndTypeNeverDispatchEvenWithValidRefs() async throws {

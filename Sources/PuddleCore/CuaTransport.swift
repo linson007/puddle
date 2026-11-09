@@ -68,16 +68,19 @@ public final class CuaStdioTransport: CuaRPCTransport, @unchecked Sendable {
         try verifyExecutable(executable)
         let task = Process(), stdin = Pipe(), stdout = Pipe()
         task.executableURL = executable; task.arguments = ["mcp"]
-        var environment = ProcessInfo.processInfo.environment.filter {
-            !$0.key.hasPrefix("CUA_") && !$0.key.hasPrefix("DYLD_") && $0.key != "LD_PRELOAD"
-        }
-        environment["CUA_DRIVER_PERMISSION_MODE"] = "standard"
-        task.environment = environment
+        task.environment = Self.childEnvironment(ProcessInfo.processInfo.environment)
         task.standardInput = stdin; task.standardOutput = stdout; task.standardError = FileHandle.nullDevice
         _ = fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
         do { try task.run() }
         catch { throw PuddleError("Cua Driver could not start. Check its installation and executable path.") }
         process = task; input = stdin.fileHandleForWriting; output = stdout.fileHandleForReading
+    }
+
+    static func childEnvironment(_ parent: [String: String]) -> [String: String] {
+        let allowed: Set<String> = ["PATH", "HOME", "USER", "LOGNAME", "LANG", "TMPDIR", "__CF_USER_TEXT_ENCODING"]
+        var environment = parent.filter { allowed.contains($0.key) || $0.key.hasPrefix("LC_") }
+        environment["CUA_DRIVER_PERMISSION_MODE"] = "standard"
+        return environment
     }
 
     private func request(_ method: String, parameters: ConnectorJSON, notification: Bool) throws -> ConnectorJSON {
@@ -99,7 +102,7 @@ public final class CuaStdioTransport: CuaRPCTransport, @unchecked Sendable {
             if let end = buffer.firstIndex(of: 10) {
                 let line = buffer.prefix(upTo: end); buffer.removeSubrange(...end)
                 if line.isEmpty { continue }
-                let reply = try JSONDecoder().decode(ConnectorJSON.self, from: line)
+                let reply = try WorkConnectorHTTP.decode(line)
                 guard reply["jsonrpc"]?.string == "2.0" else { throw PuddleError("Cua returned an invalid MCP message.") }
                 // Notifications are allowed; replies must match this request exactly.
                 if reply["id"] == nil, reply["method"] != nil { continue }

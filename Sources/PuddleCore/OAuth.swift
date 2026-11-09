@@ -143,14 +143,19 @@ public struct OAuthFlow: Sendable {
         ]
         return parts.url!
     }
-    public func code(from callback: URL) throws -> String {
+    public func code(from callback: URL, redirect: URL) throws -> String {
+        guard redirect.scheme == "http", ["127.0.0.1", "localhost"].contains(redirect.host ?? ""),
+              callback.scheme == redirect.scheme, callback.host == redirect.host, callback.port == redirect.port,
+              callback.path == redirect.path, callback.user == nil, callback.password == nil, callback.fragment == nil else {
+            throw PuddleError("The Google callback does not match this local sign-in attempt.")
+        }
         let items = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems ?? []
         func value(_ name: String) -> String? {
             let matches = items.filter { $0.name == name }
             return matches.count == 1 ? matches[0].value : nil
         }
         guard value("state") == state else { throw PuddleError("Sign-in could not be verified. Try connecting again.") }
-        if value("error") != nil { throw PuddleError("Google sign-in was declined. Your inbox has not been connected.") }
+        if items.contains(where: { $0.name == "error" }) { throw PuddleError("Google sign-in was declined. Your inbox has not been connected.") }
         guard let code = value("code"), !code.isEmpty else { throw PuddleError("Google did not return a sign-in code.") }
         return code
     }
@@ -248,7 +253,7 @@ public actor GoogleSession {
     private static func identity(access: String, transport: any HTTPTransport) async throws -> GoogleAccount {
         var request = URLRequest(url: URL(string: "https://openidconnect.googleapis.com/v1/userinfo")!)
         request.setValue("Bearer \(access)", forHTTPHeaderField: "Authorization")
-        let (data, response) = try await transport.send(request)
+        let (data, response) = try await transport.sendBounded(request, maximumBytes: 256 * 1024, until: nil)
         guard (200..<300).contains(response.statusCode) else {
             throw PuddleError("Google could not confirm your account. Connect again and allow access to your email address.")
         }
@@ -307,7 +312,7 @@ public actor GoogleSession {
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.httpBody = formBody(fields)
-        let (data, response) = try await transport.send(request)
+        let (data, response) = try await transport.sendBounded(request, maximumBytes: 256 * 1024, until: nil)
         guard (200..<300).contains(response.statusCode) else {
             throw PuddleError("Google could not complete sign-in. Reconnect in Connections. If your OAuth app is in Testing, check its test users and token expiry.")
         }

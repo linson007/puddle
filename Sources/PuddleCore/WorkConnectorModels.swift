@@ -68,6 +68,9 @@ public indirect enum ConnectorJSON: Codable, Sendable {
     public var bool: Bool? { if case .bool(let value) = self { return value }; return nil }
     public var number: Double? { if case .number(let value) = self { return value }; return nil }
     public init(from decoder: Decoder) throws {
+        guard decoder.codingPath.count <= JSONNesting.maximumDepth else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "JSON nesting limit exceeded."))
+        }
         let value = try decoder.singleValueContainer()
         if value.decodeNil() { self = .null }
         else if let item = try? value.decode(Bool.self) { self = .bool(item) }
@@ -116,6 +119,9 @@ enum WorkConnectorHTTP {
         }
         return (data, response)
     }
-    static func decode(_ data: Data) throws -> ConnectorJSON { try JSONDecoder().decode(ConnectorJSON.self, from: data) }
+    static func decode(_ data: Data) throws -> ConnectorJSON {
+        try JSONNesting.validate(data)
+        return try JSONDecoder().decode(ConnectorJSON.self, from: data)
+    }
     static func credential(_ text: String) -> Bool { !text.isEmpty && text.utf8.count <= 32_000 && !text.contains(where: \.isWhitespace) }
 }

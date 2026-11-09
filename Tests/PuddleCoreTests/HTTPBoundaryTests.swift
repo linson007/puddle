@@ -55,6 +55,12 @@ private final class SecurityHTTPServer: @unchecked Sendable {
     func stop() { listener.cancel() }
 }
 final class HTTPBoundaryTests: XCTestCase {
+    func testDefaultSendRejectsOversizedDeclaredBody() async throws {
+        let server = try SecurityHTTPServer(response: "HTTP/1.1 200 OK\r\nContent-Length: 16777216\r\nConnection: close\r\n\r\n" + String(repeating: "x", count: 1024), keepOpen: true)
+        let url = try await server.start(); defer { server.stop() }
+        do { _ = try await URLSessionTransport().send(URLRequest(url: url)); XCTFail("Unbounded default send") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("size limit")) }
+    }
     func testConcreteStreamPreservesMultilineCRLFEventDelimiters() async throws {
         let body = "data: {\r\ndata: \"choices\":[]}\r\n\r\n: heartbeat\r\n\r\n"
         let server = try SecurityHTTPServer(response: "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n" + body)

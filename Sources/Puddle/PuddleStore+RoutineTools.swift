@@ -19,7 +19,9 @@ extension PuddleStore {
             return "Result completeness: \(page.hasMore ? "bounded/incomplete; narrow the query" : "complete for this query").\n" + LocalInferenceClient.emailContext(page.messages)
         case .knowledge:
             let query = String((arguments["query"] as? String ?? "").prefix(500))
-            return try encoded(LocalKnowledge.search(query, documents: state.knowledgeDocuments))
+            let passages = try await LocalKnowledge.searchAsync(query, documents: state.knowledgeDocuments)
+            guard !privateSession, !isLocked else { throw CancellationError() }
+            return try encoded(passages)
         case .workContext:
             return workContext(String((arguments["query"] as? String ?? "").prefix(500)))
         case .calendar:

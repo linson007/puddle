@@ -295,7 +295,7 @@ private struct ConversationView: View {
                                         .font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                                     Group {
                                         if line.role == "user" { Text(verbatim: line.visibleText) }
-                                        else { Text(.init(line.content)) }
+                                        else { Text(verbatim: line.content) }
                                     }.font(.system(size: 15)).lineSpacing(5).textSelection(.enabled)
                                         .fixedSize(horizontal: false, vertical: true)
                                     HStack {

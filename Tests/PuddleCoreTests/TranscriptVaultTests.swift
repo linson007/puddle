@@ -10,6 +10,16 @@ private final class TranscriptSecrets: SecretStore, @unchecked Sendable {
     func delete(_ key: String) throws { values.removeValue(forKey: key) }
 }
 final class TranscriptVaultTests: XCTestCase {
+    func testOversizedReplicaIsReplacedFromHealthyPrimaryWithoutReadingIt() throws {
+        let folder = try folder(), secrets = TranscriptSecrets(), store = EncryptedSnapshotStore(directory: folder, secrets: secrets)
+        let state = state(); try store.save(state)
+        let first = try index(folder, secrets: secrets).active.pages[0].file
+        let replica = folder.appendingPathComponent("transcripts/recovery/" + first)
+        let handle = try FileHandle(forWritingTo: replica)
+        try handle.truncate(atOffset: UInt64(TranscriptVault.maximumBytes + 1025)); try handle.close()
+        XCTAssertEqual(try store.load().chat, state.chat)
+        XCTAssertEqual(try Data(contentsOf: replica), try Data(contentsOf: folder.appendingPathComponent("transcripts/" + first)))
+    }
     private let header = Data("PUDDLEVAULT1\n".utf8)
     private func folder() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("transcript-vault-\(UUID())")
@@ -123,16 +133,16 @@ final class TranscriptVaultTests: XCTestCase {
         XCTAssertEqual(try store.loadResult().snapshot.chat, state.chat)
         XCTAssertEqual(try Data(contentsOf: replica), try Data(contentsOf: folder.appendingPathComponent("transcripts/" + first)))
     }
-    func testFailedIndexCommitRemovesUncommittedPagesAndKeepsTheOldWorkspace() throws {
+    func testNonregularBackupIsQuarantinedWithoutBlockingIndexCommit() throws {
         let folder = try folder(), secrets = TranscriptSecrets(), store = EncryptedSnapshotStore(directory: folder, secrets: secrets)
         var state = state(); try store.save(state)
-        let before = try files(folder), root = try Data(contentsOf: folder.appendingPathComponent("workspace.vault"))
+        let root = try Data(contentsOf: folder.appendingPathComponent("workspace.vault"))
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("workspace.backup.vault"), withIntermediateDirectories: true)
         state.chat.append(ChatLine(role: "assistant", content: "Unsaved"))
-        XCTAssertThrowsError(try store.save(state))
-        XCTAssertEqual(try files(folder), before)
-        XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent("workspace.vault")), root)
-        XCTAssertEqual(try store.load().chat.count, 513)
+        try store.save(state)
+        XCTAssertEqual(try Data(contentsOf: folder.appendingPathComponent("workspace.backup.vault")), root)
+        XCTAssertEqual(try store.load().chat.count, 514)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: folder.path).contains { $0.hasPrefix("workspace-unreadable-") })
     }
     func testSingleFileSchemaSevenMigratesAndFutureRootsNeverFallBack() throws {
         let folder = try folder(), secrets = TranscriptSecrets(), store = EncryptedSnapshotStore(directory: folder, secrets: secrets)

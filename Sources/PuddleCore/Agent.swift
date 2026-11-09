@@ -187,7 +187,9 @@ public struct AgentToolCall: Codable, Sendable, Equatable {
         self.id = id; type = "function"; function = Function(name: name, arguments: arguments)
     }
     public func parameters() throws -> [String: Any] {
-        guard let object = try JSONSerialization.jsonObject(with: Data(function.arguments.utf8)) as? [String: Any] else {
+        let data = Data(function.arguments.utf8)
+        try JSONNesting.validate(data)
+        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw PuddleError("Tool arguments must be a JSON object.")
         }
         return object
