@@ -194,6 +194,29 @@ private actor ReminderModel: HTTPTransport {
         XCTAssertFalse(store.isShuttingDown)
         await store.suspendConnectionWork()
     }
+    func testQuitDuringInFlightReplyAnswersOnceAndNeverSavesTheLateAnswer() async throws {
+        let (store, disk, http, _) = fixture(); await store.start(); await http.setDelay()
+        let submitted = Task { await store.ask("Quit during generation") }
+        await fulfillment(of: [http.gate.entered], timeout: 5)
+        XCTAssertTrue(store.isThinking)
+        let lifecycle = PuddleLifecycle(); lifecycle.store = store
+        lifecycle.terminationTimeout = .milliseconds(50); lifecycle.confirmQuit = { _, _ in true }
+        let answered = expectation(description: "Quit answered while the provider is still blocked")
+        var replies = 0
+        XCTAssertEqual(lifecycle.requestTermination { allow in XCTAssertTrue(allow); replies += 1; answered.fulfill() }, .terminateLater)
+        let firstTask = lifecycle.terminationTask
+        await fulfillment(of: [answered], timeout: 5)
+        XCTAssertTrue(store.isShuttingDown)
+        await http.gate.release(); _ = await submitted.value; await store.aiTask?.value; await firstTask?.value
+        XCTAssertEqual(replies, 1)
+        XCTAssertFalse(store.isThinking)
+        XCTAssertFalse(store.state.chat.contains { $0.role == "assistant" })
+        XCTAssertEqual(try disk.load().chat.filter { $0.role == "assistant" }.count, 0)
+        XCTAssertEqual(try disk.load().chat.first?.content, "Quit during generation")
+        let requests = await http.requests
+        XCTAssertEqual(requests.filter { $0.url?.path == "/v1/chat/completions" }.count, 1)
+        await store.suspendConnectionWork()
+    }
     func testPendingWriteFailureStillRollsBackAfterLockRevokesAccess() async throws {
         let (store, disk, _, _) = fixture()
         await store.start()
