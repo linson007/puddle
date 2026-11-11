@@ -95,11 +95,21 @@ extension PuddleStore {
         await launchRoutine(routine, scheduled: now, now: now, advanceSchedule: false)
     }
     private func launchRoutine(_ routine: AssistantRoutine, scheduled: Date, now: Date, advanceSchedule: Bool = true) async {
+        guard !routineLaunching else { return }
+        routineLaunching = true
+        defer { routineLaunching = false }
         let run = RoutineRun(routineID: routine.id, scheduledAt: scheduled, status: .running), expected = UUID()
+        let generation = routineGeneration
         do { try await commit { next in
             next.routineRuns.insert(run, at: 0); next.routineRuns = Array(next.routineRuns.prefix(500))
             if advanceSchedule, let index = next.routines.firstIndex(where: { $0.id == routine.id }) { next.routines[index].nextRunAt = routine.nextFire(after: now) }
         } } catch { fail(error); return }
+        guard routineGeneration == generation, !isShuttingDown, !isLocked, !privateSession else {
+            do { try await commit { next in if let index = next.routineRuns.firstIndex(where: { $0.id == run.id }) {
+                next.routineRuns[index].status = .interrupted; next.routineRuns[index].result = "Stopped before it started. This run will not replay automatically."; next.routineRuns[index].finishedAt = Date()
+            } } } catch { fail(error) }
+            return
+        }
         routineGeneration = expected
         routineTask = Task {
             defer { if routineGeneration == expected { routineTask = nil } }
