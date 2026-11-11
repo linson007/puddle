@@ -26,6 +26,14 @@ listed by the server. Root addresses and `/v1` addresses are accepted. Common
 ports are 11434 for Ollama, 1234 for LM Studio, 8080 for llama.cpp and 8000 for Splash.
 See the [connection examples and compatibility contract](../README.md#build-and-run).
 
+**Find models** in Settings and guided setup lists IDs reported by the current
+server. Choose one from **Available models**, type a manual ID, or use
+**Automatic (first listed model)**. Finding models only reads the model list;
+it does not send a prompt or change the saved connection. Changing the address
+or key clears the discovered list and ignores late responses from the old
+connection. An empty list explains how to load a model and retry. Listed models
+are not a compatibility guarantee; guided setup separately tests replies and tools.
+
 ## Guided setup, privacy and additional workspaces
 
 **Set Up Local AI** connects any supported local server and tests a real answer
@@ -231,6 +239,15 @@ limit is labeled; an interrupted tool stream cannot execute pending tools.
   duplicating entries.
 - **Copy** copies a message. **Use as draft** puts a user message into the composer
   so it can be edited and sent as a new message.
+- Unsent drafts stay with each conversation when moving between workspaces,
+  windows, and the assistant panel. **Unsent drafts** above the composer reopens
+  another draft, including conversations with no submitted messages. Text typed
+  while a request saves is retained. Drafts are in memory only: sending saves
+  the submitted request; Quit offers to keep Puddle open to send or copy unsent
+  text. They are excluded from backups and are lost after a crash or explicit
+  Quit anyway. Private/demo drafts cannot appear in the normal workspace;
+  normal drafts return when the session ends. Deleting a conversation removes
+  its draft after the deletion saves.
 - **Retry last message** replaces the last attempt's response while preserving
   its tool receipts. If that attempt already created a reminder, retry cannot
   create additional reminders; ask in a new message to request another action.
@@ -335,8 +352,13 @@ conversation histories leave room for tool results.
 
 Tasks are stored locally and are separate from Google Calendar events.
 
-**Tasks** is a commitment list with **Open**, **Waiting on**, and **Completed**
-filters. Search titles, owners and notes. Quick capture adds an undated action;
+**Tasks** is a commitment list with **Open**, **Due today**, **Overdue**,
+**Waiting on**, and **Completed** filters. Due today shows remaining deadlines
+in the Mac's current calendar day; earlier deadlines appear in Overdue.
+The deadline filters and daily stars refresh every minute while the view is open.
+Today's overdue/waiting counters and **View tasks** links open the corresponding
+filter; **Choose from tasks** opens all open work. Search titles, owners and notes.
+Quick capture adds an undated action and returns to Open so it is visible;
 **New Commitment** or **Edit** also sets priority, owner, active/waiting status,
 notes, and a due/follow-up date. Waiting items require a named owner. Owner
 assignment records context locally; it sends no message or delegation.

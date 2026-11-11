@@ -89,7 +89,9 @@ extension PuddleStore {
         guard !hasUnsavedWorkspaceDrafts else {
             fail(PuddleError("Save or discard your meeting notes and development session edits before starting a private session.")); return
         }
-        savedPrivateWorkspace = state; privateSession = true
+        savedPrivateWorkspace = state
+        savedPrivateConversationDrafts = conversationDrafts; conversationDrafts = [:]
+        privateSession = true
         state.chat = []; state.conversations = []; state.actionProposals = []; state.currentConversationID = UUID()
         state.settings.automaticallyLearn = false; state.settings.automaticallyCheck = false
         networkPolicy.allowExternalConnections(false); section = .chat; errorMessage = nil
@@ -98,6 +100,7 @@ extension PuddleStore {
         guard !isChangingWorkspace, privateSession, let saved = savedPrivateWorkspace else { return }
         isChangingWorkspace = true; defer { isChangingWorkspace = false }
         await stopAI(); cancelMeetingSummary(); resetMeetingWorkspace(); developerWorkspace.reset()
+        conversationDrafts = savedPrivateConversationDrafts ?? [:]; savedPrivateConversationDrafts = nil
         state = saved; savedPrivateWorkspace = nil; privateSession = false; errorMessage = nil
         networkPolicy.allowExternalConnections(!state.settings.networkDisabled && !isLocked); startPolling()
         if !isLocked { systemDictation.configure(state.settings) }

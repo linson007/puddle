@@ -3,6 +3,21 @@ import XCTest
 @testable import PuddleCore
 
 final class LocalInferenceTests: XCTestCase {
+    func testDiscoveryKeepsServerOrderAndExactIDsWithoutSendingPrompts() async throws {
+        let transport = FixtureTransport { request in
+            XCTAssertEqual(request.httpMethod, "GET"); XCTAssertEqual(request.url?.path, "/v1/models")
+            XCTAssertNil(request.httpBody)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer fixture-key")
+            return (Data(#"{"data":[{"id":""},{"id":"  "},{"id":"first","max_model_len":0,"context_length":8192},{"id":"first"},{"id":"org/model:Q4","max_model_len":16384},{"id":"unknown","context_length":-1}]}"#.utf8), 200)
+        }
+        let client = try LocalInferenceClient(address: "http://localhost:1234/v1", apiKey: "fixture-key", modelID: "missing", transport: transport)
+        let models = try await client.availableModels()
+        XCTAssertEqual(models.map(\.id), ["first", "org/model:Q4", "unknown"])
+        XCTAssertEqual(models.map(\.contextTokens), [8192, 16384, nil])
+        do { _ = try await client.modelInfo(); XCTFail("Discovery must not silently replace a missing selection") }
+        catch { XCTAssertTrue(error.localizedDescription.contains("selected model")) }
+    }
+
     func testLiveConfiguredLocalServer() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let address = environment["PUDDLE_LIVE_INFERENCE_ADDRESS"] else {

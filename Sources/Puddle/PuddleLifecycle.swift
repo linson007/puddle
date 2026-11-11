@@ -68,6 +68,9 @@ import PuddleCore
             if store?.hasUnsavedWorkspaceDrafts == true {
                 if !confirmQuit("You have unsaved notes", "Meeting notes or development session edits have not been saved. Keep Puddle open to save them, or quit anyway to discard those edits.") { finish(false); return }
             }
+            if store?.hasUnsentConversationDrafts == true {
+                if !confirmQuit(L10n.text("You have unsent messages"), L10n.text("Chat drafts stay in memory until sent. Keep Puddle open to send or copy them, or quit anyway to discard them.")) { finish(false); return }
+            }
             guard let attendance, needsBrowserCleanup else { finish(true); return }
             let closed = await attendance.leaveAndWait()
             guard terminationID == id, !Task.isCancelled else { return }

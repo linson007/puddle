@@ -4,23 +4,31 @@ import PuddleCore
 struct TasksView: View {
     @ObservedObject var store: PuddleStore
     @State private var search = ""
-    @State private var filter = Filter.open
     @State private var quickTitle = ""
+    @State private var isAddingTask = false
     @State private var editing: AssistantTask?
     @State private var adding = false
     @FocusState private var captureFocused: Bool
-    private enum Filter: String, CaseIterable { case open = "Open", waiting = "Waiting on", completed = "Completed" }
+    private var filter: TaskFilter { store.taskFilter }
 
-    private var matches: [AssistantTask] {
+    private func matches(at now: Date) -> [AssistantTask] {
         store.state.tasks.filter { task in
-            let inFilter = filter == .completed ? task.completed : !task.completed && (filter != .waiting || task.workflow == .waiting)
             let query = search.trimmingCharacters(in: .whitespacesAndNewlines)
-            return inFilter && (query.isEmpty || "\(task.title) \(task.owner) \(task.notes)".localizedCaseInsensitiveContains(query))
+            return filter.matches(task, now: now) && (query.isEmpty || "\(task.title) \(task.owner) \(task.notes)".localizedCaseInsensitiveContains(query))
         }.sorted(by: ExecutiveBrief.taskOrder)
     }
 
     var body: some View {
-        ScrollView {
+        TimelineView(.periodic(from: .now, by: 60)) { timeline in
+            content(at: timeline.date)
+        }
+        .sheet(isPresented: $adding) { CommitmentEditor(store: store) }
+        .sheet(item: $editing) { CommitmentEditor(store: store, task: $0) }
+    }
+
+    private func content(at now: Date) -> some View {
+        let matches = matches(at: now)
+        return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 16) { heading; Spacer(minLength: 0); newTask }
@@ -32,7 +40,7 @@ struct TasksView: View {
                         .font(.system(size: 14)).focused($captureFocused).accessibilityLabel("Quick capture a task")
                         .onSubmit { Task { await quickAdd() } }
                     Button(L10n.text("Add task")) { Task { await quickAdd() } }.buttonStyle(PuddleSecondaryButtonStyle())
-                        .disabled(quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .disabled(isAddingTask || quickTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }.puddleCard(padding: 12)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 16) { filters; searchField }
@@ -45,14 +53,14 @@ struct TasksView: View {
                     Text("Star up to three priorities for today")
                 }.font(.caption).foregroundStyle(PuddleStyle.muted)
                 LazyVStack(spacing: 10) {
-                    ForEach(matches) { task in CommitmentRow(store: store, task: task) { editing = task } }
+                    ForEach(matches) { task in CommitmentRow(store: store, task: task, now: now) { editing = task } }
                 }
                 if matches.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: search.isEmpty ? "checkmark.circle" : "magnifyingglass")
                             .font(.system(size: 30, weight: .light)).foregroundStyle(PuddleStyle.teal)
-                        Text(search.isEmpty ? "No \(filter.rawValue.lowercased()) tasks" : "No matching tasks").font(.headline)
-                        Text(search.isEmpty ? (filter == .completed ? "Completed tasks will appear here." : filter == .waiting ? "Give a task an owner and choose Waiting on someone to track a follow-up." : "Capture your next action above. A small step is a good start.") : "Try another title, owner or note.")
+                        Text(L10n.text(search.isEmpty ? filter.emptyTitle : "No matching tasks")).font(.headline)
+                        Text(L10n.text(search.isEmpty ? filter.emptyMessage : "Try another title, owner or note."))
                             .font(.callout).foregroundStyle(PuddleStyle.muted).multilineTextAlignment(.center)
                         if !search.isEmpty {
                             Button("Clear search") { search = "" }.buttonStyle(PuddleSecondaryButtonStyle())
@@ -65,14 +73,12 @@ struct TasksView: View {
                     .font(.caption).foregroundStyle(PuddleStyle.muted)
             }.frame(maxWidth: 940, alignment: .leading).padding(30).frame(maxWidth: .infinity)
         }
-        .sheet(isPresented: $adding) { CommitmentEditor(store: store) }
-        .sheet(item: $editing) { CommitmentEditor(store: store, task: $0) }
     }
 
     private var filters: some View {
-        Picker("Show commitments", selection: $filter) {
-            ForEach(Filter.allCases, id: \.self) { Text(L10n.text($0.rawValue)).tag($0) }
-        }.pickerStyle(.segmented).labelsHidden().frame(maxWidth: 330)
+        Picker("Show commitments", selection: $store.taskFilter) {
+            ForEach(TaskFilter.allCases, id: \.self) { Text(L10n.text($0.rawValue)).tag($0) }
+        }.pickerStyle(.segmented).labelsHidden().frame(minWidth: 390, maxWidth: 440)
     }
 
     private var heading: some View {
@@ -98,10 +104,17 @@ struct TasksView: View {
             }
         }.padding(9).background(PuddleStyle.panel, in: RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(PuddleStyle.line))
+            .frame(minWidth: 200)
     }
 
     private func quickAdd() async {
-        if await store.addTask(title: quickTitle, dueAt: nil) { quickTitle = "" }
+        guard !isAddingTask else { return }
+        let title = quickTitle
+        isAddingTask = true; defer { isAddingTask = false }
+        if await store.addTask(title: title, dueAt: nil) {
+            if quickTitle == title { quickTitle = "" }
+            search = ""; store.taskFilter = .open
+        }
     }
 }
 

@@ -2,6 +2,10 @@ import Foundation
 import PuddleCore
 
 extension PuddleStore {
+    func showTasks(_ filter: TaskFilter = .open) {
+        taskFilter = filter; section = .tasks
+    }
+
     @discardableResult func saveProfile(_ profile: ExecutiveProfile) async -> Bool {
         do {
             let validated = try profile.validated()

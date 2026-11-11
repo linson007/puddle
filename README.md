@@ -70,6 +70,9 @@ Choose **Set Up Local AI** from Today, chat, or Settings to connect and verify
 an existing server. In **Settings → Local AI**, enter its address, optional exact
 **Model ID**, and an API key if required, then select **Save and Test Connection**.
 Leave Model ID blank to use the first model listed by the server.
+Use **Find models** in Settings or guided setup to select an exact ID from your
+server without copying it manually. Listing models does not send a prompt;
+guided reply/tool verification checks whether your selection works with Puddle.
 
 | Local server | Common address |
 | --- | --- |
@@ -164,6 +167,11 @@ tasks, and connections. Replies stream into chat; messages support copying,
 reuse as a draft, and retries with durable tool receipts. Settings → Assistant
 controls response preferences and notifications. The menu bar item keeps Puddle
 available after its window closes.
+
+Unsent messages follow their conversation across navigation and the assistant
+panel. **Unsent drafts** returns to another draft, even before its first message
+is sent. Drafts stay in memory until sent; Quit offers to keep Puddle open so you
+can send or copy them. Private and demo sessions keep separate drafts.
 
 Use the microphone or Command-Shift-M to dictate on this Mac, then review and
 send the draft. **Read aloud** plays a reply using a macOS voice. Settings →

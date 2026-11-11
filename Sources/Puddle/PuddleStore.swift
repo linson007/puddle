@@ -48,6 +48,7 @@ final class PuddleStore: ObservableObject {
     private(set) var workspaceRevision: UInt64 = 0
     @Published var state = AppSnapshot() { didSet { workspaceRevision &+= 1 } }
     @Published var section = Section.today
+    @Published var taskFilter = TaskFilter.open
     @Published var settingsTab = "localAI"
     @Published var selectedID: String?
     @Published var showSetup = false
@@ -55,6 +56,9 @@ final class PuddleStore: ObservableObject {
     @Published var showCommands = false
     @Published var showQuickCapture = false
     @Published var showAssistantPanel = false
+    @Published var conversationDrafts: [UUID: ConversationDraft] = [:]
+    var savedPrivateConversationDrafts: [UUID: ConversationDraft]?
+    var savedDemoConversationDrafts: [UUID: ConversationDraft]?
     @Published var editingCommitment: AssistantTask?
     @Published var editingWorkProject: WorkProject?
     @Published var editingPerson: PersonContext?
@@ -620,13 +624,21 @@ final class PuddleStore: ObservableObject {
     }
 
     func openConversation(_ id: UUID) async {
-        guard state.conversationHistory.contains(where: { $0.id == id }) else { return }
-        if id != state.currentConversationID { await stopAI(); state.openConversation(id); await persist() }
+        guard state.conversationHistory.contains(where: { $0.id == id }) || conversationDrafts[id] != nil else { return }
+        if id != state.currentConversationID {
+            await stopAI()
+            if state.conversationHistory.contains(where: { $0.id == id }) { state.openConversation(id) }
+            else if let draft = conversationDrafts[id] {
+                state.startNewConversation(); state.currentConversationID = id; state.currentConversationCreatedAt = draft.createdAt
+            }
+            await persist()
+        }
         section = .chat
     }
     func deleteConversation(_ id: UUID) async {
         if id == state.currentConversationID { await stopAI() }
-        state.deleteConversation(id); await persist()
+        state.deleteConversation(id)
+        if await persist() { conversationDrafts.removeValue(forKey: id) }
     }
 
     @discardableResult private func submit(_ question: String, retryLine: ChatLine?, newLine: ChatLine? = nil) async -> Bool {
@@ -1225,6 +1237,8 @@ final class PuddleStore: ObservableObject {
         isSyncing = false; isRefreshingCalendar = false
         inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil
         guard !privateSession, !isLocked, !isShuttingDown else { return }
+        if !demo { savedDemoConversationDrafts = conversationDrafts }
+        conversationDrafts = [:]
         demo = true; connected = false; selectedID = nil; errorMessage = nil; section = .today
         state = AppSnapshot(); state.account = "you@example.test"
         state.merge(DemoInbox.messages)
@@ -1243,7 +1257,7 @@ final class PuddleStore: ObservableObject {
         startPolling()
     }
     func leaveDemo() async {
-        guard !privateSession, !isLocked, !isShuttingDown, !isChangingWorkspace else { return }
+        guard demo, !privateSession, !isLocked, !isShuttingDown, !isChangingWorkspace else { return }
         isChangingWorkspace = true; defer { isChangingWorkspace = false }
         browserWorkspace.stop()
         cancelAtlassianSignIn(); workSources.cancel()
@@ -1251,6 +1265,7 @@ final class PuddleStore: ObservableObject {
         resetMeetingWorkspace()
         await stopAI()
         guard !privateSession, !isLocked, !isShuttingDown else { return }
+        conversationDrafts = savedDemoConversationDrafts ?? [:]; savedDemoConversationDrafts = nil
         generation = UUID(); demo = false; section = .chat; selectedID = nil; errorMessage = nil
         inferenceRevision = UUID(); modelConnection = nil; inferenceModel = nil
         guard await loadState() else { return }

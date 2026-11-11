@@ -69,6 +69,27 @@ private struct RaceHTTP: HTTPTransport {
 }
 
 @MainActor final class WorkspaceRaceTests: XCTestCase {
+    func testQuitProtectsUnselectedChatDraftAndCanRetryAfterClearingIt() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        subject.setConversationDraft("Don't lose this unsent message")
+        let draftID = subject.state.currentConversationID
+        await subject.clearChat(); subject.section = .tasks
+        let lifecycle = PuddleLifecycle(); lifecycle.store = subject
+        var prompts = 0, reply: Bool?
+        lifecycle.confirmQuit = { title, _ in
+            XCTAssertEqual(title, "You have unsent messages"); prompts += 1; return false
+        }
+        XCTAssertEqual(lifecycle.requestTermination { reply = $0 }, .terminateLater)
+        await lifecycle.terminationTask?.value
+        XCTAssertEqual(prompts, 1); XCTAssertEqual(reply, false)
+        XCTAssertFalse(subject.isShuttingDown)
+        await subject.openConversation(draftID); subject.setConversationDraft("")
+        lifecycle.confirmQuit = { _, _ in XCTFail("Cleared drafts should not block quit"); return false }
+        XCTAssertEqual(lifecycle.requestTermination { reply = $0 }, .terminateLater)
+        await lifecycle.terminationTask?.value
+        XCTAssertEqual(reply, true)
+    }
+
     func testDemoTransitionWaitingForPersistenceCannotStartAnotherAssistantTurn() async throws {
         let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
         let entered = expectation(description: "Save holds workspace transition")
