@@ -40,6 +40,50 @@ private actor PrivacyHTTP: HTTPTransport {
         await store.endPrivateSession(); XCTAssertFalse(store.privateSession)
         XCTAssertEqual(store.state.chat.first?.content, "Saved chat"); XCTAssertTrue(store.state.tasks.isEmpty)
     }
+    func testPrivateSessionCannotDiscardExistingUnsavedMeetingOrDevelopmentWork() async throws {
+        let store = PuddleStore(cache: PrivacyDisk(), secrets: PrivacySecrets(), transport: PrivacyHTTP(), reminderScheduler: Scheduler())
+        await store.start()
+        _ = await store.createMeetingNote()
+        let note = try XCTUnwrap(store.state.meetings.first)
+        store.meetingWorkspace.edit(note) { $0.notes = "Existing unsaved notes" }
+        await store.beginPrivateSession()
+        XCTAssertFalse(store.privateSession)
+        XCTAssertEqual(store.meetingWorkspace.draft(for: note).notes, "Existing unsaved notes")
+        XCTAssertNotNil(store.errorMessage)
+        store.meetingWorkspace.discard(note.id)
+        _ = await store.createDevelopmentSession(kind: .debug)
+        let session = try XCTUnwrap(store.state.developmentSessions.first)
+        store.developerWorkspace.edit(session) { $0.findings = "Existing unsaved findings" }
+        await store.beginPrivateSession()
+        XCTAssertFalse(store.privateSession)
+        XCTAssertEqual(store.developerWorkspace.draft(session).findings, "Existing unsaved findings")
+        store.developerWorkspace.saved(session.id)
+        await store.beginPrivateSession()
+        XCTAssertTrue(store.privateSession)
+        await store.endPrivateSession()
+        await store.suspendConnectionWork()
+    }
+    func testEndingPrivateSessionDiscardsMeetingAndDevelopmentDraftsBeforeLaterSave() async throws {
+        let disk = PrivacyDisk()
+        let store = PuddleStore(cache: disk, secrets: PrivacySecrets(), transport: PrivacyHTTP(), reminderScheduler: Scheduler())
+        await store.start()
+        _ = await store.createMeetingNote()
+        _ = await store.createDevelopmentSession(kind: .review)
+        let note = try XCTUnwrap(store.state.meetings.first)
+        let session = try XCTUnwrap(store.state.developmentSessions.first)
+        await store.beginPrivateSession()
+        store.meetingWorkspace.edit(note) { $0.notes = "Private meeting text" }
+        store.developerWorkspace.edit(session) { $0.findings = "Private development text" }
+        await store.endPrivateSession()
+        XCTAssertTrue(store.meetingWorkspace.drafts.isEmpty)
+        XCTAssertTrue(store.developerWorkspace.drafts.isEmpty)
+        XCTAssertTrue(store.meetingWorkspace.draft(for: note).notes.isEmpty)
+        let restored = store.developerWorkspace.draft(session)
+        XCTAssertTrue(restored.findings.isEmpty)
+        let saved = await store.saveDevelopmentSession(restored); XCTAssertTrue(saved)
+        XCTAssertTrue(disk.snapshot.developmentSessions[0].findings.isEmpty)
+        await store.suspendConnectionWork()
+    }
     func testPausedAssistantKeepsCachedBriefButDoesNotAdvertiseFreshProviderTools() async {
         let store = PuddleStore(cache: PrivacyDisk(), secrets: PrivacySecrets(), transport: PrivacyHTTP(), reminderScheduler: Scheduler())
         await store.start(); store.connected = true; store.grantedScopes = [OAuthFlow.scope, OAuthFlow.calendarScope]

@@ -65,6 +65,9 @@ import PuddleCore
             if let failure = store?.persistenceFailure ?? (captureFinished ? nil : store?.meetingCapture.errorMessage) {
                 if !confirmQuit(L10n.text("Workspace changes or meeting text could not be saved"), failure) { finish(false); return }
             }
+            if store?.hasUnsavedWorkspaceDrafts == true {
+                if !confirmQuit("You have unsaved notes", "Meeting notes or development session edits have not been saved. Keep Puddle open to save them, or quit anyway to discard those edits.") { finish(false); return }
+            }
             guard let attendance, needsBrowserCleanup else { finish(true); return }
             let closed = await attendance.leaveAndWait()
             guard terminationID == id, !Task.isCancelled else { return }

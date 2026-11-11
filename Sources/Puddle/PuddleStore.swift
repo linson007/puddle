@@ -71,6 +71,10 @@ final class PuddleStore: ObservableObject {
     @Published var privateSession = false { didSet { if oldValue != privateSession { workspaceAccessRevision = UUID() } } }
     @Published var isLocked = false { didSet { if oldValue != isLocked { workspaceAccessRevision = UUID() } } }
     var savedPrivateWorkspace: AppSnapshot?
+    var hasUnsavedWorkspaceDrafts: Bool {
+        state.meetings.contains { meetingWorkspace.isDirty($0) } ||
+        state.developmentSessions.contains { developerWorkspace.draft($0) != $0 }
+    }
     var isChangingWorkspace = false
     let networkPolicy = NetworkPolicy()
     @Published var errorMessage: String?

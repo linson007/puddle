@@ -15,6 +15,9 @@ import PuddleCore
         var next = draft(session); change(&next); drafts[session.id] = next
     }
     func saved(_ id: UUID) { drafts[id] = nil }
+    func saved(_ session: DevelopmentSession) {
+        if drafts[session.id] == session { drafts[session.id] = nil }
+    }
     func detachProject(_ id: UUID, name: String?) {
         for key in drafts.keys where drafts[key]?.projectID == id { drafts[key]?.projectID = nil; drafts[key]?.projectName = name }
     }
