@@ -1,5 +1,9 @@
 # Verify the Puddle personal assistant
 
+The [11 November manual regression and website comparison](manual-e2e-ui-parity-2026-11-11.md)
+records the native walkthrough, real local-model evidence, fixes and remaining
+release gates. See also the [release regression report](release-regression-2026-11-11.md).
+
 ## Contributor checks without accounts or a model
 
 From the repository root, run:
