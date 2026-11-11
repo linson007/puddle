@@ -20,6 +20,32 @@ private actor PrivacyHTTP: HTTPTransport {
     }
 }
 @MainActor final class PrivacyWorkflowTests: XCTestCase {
+    func testPrivateAndDemoDraftsStaySeparateAndNormalDraftReturns() async throws {
+        let disk = PrivacyDisk()
+        let store = PuddleStore(cache: disk, secrets: PrivacySecrets(), transport: PrivacyHTTP(), reminderScheduler: Scheduler())
+        await store.start()
+        let id = store.state.currentConversationID
+        store.setConversationDraft("Normal draft")
+        await store.leaveDemo()
+        XCTAssertEqual(store.conversationDraft, "Normal draft", "A redundant exit must not clear normal drafts")
+        await store.beginPrivateSession()
+        XCTAssertTrue(store.privateSession); XCTAssertTrue(store.conversationDrafts.isEmpty)
+        store.setConversationDraft("Private-only draft")
+        await store.clearChat()
+        store.setConversationDraft("Second private draft")
+        await store.endPrivateSession()
+        XCTAssertEqual(store.conversationDrafts.count, 1); XCTAssertEqual(store.conversationDrafts[id]?.text, "Normal draft")
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(disk.snapshot), as: UTF8.self).contains("Private-only"))
+        await store.enterDemo()
+        XCTAssertTrue(store.conversationDrafts.isEmpty)
+        store.setConversationDraft("Demo-only draft")
+        await store.enterDemo()
+        store.setConversationDraft("Another demo draft")
+        await store.leaveDemo()
+        XCTAssertEqual(store.conversationDrafts.count, 1); XCTAssertEqual(store.conversationDrafts[id]?.text, "Normal draft")
+        await store.suspendConnectionWork()
+    }
+
     private final class Scheduler: ReminderScheduling {
         var calls = 0
         func reconcile(tasks: [AssistantTask], enabled: Bool) async throws { calls += 1 }

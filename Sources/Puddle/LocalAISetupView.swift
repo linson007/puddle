@@ -46,7 +46,7 @@ struct LocalAISetupView: View {
             Text("We suggest Splash, but you can use any compatible local provider.").font(.callout).foregroundStyle(.secondary)
             Link("Explore Splash", destination: URL(string: "https://github.com/incoai/splash")!).font(.caption)
             TextField(L10n.text("Local server address"), text: $address).textFieldStyle(.roundedBorder)
-            TextField(L10n.text("Model ID (optional)"), text: $modelID).textFieldStyle(.roundedBorder)
+            LocalModelPicker(store: store, address: address, key: key, modelID: $modelID)
             Text("Leave Model ID blank to use the first model in /v1/models. Tool use needs a model and server configured for function calling.").font(.caption).foregroundStyle(.secondary)
             SecureField("API key, if required", text: $key).textFieldStyle(.roundedBorder)
             HStack {

@@ -97,7 +97,9 @@ extension PuddleStore {
     func openSearchResult(_ result: WorkspaceSearchResult) async {
         switch result.kind {
         case .conversation: if let id = UUID(uuidString: result.locator) { await openConversation(id) }
-        case .task: section = .tasks; editingCommitment = state.tasks.first { $0.id.uuidString == result.locator }
+        case .task:
+            editingCommitment = state.tasks.first { $0.id.uuidString == result.locator }
+            showTasks(editingCommitment?.completed == true ? .completed : .open)
         case .meeting: section = .meetings; meetingWorkspace.selectedID = UUID(uuidString: result.locator)
         case .email: section = .mail; selectedID = result.locator
         case .event: section = .calendar

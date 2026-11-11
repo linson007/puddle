@@ -1,6 +1,6 @@
 import Foundation
 
-public struct LocalInferenceModel: Sendable {
+public struct LocalInferenceModel: Identifiable, Equatable, Sendable {
     public let id: String
     public let contextTokens: Int?
     public init(id: String, contextTokens: Int? = nil) { self.id = id; self.contextTokens = contextTokens }
@@ -45,21 +45,31 @@ public struct LocalInferenceClient: Sendable {
         try await modelInfo().id
     }
 
-    public func modelInfo() async throws -> LocalInferenceModel {
+    /// Lists the server's models without submitting a prompt or reading workspace data.
+    public func availableModels() async throws -> [LocalInferenceModel] {
         let (data, response) = try await send(request("v1/models", timeout: 5))
         try checkHTTP(response, data: data, service: "Local AI")
         struct Models: Decodable {
             struct Model: Decodable { let id: String; let max_model_len: Int?; let context_length: Int? }
             let data: [Model]
         }
-        let models = try JSONDecoder().decode(Models.self, from: data).data.filter { !$0.id.isEmpty }
+        var seen = Set<String>()
+        return try JSONDecoder().decode(Models.self, from: data).data.compactMap { model in
+            guard !model.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  seen.insert(model.id).inserted else { return nil }
+            let capacity = [model.max_model_len, model.context_length].compactMap { $0 }.first { $0 > 0 }
+            return LocalInferenceModel(id: model.id, contextTokens: capacity)
+        }
+    }
+
+    public func modelInfo() async throws -> LocalInferenceModel {
+        let models = try await availableModels()
         guard let model = modelID.isEmpty ? models.first : models.first(where: { $0.id == modelID }) else {
             throw PuddleError(modelID.isEmpty
                 ? "The local AI server lists no models. Load a chat model in your server, then test the connection again."
                 : "The selected model is not listed by the local AI server. Copy its exact model ID from /v1/models, or leave Model ID blank to use the first model.")
         }
-        let capacity = model.max_model_len ?? model.context_length
-        return LocalInferenceModel(id: model.id, contextTokens: capacity.flatMap { $0 > 0 ? $0 : nil })
+        return model
     }
 
     public func summarize(_ message: MailMessage) async throws -> String {

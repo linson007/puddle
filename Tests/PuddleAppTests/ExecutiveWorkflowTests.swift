@@ -49,6 +49,21 @@ private actor BriefTransport: HTTPTransport {
 }
 
 @MainActor final class ExecutiveWorkflowTests: XCTestCase {
+    func testTodayTaskNavigationAndCompletedSearchResultChooseRelevantFilters() async throws {
+        let subject = store(ExecutiveDisk()); await subject.start()
+        for filter in [TaskFilter.overdue, .waiting, .dueToday, .open] {
+            subject.section = .today; subject.showTasks(filter)
+            XCTAssertEqual(subject.section, .tasks); XCTAssertEqual(subject.taskFilter, filter)
+        }
+        var completed = AssistantTask(title: "Finished synthetic review"); completed.completed = true
+        subject.state.tasks = [completed]
+        subject.showTasks(.overdue)
+        let result = try XCTUnwrap(WorkspaceSearch.search("Finished", in: subject.state).first)
+        await subject.openSearchResult(result)
+        XCTAssertEqual(subject.taskFilter, .completed); XCTAssertEqual(subject.editingCommitment?.id, completed.id)
+        await subject.suspendConnectionWork()
+    }
+
     private func store(_ disk: ExecutiveDisk, transport: BriefTransport = BriefTransport()) -> PuddleStore {
         PuddleStore(cache: disk, secrets: ExecutiveSecrets(), transport: transport, reminderScheduler: ExecutiveScheduler())
     }

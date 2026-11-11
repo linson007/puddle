@@ -34,10 +34,10 @@ struct TodayView: View {
                         if !brief.overdue.isEmpty || !brief.waiting.isEmpty || hasCalendarContext {
                             HStack(spacing: 12) {
                                 if !brief.overdue.isEmpty {
-                                    metric("Overdue", value: brief.overdue.count, icon: "exclamationmark.circle", attention: true, destination: .tasks)
+                                    metric("Overdue", value: brief.overdue.count, icon: "exclamationmark.circle", attention: true, destination: .tasks, taskFilter: .overdue)
                                 }
                                 if !brief.waiting.isEmpty {
-                                    metric("Waiting on", value: brief.waiting.count, icon: "hourglass", attention: false, destination: .tasks)
+                                    metric("Waiting on", value: brief.waiting.count, icon: "hourglass", attention: false, destination: .tasks, taskFilter: .waiting)
                                 }
                                 if hasCalendarContext {
                                     metric("On the agenda", value: brief.agenda.count, icon: "calendar", attention: false, destination: .calendar)
@@ -45,11 +45,11 @@ struct TodayView: View {
                             }
                         }
                         if store.demo || store.inferenceModel != nil { assistantBrief }
-                        if !brief.overdue.isEmpty { commitments("Needs a follow-up", tasks: brief.overdue, now: timeline.date) }
-                        if !brief.dueToday.isEmpty { commitments("Due later today", tasks: brief.dueToday, now: timeline.date) }
+                        if !brief.overdue.isEmpty { commitments("Needs a follow-up", tasks: brief.overdue, filter: .overdue, now: timeline.date) }
+                        if !brief.dueToday.isEmpty { commitments("Due later today", tasks: brief.dueToday, filter: .dueToday, now: timeline.date) }
                         let dueIDs = Set((brief.overdue + brief.dueToday).map(\.id))
                         let waiting = brief.waiting.filter { !dueIDs.contains($0.id) }
-                        if !waiting.isEmpty { commitments("Waiting on others", tasks: waiting, now: timeline.date) }
+                        if !waiting.isEmpty { commitments("Waiting on others", tasks: waiting, filter: .waiting, now: timeline.date) }
                         if hasMailContext { flaggedMail(brief) }
                         HStack(alignment: .top) {
                             Label("Saved work & cached connections · \(TimeZone.current.identifier)", systemImage: "internaldrive")
@@ -137,8 +137,8 @@ struct TodayView: View {
         Button("Optional connections") { store.section = .connections }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
     }
 
-    private func metric(_ title: String, value: Int, icon: String, attention: Bool, destination: PuddleStore.Section) -> some View {
-        Button { store.section = destination } label: {
+    private func metric(_ title: String, value: Int, icon: String, attention: Bool, destination: PuddleStore.Section, taskFilter: TaskFilter? = nil) -> some View {
+        Button { if let taskFilter { store.showTasks(taskFilter) } else { store.section = destination } } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon).foregroundStyle(attention ? Color.orange : PuddleStyle.teal)
                 Text(String(value)).font(.system(size: 22, weight: .semibold, design: .rounded))
@@ -194,20 +194,20 @@ struct TodayView: View {
                     Text("What would make today feel successful?").font(.system(size: 15, weight: .medium))
                     Text("Star up to three tasks to keep them here. Your focus resets each day; your tasks stay saved.")
                         .font(.callout).foregroundStyle(PuddleStyle.muted).fixedSize(horizontal: false, vertical: true)
-                    Button("Choose from tasks") { store.section = .tasks }.buttonStyle(PuddleSecondaryButtonStyle())
+                    Button("Choose from tasks") { store.showTasks() }.buttonStyle(PuddleSecondaryButtonStyle())
                 }.padding(.vertical, 18)
             } else {
-                Button("Choose from tasks") { store.section = .tasks }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
+                Button("Choose from tasks") { store.showTasks() }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
             }
         }.frame(minHeight: 235, alignment: .topLeading).puddleCard()
     }
 
-    private func commitments(_ title: String, tasks: [AssistantTask], now: Date) -> some View {
+    private func commitments(_ title: String, tasks: [AssistantTask], filter: TaskFilter, now: Date) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text(title).font(.headline).accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("All commitments (\(tasks.count))") { store.section = .tasks }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
+                Button(L10n.text("View tasks")) { store.showTasks(filter) }.buttonStyle(PuddleTextButtonStyle()).font(.caption)
             }
             ForEach(tasks.prefix(4)) { task in CommitmentRow(store: store, task: task, now: now) { editing = task } }
         }

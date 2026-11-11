@@ -76,6 +76,54 @@ private actor ReminderModel: HTTPTransport {
 }
 
 @MainActor final class PuddleStoreTests: XCTestCase {
+    func testConversationDraftSurvivesNavigationAndCanReopenADraftOnlyConversation() async throws {
+        let (store, disk, _, _) = fixture(); await store.start()
+        let id = store.state.currentConversationID
+        store.setConversationDraft("Unsent synthetic request")
+        store.section = .tasks; store.showAssistantPanel = true
+        XCTAssertEqual(store.conversationDraft, "Unsent synthetic request")
+        await store.clearChat()
+        XCTAssertTrue(store.conversationDraft.isEmpty)
+        XCTAssertEqual(store.otherConversationDrafts.map(\.id), [id])
+        store.setConversationDraft("Another request")
+        await store.openConversation(id)
+        XCTAssertEqual(store.state.currentConversationID, id)
+        XCTAssertEqual(store.conversationDraft, "Unsent synthetic request")
+        XCTAssertTrue(store.state.chat.isEmpty, "A draft must never appear as a submitted user message")
+        let saved = String(decoding: try JSONEncoder().encode(disk.load()), as: UTF8.self)
+        XCTAssertFalse(saved.contains("Unsent synthetic request")); XCTAssertFalse(saved.contains("Another request"))
+        await store.deleteConversation(id)
+        XCTAssertNil(store.conversationDrafts[id])
+        await store.suspendConnectionWork()
+    }
+
+    func testSubmittingDraftRetainsNewTextTypedWhileInitialSaveIsPending() async throws {
+        let (store, disk, _, _) = fixture(); await store.start()
+        store.setConversationDraft("Submit this request")
+        let entered = expectation(description: "Draft submission is saving")
+        disk.blockWrite(entered); defer { disk.releaseWrite() }
+        let send = Task { await store.sendConversationDraft() }
+        await fulfillment(of: [entered], timeout: 5)
+        store.setConversationDraft("Next request typed during save")
+        disk.releaseWrite(); await send.value; await store.aiTask?.value
+        XCTAssertEqual(store.conversationDraft, "Next request typed during save")
+        XCTAssertEqual(store.state.chat.first?.content, "Submit this request")
+        await store.sendConversationDraft(); await store.aiTask?.value
+        XCTAssertTrue(store.conversationDraft.isEmpty)
+        await store.suspendConnectionWork()
+    }
+
+    func testFailedSubmissionRetainsDraftForRecovery() async throws {
+        let (store, disk, _, _) = fixture(); await store.start()
+        store.setConversationDraft("Keep after failed save")
+        disk.failWrite = true
+        await store.sendConversationDraft()
+        XCTAssertEqual(store.conversationDraft, "Keep after failed save")
+        XCTAssertEqual(store.recoverablePrompts.first?.content, "Keep after failed save")
+        disk.failWrite = false
+        await store.suspendConnectionWork()
+    }
+
     func testOverlappingApprovalDeclinesSecondWithoutOrphaningFirst() async throws {
         let (store, _, _, _) = fixture()
         let first = Task { await store.approve(title: "First", detail: "Visible review") }

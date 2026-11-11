@@ -2628,6 +2628,281 @@
           }
         }
       }
+    },
+    "Automatic (first listed model)": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatic (first listed model)"
+          }
+        }
+      }
+    },
+    "Available models": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Available models"
+          }
+        }
+      }
+    },
+    "Capture your next action above. A small step is a good start.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Capture your next action above. A small step is a good start."
+          }
+        }
+      }
+    },
+    "Chat drafts stay in memory until sent. Keep Puddle open to send or copy them, or quit anyway to discard them.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat drafts stay in memory until sent. Keep Puddle open to send or copy them, or quit anyway to discard them."
+          }
+        }
+      }
+    },
+    "Completed tasks will appear here.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Completed tasks will appear here."
+          }
+        }
+      }
+    },
+    "Due today": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Due today"
+          }
+        }
+      }
+    },
+    "Find models": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Find models"
+          }
+        }
+      }
+    },
+    "Give a task an owner and choose Waiting on someone to track a follow-up.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Give a task an owner and choose Waiting on someone to track a follow-up."
+          }
+        }
+      }
+    },
+    "Listed by your server. Test a reply and tool calling to check compatibility.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Listed by your server. Test a reply and tool calling to check compatibility."
+          }
+        }
+      }
+    },
+    "Looking for models…": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Looking for models…"
+          }
+        }
+      }
+    },
+    "No completed tasks": {
+      "comment": "Task filter empty state.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No completed tasks"
+          }
+        }
+      }
+    },
+    "No matching tasks": {
+      "comment": "Task filter empty state.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No matching tasks"
+          }
+        }
+      }
+    },
+    "No models listed. Load a chat model in your server, then find models again.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No models listed. Load a chat model in your server, then find models again."
+          }
+        }
+      }
+    },
+    "No open tasks": {
+      "comment": "Task filter empty state.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No open tasks"
+          }
+        }
+      }
+    },
+    "No overdue tasks": {
+      "comment": "Task filter empty state.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No overdue tasks"
+          }
+        }
+      }
+    },
+    "No tasks due today": {
+      "comment": "Task filter empty state.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No tasks due today"
+          }
+        }
+      }
+    },
+    "Not waiting on anyone": {
+      "comment": "Task filter empty state.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not waiting on anyone"
+          }
+        }
+      }
+    },
+    "Nothing else is due today. Earlier deadlines are in Overdue.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing else is due today. Earlier deadlines are in Overdue."
+          }
+        }
+      }
+    },
+    "Overdue": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overdue"
+          }
+        }
+      }
+    },
+    "Return to an unsent message. Drafts stay in memory until sent.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Return to an unsent message. Drafts stay in memory until sent."
+          }
+        }
+      }
+    },
+    "Try another title, owner or note.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try another title, owner or note."
+          }
+        }
+      }
+    },
+    "Unsent drafts": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unsent drafts"
+          }
+        }
+      }
+    },
+    "View tasks": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View tasks"
+          }
+        }
+      }
+    },
+    "You have unsent messages": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You have unsent messages"
+          }
+        }
+      }
+    },
+    "You're caught up. No open tasks have passed their deadline.": {
+      "comment": "Local model setup, task focus, or conversation draft control.",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're caught up. No open tasks have passed their deadline."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

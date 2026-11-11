@@ -147,7 +147,10 @@ private struct ConversationView: View {
     @ObservedObject var store: PuddleStore
     @ObservedObject var voice: VoiceInputController
     @Environment(\.openSettings) private var openSettings
-    @State private var input = ""
+    private var input: String {
+        get { store.conversationDraft }
+        nonmutating set { store.setConversationDraft(newValue) }
+    }
     @State private var visibleMessageLimit = 200
     var compact = false
     var body: some View {
@@ -232,8 +235,21 @@ private struct ConversationView: View {
                     Spacer(); Button(L10n.text("Dismiss")) { voice.dismissError() }.buttonStyle(PuddleTextButtonStyle())
                 }.padding(.horizontal, 30).padding(.bottom, 8)
             }
+            if !store.otherConversationDrafts.isEmpty {
+                HStack {
+                    Menu(L10n.text("Unsent drafts")) {
+                        ForEach(store.otherConversationDrafts) { draft in
+                            Button { Task { await store.openConversation(draft.id) } } label: {
+                                Text(verbatim: String(draft.text.prefix(80)))
+                            }
+                        }
+                    }.menuStyle(.borderlessButton).fixedSize()
+                        .help(L10n.text("Return to an unsent message. Drafts stay in memory until sent."))
+                    Spacer()
+                }.padding(.horizontal, compact ? 18 : 30).padding(.bottom, 8)
+            }
             HStack(alignment: .bottom, spacing: 12) {
-                TextField(L10n.text("Message Puddle…"), text: $input, axis: .vertical).lineLimit(1...6).textFieldStyle(.plain)
+                TextField(L10n.text("Message Puddle…"), text: Binding(get: { input }, set: { input = $0 }), axis: .vertical).lineLimit(1...6).textFieldStyle(.plain)
                     .font(.system(size: 14)).onSubmit { Task { await send() } }.accessibilityLabel(L10n.text("Message Puddle"))
                 Button { store.toggleVoiceInput() } label: {
                     Image(systemName: voice.isActive ? "stop.circle.fill" : "mic.fill").font(.system(size: 16))
@@ -348,7 +364,7 @@ private struct ConversationView: View {
     }
     private func send() async {
         guard !store.isThinking, !voice.isActive, !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        if await store.ask(input) { input = "" }
+        await store.sendConversationDraft()
     }
 }
 

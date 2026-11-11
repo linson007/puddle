@@ -207,7 +207,7 @@ struct PuddleSettingsView: View {
                         Text("4K tokens").tag(4096); Text("8K tokens").tag(8192); Text("16K tokens").tag(16384); Text("32K tokens").tag(32768)
                     }
                     TextField("Server address", text: $address).textFieldStyle(.roundedBorder)
-                    TextField(L10n.text("Model ID (optional)"), text: $modelID).textFieldStyle(.roundedBorder)
+                    LocalModelPicker(store: store, address: address, key: key, modelID: $modelID)
                     SecureField("API key (optional)", text: $key).textFieldStyle(.roundedBorder)
                     Text("Connect a local server with an OpenAI-compatible API, such as Ollama, LM Studio, llama.cpp or Splash. Leave Model ID blank to use the first model listed by the server. Guided setup can test replies and tool calling.")
                         .font(.caption).foregroundStyle(.secondary)
