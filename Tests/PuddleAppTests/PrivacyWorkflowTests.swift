@@ -93,6 +93,19 @@ private actor PrivacyHTTP: HTTPTransport {
         XCTAssertTrue(store.availableTools.contains(.briefing)); XCTAssertTrue(store.availableTools.contains(.tasks))
         await store.suspendConnectionWork()
     }
+    func testPrivateSessionDoesNotCarryToolActivityAcrossWorkspaceBoundaries() async {
+        let store = PuddleStore(cache: PrivacyDisk(), secrets: PrivacySecrets(), transport: PrivacyHTTP(), reminderScheduler: Scheduler())
+        await store.start()
+        store.toolActivities = ["Read tasks"]
+        await store.beginPrivateSession()
+        XCTAssertTrue(store.privateSession)
+        XCTAssertTrue(store.toolActivities.isEmpty, "A fresh private chat must not show the previous workspace's tools")
+        store.toolActivities = ["Read private meeting notes"]
+        await store.endPrivateSession()
+        XCTAssertFalse(store.privateSession)
+        XCTAssertTrue(store.toolActivities.isEmpty, "Private tool activity must not remain visible after the session ends")
+        await store.suspendConnectionWork()
+    }
     func testNetworkPauseAllowsLoopbackAndRejectsExternalRequests() throws {
         let policy = NetworkPolicy(); policy.allowExternalConnections(false)
         XCTAssertNoThrow(try policy.check(URL(string: "http://127.0.0.1:8000")))

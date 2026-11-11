@@ -1114,7 +1114,7 @@ final class PuddleStore: ObservableObject {
     }
     func stopAI() async {
         stopSpeaking(); voiceInput.cancel()
-        aiGeneration = UUID(); resolveApproval(false); aiTask?.cancel(); isThinking = false; streamingReply = ""
+        aiGeneration = UUID(); resolveApproval(false); aiTask?.cancel(); isThinking = false; streamingReply = ""; toolActivities = []
         await finishBrowserErrandTurn(paused: true)
     }
 
