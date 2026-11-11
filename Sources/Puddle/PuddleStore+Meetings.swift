@@ -20,17 +20,19 @@ extension PuddleStore {
     @discardableResult func saveMeetingNote(_ id: UUID) async -> Bool {
         guard let original = state.meetings.first(where: { $0.id == id }) else { return false }
         do {
-            var next = try meetingWorkspace.draft(for: original).applying(to: original)
+            let draft = meetingWorkspace.draft(for: original)
+            let appliedRecovery = meetingWorkspace.appliedRecovery(for: id)
+            var next = try draft.applying(to: original)
             if let project = next.projectID, !state.workProjects.contains(where: { $0.id == project }) { next.projectID = nil }
             try await commit { snapshot in
                 if let index = snapshot.meetings.firstIndex(where: { $0.id == id }) { snapshot.meetings[index] = next }
-                if let applied = meetingWorkspace.appliedRecovery(for: id), snapshot.meetingCaptureRecoveries.contains(applied) {
+                if let applied = appliedRecovery, snapshot.meetingCaptureRecoveries.contains(applied) {
                     snapshot.meetingCaptureRecoveries.removeAll { $0.noteID == id }
                     snapshot.meetingRecoveryDismissals[id] = Date()
                 }
             }
             try await removeObsoleteMeetingRecoveries()
-            meetingWorkspace.saved(id); errorMessage = nil; return true
+            meetingWorkspace.saved(id, draft: draft, recovery: appliedRecovery); errorMessage = nil; return true
         } catch { fail(error); return false }
     }
 

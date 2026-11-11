@@ -210,6 +210,10 @@ release gate. Further developer work stays deferred from the current milestone.
 
 ## Current verification and release gates
 
+The [11 November regression report](release-regression-2026-11-11.md) records
+fixes for unsaved-note quit protection, edits during saves and private-session
+draft isolation, with local verification and the remaining prioritized gates.
+
 Implementation has automated coverage for schema-3 migration, task provenance,
 validation, daily limits and day boundaries, overlap rules, date-only timezones,
 briefing scope, tool receipts, failed persistence, workspace integrity and
