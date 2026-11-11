@@ -20,7 +20,7 @@ in [readiness tracker #85](https://github.com/linson007/puddle/issues/85).
   No new model was downloaded. The server was stopped after testing, restoring
   its initial state.
 - Website baseline: the published GitHub Pages site. Updated site: local HTTP
-  preview in Chrome, desktop and approximately 400 CSS pixels wide using 300%
+  preview in Chrome and Safari; Chrome desktop and approximately 400 CSS pixels wide using 300%
   browser zoom. This is responsive-layout evidence, not physical iPhone testing.
 
 ## Native walkthrough
@@ -71,7 +71,9 @@ and system typography while retaining its existing product-site styling.
 | Tiny narrow-screen preview | Readable controls, stacked navigation/utilities and scrollable content. At approximately 400 CSS pixels, mobile page navigation opened/closed and preview controls/content remained within the viewport. |
 | Setup and release copy | Distinguished macOS runtime from build SDK requirements, corrected Outlook documentation link, and stated source-evaluation/public-release hold. Web fonts load without blocking the system-font fallback. |
 
-Feature-directory search still rendered all 24 features and its no-results state.
+Safari also passed task completion, waiting-on owner validation and successful
+save after adding the owner. A fourth priority was refused with an explanatory
+message. Feature-directory search rendered all 24 features and its no-results state.
 All preview data stays in page memory and resets on reload; visible copy explains
 that controls change only this sample. No accounts, models or device settings are
 connected by the website. State handling is isolated in `website/dist/preview.js`.
@@ -103,6 +105,5 @@ behavior; supported-OS runtime and keyboard/VoiceOver acceptance; real historica
 workspace migration/recovery; and minimum-hardware/endurance budgets.
 
 One installed model on this Mac and synthetic provider writes do not close those
-gates. Actual iPhone/Safari coverage and full accessibility acceptance remain
-pending. Chrome's computer-use surface stopped responding during final window
+gates. Actual iPhone coverage and full accessibility acceptance remain pending. Chrome's computer-use surface stopped responding during final window
 cleanup; its process was left intact to preserve the user's existing tabs.
