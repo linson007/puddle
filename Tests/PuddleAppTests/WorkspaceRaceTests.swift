@@ -87,6 +87,91 @@ private struct RaceHTTP: HTTPTransport {
     private func store(_ disk: RaceDisk, capture: RaceCapture = RaceCapture()) -> PuddleStore {
         PuddleStore(cache: disk, secrets: RaceSecrets(), transport: RaceHTTP(), reminderScheduler: RaceReminders(), meetingAudioCapture: capture)
     }
+    func testMeetingSaveRetainsEditsMadeWhileDiskWriteIsPending() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        let created = await subject.createMeetingNote(), id = try XCTUnwrap(created)
+        subject.meetingWorkspace.edit(subject.state.meetings[0]) { $0.notes = "First edit" }
+        let entered = expectation(description: "Meeting save blocked")
+        disk.blockWrite(entered)
+        let save = Task { await subject.saveMeetingNote(id) }
+        await fulfillment(of: [entered], timeout: 5)
+        subject.meetingWorkspace.edit(subject.state.meetings[0]) { $0.notes = "New words typed during save" }
+        disk.release()
+        let saved = await save.value; XCTAssertTrue(saved)
+        XCTAssertEqual(disk.load().meetings[0].notes, "First edit")
+        XCTAssertEqual(subject.meetingWorkspace.draft(for: subject.state.meetings[0]).notes, "New words typed during save")
+        XCTAssertTrue(subject.meetingWorkspace.isDirty(subject.state.meetings[0]))
+        let savedAgain = await subject.saveMeetingNote(id); XCTAssertTrue(savedAgain)
+        XCTAssertEqual(disk.load().meetings[0].notes, "New words typed during save")
+        XCTAssertFalse(subject.meetingWorkspace.isDirty(subject.state.meetings[0]))
+    }
+    func testDevelopmentSaveRetainsEditsMadeWhileDiskWriteIsPending() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        let created = await subject.createDevelopmentSession(kind: .debug), id = try XCTUnwrap(created)
+        subject.developerWorkspace.edit(subject.state.developmentSessions[0]) { $0.findings = "First finding" }
+        let draft = subject.developerWorkspace.draft(subject.state.developmentSessions[0])
+        let entered = expectation(description: "Development save blocked")
+        disk.blockWrite(entered)
+        let save = Task { await subject.saveDevelopmentSession(draft) }
+        await fulfillment(of: [entered], timeout: 5)
+        subject.developerWorkspace.edit(subject.state.developmentSessions[0]) { $0.findings = "New finding typed during save" }
+        disk.release()
+        let saved = await save.value; XCTAssertTrue(saved)
+        XCTAssertEqual(disk.load().developmentSessions[0].findings, "First finding")
+        let retained = subject.developerWorkspace.draft(subject.state.developmentSessions[0])
+        XCTAssertEqual(retained.findings, "New finding typed during save")
+        let savedAgain = await subject.saveDevelopmentSession(retained); XCTAssertTrue(savedAgain)
+        XCTAssertEqual(disk.load().developmentSessions[0].findings, "New finding typed during save")
+        XCTAssertNil(subject.developerWorkspace.drafts[id])
+    }
+    func testQuitProtectsUnselectedMeetingDraftAndCanRetryAfterSaving() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        let created = await subject.createMeetingNote(), id = try XCTUnwrap(created)
+        subject.meetingWorkspace.edit(subject.state.meetings[0]) { $0.notes = "Keep these notes" }
+        _ = await subject.createMeetingNote()
+        subject.section = .today
+        let lifecycle = PuddleLifecycle(); lifecycle.store = subject
+        var prompts = 0, reply: Bool?
+        lifecycle.confirmQuit = { _, _ in prompts += 1; return false }
+        XCTAssertEqual(lifecycle.requestTermination { reply = $0 }, .terminateLater)
+        await lifecycle.terminationTask?.value
+        XCTAssertEqual(prompts, 1); XCTAssertEqual(reply, false)
+        XCTAssertFalse(subject.isShuttingDown)
+        let note = try XCTUnwrap(subject.state.meetings.first { $0.id == id })
+        XCTAssertEqual(subject.meetingWorkspace.draft(for: note).notes, "Keep these notes")
+        let saved = await subject.saveMeetingNote(id); XCTAssertTrue(saved)
+        reply = nil
+        XCTAssertEqual(lifecycle.requestTermination { reply = $0 }, .terminateLater)
+        await lifecycle.terminationTask?.value
+        XCTAssertEqual(prompts, 1); XCTAssertEqual(reply, true)
+        XCTAssertEqual(disk.load().meetings.first { $0.id == id }?.notes, "Keep these notes")
+    }
+    func testQuitRequiresExplicitChoiceForUnsavedDevelopmentDraft() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        _ = await subject.createDevelopmentSession(kind: .review)
+        subject.developerWorkspace.edit(subject.state.developmentSessions[0]) { $0.findings = "Unsaved review" }
+        let lifecycle = PuddleLifecycle(); lifecycle.store = subject
+        var prompts = 0, reply: Bool?
+        lifecycle.confirmQuit = { _, _ in prompts += 1; return true }
+        XCTAssertEqual(lifecycle.requestTermination { reply = $0 }, .terminateLater)
+        await lifecycle.terminationTask?.value
+        XCTAssertEqual(prompts, 1); XCTAssertEqual(reply, true)
+        XCTAssertTrue(disk.load().developmentSessions[0].findings.isEmpty)
+    }
+    func testQuitDoesNotPromptForRevertedDrafts() async throws {
+        let disk = RaceDisk(), subject = store(disk); subject.storageAvailable = true
+        _ = await subject.createMeetingNote()
+        subject.meetingWorkspace.edit(subject.state.meetings[0]) { $0.notes = "Temporary" }
+        subject.meetingWorkspace.edit(subject.state.meetings[0]) { $0.notes = "" }
+        _ = await subject.createDevelopmentSession(kind: .debug)
+        subject.developerWorkspace.edit(subject.state.developmentSessions[0]) { $0.findings = "" }
+        let lifecycle = PuddleLifecycle(); lifecycle.store = subject
+        lifecycle.confirmQuit = { _, _ in XCTFail("Unchanged drafts must not block quit"); return false }
+        var reply: Bool?
+        XCTAssertEqual(lifecycle.requestTermination { reply = $0 }, .terminateLater)
+        await lifecycle.terminationTask?.value
+        XCTAssertEqual(reply, true)
+    }
     func testConcurrentRetriesShareOneCompleteStartup() async throws {
         let disk = RaceDisk(), entered = expectation(description: "Loading entered"), subject = store(disk)
         disk.blockLoad(entered)

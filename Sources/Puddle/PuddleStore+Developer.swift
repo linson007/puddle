@@ -88,7 +88,7 @@ extension PuddleStore {
                 if let index = snapshot.developmentSessions.firstIndex(where: { $0.id == next.id }) { snapshot.developmentSessions[index] = next }
                 else { snapshot.developmentSessions.insert(next, at: 0) }
             }
-            developerWorkspace.saved(next.id); errorMessage = nil; return true
+            developerWorkspace.saved(session); errorMessage = nil; return true
         } catch { fail(error); return false }
     }
     func deleteDevelopmentSession(_ id: UUID) async {

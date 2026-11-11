@@ -40,7 +40,13 @@ struct PendingTranscriptImport: Identifiable {
         var value = draft(for: note); change(&value)
         drafts[note.id] = value; status = nil
     }
-    func saved(_ id: UUID) { drafts[id] = nil; appliedRecoveries[id] = nil; status = "Saved locally." }
+    func saved(_ id: UUID, draft: MeetingDraft, recovery: MeetingCaptureRecovery?) {
+        // Disk writes suspend. A successful save only acknowledges the draft it
+        // captured; words typed while it was pending must remain editable.
+        if drafts[id] == draft { drafts[id] = nil }
+        if appliedRecoveries[id] == recovery { appliedRecoveries[id] = nil }
+        status = drafts[id] == nil ? "Saved locally." : "Earlier changes saved. New edits are unsaved."
+    }
     func discard(_ id: UUID) { drafts[id] = nil; appliedRecoveries[id] = nil; status = nil }
     func deleted(_ id: UUID) {
         discard(id); if selectedID == id { selectedID = nil }
