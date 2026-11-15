@@ -58,6 +58,7 @@ extension PuddleStore {
                 throw PuddleError("This action was already attempted. Check its receipt before creating another.")
             }
             try await commit { next in
+                next.pruneResolvedActions()
                 if let index = next.actionProposals.firstIndex(where: { $0.id == proposal.id }) { next.actionProposals[index] = proposal }
                 else { next.actionProposals.insert(proposal, at: 0) }
             }

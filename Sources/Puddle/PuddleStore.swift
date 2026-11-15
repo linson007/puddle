@@ -1081,7 +1081,8 @@ final class PuddleStore: ObservableObject {
             var line = ChatLine(role: "assistant", content: "Reminder: \(task.title)"); line.kind = "reminder"
             state.chat.append(line)
         }
-        record("Delivered \(due.count) local reminders."); await persist()
+        record("Delivered \(due.count) local reminders.")
+        if await persist() { scheduleReminders() }
     }
     func savePersona(_ text: String) async { state.assistantInstructions = String(text.prefix(4000)); await persist() }
 
@@ -1321,7 +1322,7 @@ final class PuddleStore: ObservableObject {
     /// the last acknowledged snapshot and invalidates all pending acknowledgments.
     @discardableResult private func persist() async -> Bool {
         guard !demo, !privateSession else { return true }
-        state.activity = Array(state.activity.prefix(100))
+        if state.activity.count > 100 { state.activity = Array(state.activity.prefix(100)) }
         do { try await saveSnapshot(state); return true }
         catch { errorMessage = "Puddle could not save its local state: \(error.localizedDescription)"; return false }
     }

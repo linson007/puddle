@@ -46,7 +46,9 @@ Existing saved server addresses and API keys migrate to provider-neutral setting
 **Actions** holds editable mail/calendar proposals and exact reviewed writes.
 Dispatch intent must save before a request leaves the app. A lost response is
 uncertain, requires provider inspection and is never automatically retried.
-Restoring backups does not dispatch proposals. Newsletter review supports only
+Restoring backups does not dispatch proposals. The 300 most recent completed or
+declined receipts are retained; drafts, in-flight and uncertain actions are never
+pruned automatically. Newsletter review supports only
 public HTTPS one-click headers, showing the destination and fixed POST content;
 unsupported senders must be managed at the provider. Mail snooze is local to
 Puddle, with a local follow-up reminder and Bring Back.
@@ -380,7 +382,10 @@ Enable desktop notifications in Settings → Assistant. Puddle schedules future
 reminders with macOS using stable task IDs. Completion, deletion, rescheduling,
 snoozing, and disabling notifications reconcile pending requests. macOS can
 deliver scheduled notifications while Puddle is closed, subject to system
-notification permissions and delivery settings.
+notification permissions and delivery settings. Because macOS caps pending local
+notifications, Puddle schedules the nearest 60 upcoming commitments and rolls the
+window forward as reminders fire or tasks change; later reminders are scheduled on
+the next launch.
 
 While running, Puddle checks due tasks every ten seconds. Each due reminder also
 appears in chat once, including overdue tasks after restart. This chat entry is
@@ -680,12 +685,20 @@ current or previous index remain; obsolete pages are removed after both indexes
 release them. Damaged recovery evidence is preserved. A damaged page can be
 repaired from its validated copy without losing the latest messages.
 
+Indexed document text and cached mail bodies are derived data. They live in
+`derived-cache.vault` so an ordinary chat, task or settings save does not
+re-encrypt them. The cache is rewritten only when its contents change. A damaged
+or missing cache never blocks the workspace: it is preserved under a unique name,
+the affected cache is rebuilt on the next refresh, and a mail cursor is reset so
+the next sync establishes a clean baseline. Removing all indexed sources and
+disconnecting mail deletes the cache file.
+
 Keep the complete workspace directory and its Keychain key for device-bound
 recovery. Copying only `workspace.vault` is insufficient. Use portable backups
 for transfers. Older single-file encrypted workspaces migrate on save. Older
 schema-7 apps cannot read schema 8; keep a pre-upgrade portable backup if a
 previous-version rollback is needed. The workspace has a 120 MiB logical size
-limit, including transcript pages and the index.
+limit, including transcript pages, the index and the derived cache.
 
 State has a schema version, and older settings receive defaults for new fields.
 If the primary file is unreadable and the backup is valid, Puddle restores the

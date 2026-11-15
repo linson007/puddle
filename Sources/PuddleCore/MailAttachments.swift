@@ -1,6 +1,6 @@
 import Foundation
 
-public struct MailAttachment: Codable, Identifiable, Equatable, Sendable {
+public struct MailAttachment: Codable, Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let name: String
     public let mimeType: String

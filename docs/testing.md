@@ -320,7 +320,11 @@ save updates a task and appends a reply. Assertions cover retained transcripts,
 late-history search, prompt bounds, memory updates, backup/restore idempotence,
 P95 save latency below 100 ms and resident growth after warmup below 64 MiB.
 `PUDDLE_LOAD_SAVE_BUDGET_MS` can set the latency threshold for another machine;
-record the override with the results. `PUDDLE_LOAD_OUTPUT_DIRECTORY` writes
+record the override with the results. The default budgets encode the recorded
+M5 Pro/48 GiB host. A 15 November 2026 run on an M4/24 GiB host measured the same
+heavy profile at 125–126 ms P95 with 188–316 MiB resident growth, so treat the
+budgets as hardware-tier regression gates and record the host with every result.
+`PUDDLE_LOAD_OUTPUT_DIRECTORY` writes
 metrics JSON, and `PUDDLE_LOAD_RUN` labels it. `PUDDLE_LOAD_EXPORT_FIXTURE=1`
 also writes a large synthetic JSON fixture with owner-only permissions.
 

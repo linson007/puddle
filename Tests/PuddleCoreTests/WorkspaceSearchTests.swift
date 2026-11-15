@@ -24,4 +24,27 @@ final class WorkspaceSearchTests: XCTestCase {
         }
         task.cancel(); let found = await task.value; XCTAssertTrue(found.isEmpty)
     }
+    func testConversationTermsCanMatchSeparateMessagesAndTheTitle() {
+        var state = AppSnapshot()
+        state.conversations = [Conversation(lines: [
+            ChatLine(role: "user", content: "alpha on the first line"),
+            ChatLine(role: "assistant", content: "beta on a later line"),
+        ])]
+        XCTAssertEqual(WorkspaceSearch.search("alpha beta", in: state).count, 1)
+        XCTAssertEqual(WorkspaceSearch.search("beta missing", in: state).count, 0)
+        state.conversations[0].lines[0].content = "Quarterly plan"
+        XCTAssertEqual(WorkspaceSearch.search("plan beta", in: state).first?.kind, .conversation)
+    }
+    func testConversationScanIsBoundedWithoutCopyingTheWholeHistory() {
+        var state = AppSnapshot()
+        state.conversations = (0..<200).map { index in
+            Conversation(lines: (0..<600).map { line in ChatLine(role: "user", content: "Conversation \(index) line \(line)") })
+        }
+        XCTAssertEqual(WorkspaceSearch.search("Conversation", in: state).count, 80)
+        XCTAssertTrue(WorkspaceSearch.search("never-present-token", in: state).isEmpty)
+        state.conversations[199].lines[599].content += " late-unique-sentinel"
+        let last = WorkspaceSearch.search("late-unique-sentinel", in: state)
+        XCTAssertEqual(last.count, 1)
+        XCTAssertEqual(last.first?.locator, state.conversations[199].id.uuidString)
+    }
 }

@@ -253,6 +253,8 @@ preferences, and connection cache use AES-GCM encrypted storage under
 `~/Library/Application Support/Puddle/`, with owner-only permissions
 and a separate workspace key in Keychain. `workspace.vault` and its rolling backup
 reference encrypted transcript pages and recovery copies in `transcripts/`.
+`derived-cache.vault` holds rebuildable indexed-document text and cached mail
+bodies and is rewritten only when those caches change.
 Keep the complete directory for device-bound recovery; use Settings → Backups
 to transfer work. Existing JSON is migrated into encrypted
 recovery copies before plaintext originals are removed. Versioned state has atomic saves, a previous-state backup, and recovery that
@@ -306,6 +308,9 @@ The [native Cua acceptance report](docs/cua-end-to-end-2026-10-30.md) records th
 historical guided setup walkthrough, tested feature flows, fixes and remaining checks.
 The [six-month load report](docs/load-testing-2026-10-30.md) records tests with
 108,000 messages, 5,001 memories, native UI checks and a 1,000-save endurance run.
+The [six-month production review](docs/six-month-production-review-2026-11-15.md)
+records user-segment workloads, the derived-cache storage change and remaining
+hardware-tier limits.
 The [security and guardrail report](docs/security-testing-2026-10-30.md) records
 the security fixes, adversarial tests and remaining public-release gates.
 The [live browser/OS follow-up](docs/live-browser-os-acceptance-2026-10-30.md)
