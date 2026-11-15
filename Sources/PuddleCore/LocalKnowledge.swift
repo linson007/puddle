@@ -26,7 +26,7 @@ public struct KnowledgeSource: Codable, Identifiable, Sendable {
         return value
     }
 }
-public struct KnowledgeDocument: Codable, Identifiable, Sendable {
+public struct KnowledgeDocument: Codable, Identifiable, Hashable, Sendable {
     public var id = UUID()
     public let sourceID: UUID
     public let name: String

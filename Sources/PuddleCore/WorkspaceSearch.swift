@@ -41,7 +41,36 @@ public enum WorkspaceSearch {
         scan(snapshot.routines) { add(.routine, $0.id.uuidString, $0.title, [$0.prompt]) }
         scan(snapshot.browserErrands) { add(.errand, $0.id.uuidString, $0.goal, [$0.latestProgress, $0.evidence ?? ""]) }
         if results.count < 80, !Task.isCancelled {
-            scan(snapshot.conversationHistory) { add(.conversation, $0.id.uuidString, $0.title, $0.lines.map(\.content)) }
+            // Scan message content directly. Building an array of every message
+            // body for a 100k-message conversation allocates needlessly and grows
+            // with the whole history even when the first lines already match.
+            for conversation in snapshot.conversationHistory {
+                guard results.count < 80, !Task.isCancelled else { break }
+                let title = conversation.title
+                var unmatched = words.filter { !title.localizedCaseInsensitiveContains($0) }
+                var preview: String?
+                if unmatched.isEmpty { preview = conversation.lines.first?.content }
+                else {
+                    for line in conversation.lines {
+                        guard !Task.isCancelled else { return results }
+                        let content = line.content
+                        var matchedAny = false
+                        unmatched.removeAll { word in
+                            let hit = content.localizedCaseInsensitiveContains(word)
+                            matchedAny = matchedAny || hit
+                            return hit
+                        }
+                        if preview == nil, matchedAny { preview = content }
+                        if unmatched.isEmpty, preview != nil { break }
+                    }
+                }
+                guard unmatched.isEmpty else { continue }
+                let text = preview ?? ""
+                let match = words.lazy.compactMap { text.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) }.first
+                let begin = match.map { text.index($0.lowerBound, offsetBy: -60, limitedBy: text.startIndex) ?? text.startIndex } ?? text.startIndex
+                results.append(WorkspaceSearchResult(kind: .conversation, locator: conversation.id.uuidString,
+                    title: String(title.prefix(200)), preview: String(text[begin...].prefix(200))))
+            }
         }
         return results
     }

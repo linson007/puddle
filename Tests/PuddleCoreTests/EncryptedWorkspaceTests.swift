@@ -159,4 +159,111 @@ final class EncryptedWorkspaceTests: XCTestCase {
         XCTAssertThrowsError(try ProtectedWorkspaceBackup.inspect(JSONSerialization.data(withJSONObject: object), password: "fixture passphrase 123"))
         XCTAssertThrowsError(try ProtectedWorkspaceBackup.encode(state, password: "short"))
     }
+    private func heavySnapshot() -> AppSnapshot {
+        var state = AppSnapshot()
+        state.knowledgeDocuments = [KnowledgeDocument(sourceID: UUID(), name: "plan.md",
+            url: URL(fileURLWithPath: "/fixture/plan.md"), modifiedAt: Date(timeIntervalSince1970: 1_000),
+            bytes: 240_000, text: String(repeating: "Six-month pro reference notes.\n", count: 8_000), limited: false)]
+        state.messages = [MailMessage(id: "mail-1", threadID: "thread-1", subject: "Quarterly plan",
+            sender: "owner@example.com", body: String(repeating: "Cached mail body for the local inbox. ", count: 3_000))]
+        state.lastSync = Date(timeIntervalSince1970: 2_000); state.mailHistoryID = "history-1"
+        state.chat = [ChatLine(role: "user", content: "Summarize the plan")]
+        return state
+    }
+    private func decryptedIndex(_ directory: URL, secrets: VaultSecrets) throws -> TranscriptVault.Index {
+        let file = directory.appendingPathComponent("workspace.vault"), header = Data("PUDDLEVAULT1\n".utf8)
+        let key = SymmetricKey(data: try XCTUnwrap(secrets.values.values.first))
+        let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: try Data(contentsOf: file).dropFirst(header.count)), using: key, authenticating: header)
+        return try JSONDecoder().decode(TranscriptVault.Index.self, from: plain)
+    }
+    func testDerivedCacheStaysOutOfTheHotIndexAndIsReusedWhenUnchanged() throws {
+        let directory = try directory(), secrets = VaultSecrets(), store = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        let state = heavySnapshot()
+        try store.save(state)
+        let cache = directory.appendingPathComponent("derived-cache.vault"), before = try Data(contentsOf: cache)
+        XCTAssertFalse(String(decoding: before, as: UTF8.self).contains("Six-month pro reference notes"))
+        let index = try decryptedIndex(directory, secrets: secrets)
+        XCTAssertTrue(index.snapshot.knowledgeDocuments.isEmpty, "Document text must not be rewritten with the chat index")
+        XCTAssertTrue(index.snapshot.messages.isEmpty, "Cached mail bodies must not be rewritten with the chat index")
+        let loaded = try store.load()
+        XCTAssertEqual(loaded.knowledgeDocuments, state.knowledgeDocuments)
+        XCTAssertEqual(loaded.messages, state.messages)
+        XCTAssertEqual(loaded.lastSync, state.lastSync)
+        var edited = loaded
+        edited.chat.append(ChatLine(role: "assistant", content: "A reply"))
+        edited.tasks = [AssistantTask(title: "Unrelated task")]
+        try store.save(edited)
+        XCTAssertEqual(before, try Data(contentsOf: cache), "An unchanged derived cache must not be rewritten")
+        XCTAssertEqual(try store.load().chat.count, 2)
+        XCTAssertEqual(try store.load().tasks.first?.title, "Unrelated task")
+    }
+    func testDerivedCacheRewritesOnKnowledgeOrMailChangesAndRemovesWhenEmptied() throws {
+        let directory = try directory(), secrets = VaultSecrets(), store = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        var state = heavySnapshot()
+        try store.save(state)
+        let cache = directory.appendingPathComponent("derived-cache.vault"), before = try Data(contentsOf: cache)
+        state.knowledgeDocuments[0] = KnowledgeDocument(sourceID: state.knowledgeDocuments[0].sourceID, name: "plan.md",
+            url: URL(fileURLWithPath: "/fixture/plan.md"), modifiedAt: Date(timeIntervalSince1970: 3_000),
+            bytes: 10, text: "Replacement notes", limited: false)
+        try store.save(state)
+        XCTAssertNotEqual(before, try Data(contentsOf: cache))
+        XCTAssertEqual(try store.load().knowledgeDocuments.first?.text, "Replacement notes")
+        var mailEdited = state
+        mailEdited.messages[0].summary = "Cached summary"
+        try store.save(mailEdited)
+        XCTAssertEqual(try store.load().messages.first?.summary, "Cached summary")
+        var cleared = mailEdited; cleared.knowledgeDocuments = []; cleared.messages = []
+        cleared.outlookMessages = []; cleared.lastSync = nil; cleared.mailHistoryID = nil
+        try store.save(cleared)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache.path))
+        let restored = try store.load()
+        XCTAssertTrue(restored.knowledgeDocuments.isEmpty); XCTAssertTrue(restored.messages.isEmpty)
+    }
+    func testLegacyInlineCachesMigrateToTheSidecarOnTheNextSave() throws {
+        let directory = try directory(), secrets = VaultSecrets(), store = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        var state = heavySnapshot()
+        try store.save(state)
+        // Rebuild a legacy-generation index that still carries the heavy fields
+        // inline, as schema-9 workspaces written before the sidecar did.
+        let file = directory.appendingPathComponent("workspace.vault"), header = Data("PUDDLEVAULT1\n".utf8)
+        let key = SymmetricKey(data: try XCTUnwrap(secrets.values.values.first))
+        let plain = try AES.GCM.open(AES.GCM.SealedBox(combined: try Data(contentsOf: file).dropFirst(header.count)), using: key, authenticating: header)
+        var object = try JSONSerialization.jsonObject(with: plain) as! [String: Any]
+        var snapshot = object["snapshot"] as! [String: Any]
+        snapshot["knowledgeDocuments"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(state.knowledgeDocuments))
+        snapshot["messages"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(state.messages))
+        object["snapshot"] = snapshot
+        let rebuilt = header + (try AES.GCM.seal(JSONSerialization.data(withJSONObject: object), using: key, authenticating: header).combined!)
+        try rebuilt.write(to: file)
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("derived-cache.vault"))
+        let migrated = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        let legacy = try migrated.load()
+        XCTAssertEqual(legacy.knowledgeDocuments, state.knowledgeDocuments)
+        var changed = legacy; changed.chat.append(ChatLine(role: "assistant", content: "Migrate"))
+        try migrated.save(changed)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.appendingPathComponent("derived-cache.vault").path))
+        XCTAssertTrue(try decryptedIndex(directory, secrets: secrets).snapshot.knowledgeDocuments.isEmpty)
+        XCTAssertEqual(try EncryptedSnapshotStore(directory: directory, secrets: secrets).load().knowledgeDocuments, state.knowledgeDocuments)
+    }
+    func testUnreadableDerivedCacheDoesNotBlockTheWorkspaceAndResetsMailCursors() throws {
+        let directory = try directory(), secrets = VaultSecrets(), store = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        try store.save(heavySnapshot())
+        try Data("not a real vault".utf8).write(to: directory.appendingPathComponent("derived-cache.vault"))
+        let loaded = try EncryptedSnapshotStore(directory: directory, secrets: secrets).load()
+        XCTAssertTrue(loaded.chat.count == 1)
+        XCTAssertTrue(loaded.knowledgeDocuments.isEmpty)
+        XCTAssertTrue(loaded.messages.isEmpty)
+        XCTAssertNil(loaded.lastSync); XCTAssertNil(loaded.mailHistoryID)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: directory.path).contains(where: { $0.hasPrefix("derived-cache-unreadable-") }))
+    }
+    func testMissingDerivedCacheWithAMailCursorRebuildsABaseline() throws {
+        let directory = try directory(), secrets = VaultSecrets(), store = EncryptedSnapshotStore(directory: directory, secrets: secrets)
+        try store.save(heavySnapshot())
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("derived-cache.vault"))
+        let loaded = try EncryptedSnapshotStore(directory: directory, secrets: secrets).load()
+        XCTAssertTrue(loaded.messages.isEmpty)
+        XCTAssertNil(loaded.lastSync, "A missing cache must not present an empty inbox as the synced state")
+        XCTAssertNil(loaded.mailHistoryID)
+        XCTAssertEqual(loaded.chat.first?.content, "Summarize the plan")
+    }
 }

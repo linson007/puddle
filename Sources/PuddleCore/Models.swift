@@ -6,7 +6,7 @@ public struct PuddleError: LocalizedError, Sendable {
     public var errorDescription: String? { L10n.text(message) }
 }
 
-public struct MailMessage: Codable, Identifiable, Equatable, Sendable {
+public struct MailMessage: Codable, Identifiable, Equatable, Hashable, Sendable {
     public let id: String
     public let threadID: String
     public let subject: String

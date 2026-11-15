@@ -165,4 +165,16 @@ extension AppSnapshot {
             actionProposals[index].detail = "Puddle restarted during execution. Check the provider before taking further action; this action will not replay automatically."
         }
     }
+    /// Completed and declined proposals accumulate with daily use. Keep the
+    /// newest receipts while never dropping drafts, in-flight or uncertain
+    /// actions, whose provider outcome still needs review.
+    public mutating func pruneResolvedActions(maximumResolved: Int = 300) {
+        let resolved = actionProposals.filter { $0.status == .completed || $0.status == .declined }
+        guard resolved.count > maximumResolved else { return }
+        let keep = Set(resolved.sorted {
+            let left = $0.completedAt ?? $0.createdAt, right = $1.completedAt ?? $1.createdAt
+            return left == right ? $0.id.uuidString < $1.id.uuidString : left > right
+        }.prefix(maximumResolved).map(\.id))
+        actionProposals.removeAll { ($0.status == .completed || $0.status == .declined) && !keep.contains($0.id) }
+    }
 }

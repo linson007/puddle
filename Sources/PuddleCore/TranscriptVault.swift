@@ -52,6 +52,11 @@ enum TranscriptVault {
         var migrationSourceVersion: Int?
         var recoveryGenerationObserved = false
         var recoveryMetadata: Fingerprint?
+        // Heavy, derived caches (indexed document text and cached mail bodies)
+        // live in a separate encrypted sidecar so an ordinary chat or task save
+        // does not re-encrypt them.
+        var derivedDigest: Data?
+        var derivedMetadata: Fingerprint?
     }
     struct Prepared {
         let data: Data
@@ -153,6 +158,7 @@ enum TranscriptVault {
         return result
     }
     static func prepare(_ state: AppSnapshot, directory: URL, cache: Cache,
+                        reserve: Int = 0,
                         seal: (Data) throws -> Data, open: (Data) throws -> Data) throws -> Prepared {
         let fm = FileManager.default, recovery = directory.appendingPathComponent("recovery", isDirectory: true)
         try ensureDirectory(directory); try ensureDirectory(recovery)
@@ -207,7 +213,7 @@ enum TranscriptVault {
             var hot = state; hot.conversations = []; hot.chat = []
             let index = Index(format: format, schemaVersion: AppSnapshot.currentSchemaVersion, snapshot: hot, conversations: conversations, active: active)
             let data = try JSONEncoder().encode(index)
-            total = data.count
+            total = data.count + max(0, reserve)
             for page in index.pages {
                 guard page.bytes <= maximumBytes - total else { throw PuddleError("This workspace exceeds the encrypted storage limit. Export and remove older large transcripts before saving more.") }
                 total += page.bytes

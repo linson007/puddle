@@ -99,6 +99,10 @@ public enum WorkspaceBackup {
     public static let maximumBytes = 64 * 1024 * 1024
     public static let maximumMemories = 10_000, maximumTasks = 10_000, maximumMeetings = 5_000
     public static let maximumConversations = 5_000, maximumErrands = 1_000
+    /// A single long-running conversation can legitimately exceed ten thousand
+    /// messages. The 120 MiB logical payload limit still bounds total content;
+    /// this cap only prevents pathological line counts from exhausting CPU.
+    public static let maximumConversationLines = 250_000
     private struct Envelope: Codable {
         let format: String
         let version: Int
@@ -177,7 +181,7 @@ public enum WorkspaceBackup {
         for decision in content.workDecisions { _ = try decision.validated() }
         guard content.assistantInstructions.count <= 4000,
               content.memories.allSatisfy({ !$0.title.isEmpty && $0.title.count <= 200 && $0.content.count <= 4000 }),
-              content.conversations.allSatisfy({ $0.lines.count <= 10_000 && unique($0.lines.map(\.id)) && $0.lines.allSatisfy {
+              content.conversations.allSatisfy({ $0.lines.count <= maximumConversationLines && unique($0.lines.map(\.id)) && $0.lines.allSatisfy {
                   ["user", "assistant"].contains($0.role) && $0.content.utf8.count <= 1024 * 1024 && ($0.displayText?.count ?? 0) <= 4000 &&
                   ($0.receipts?.count ?? 0) <= 100 && ($0.receipts ?? []).allSatisfy { receipt in
                       receipt.id.count <= 500 && receipt.tool.count <= 200 && receipt.status.count <= 100 && receipt.detail.count <= 4000 &&

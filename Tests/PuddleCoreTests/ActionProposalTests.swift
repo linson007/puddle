@@ -47,4 +47,28 @@ final class ActionProposalTests: XCTestCase {
         XCTAssertTrue(OAuthFlow.expandedScopes([OAuthFlow.calendarWriteScope]).contains(OAuthFlow.calendarScope))
         XCTAssertFalse(OAuthFlow.expandedScopes([OAuthFlow.scope]).contains(OAuthFlow.mailSendScope))
     }
+    func testResolvedActionReceiptsAreBoundedWithoutDroppingDraftsOrUncertainWrites() {
+        var snapshot = AppSnapshot()
+        let base = Date(timeIntervalSince1970: 1_000_000)
+        snapshot.actionProposals = (0..<800).map { index in
+            var action = ActionProposal(account: "me@example.com", payload: .calendar(CalendarDraft()))
+            action.createdAt = base.addingTimeInterval(Double(index))
+            switch index % 4 {
+            case 0: action.status = .draft
+            case 1: action.status = .uncertain
+            case 2: action.status = .completed; action.completedAt = action.createdAt
+            default: action.status = .declined; action.completedAt = action.createdAt
+            }
+            return action
+        }
+        let drafts = snapshot.actionProposals.filter { $0.status == .draft }.map(\.id)
+        let uncertain = snapshot.actionProposals.filter { $0.status == .uncertain }.map(\.id)
+        let oldestResolved = snapshot.actionProposals.first { $0.status == .completed && $0.createdAt == base.addingTimeInterval(2) }
+        XCTAssertNotNil(oldestResolved)
+        snapshot.pruneResolvedActions(maximumResolved: 300)
+        XCTAssertEqual(snapshot.actionProposals.filter { $0.status == .draft }.map(\.id), drafts)
+        XCTAssertEqual(snapshot.actionProposals.filter { $0.status == .uncertain }.map(\.id), uncertain)
+        XCTAssertEqual(snapshot.actionProposals.filter { $0.status == .completed || $0.status == .declined }.count, 300)
+        XCTAssertFalse(snapshot.actionProposals.contains { $0.id == oldestResolved?.id }, "The oldest resolved receipt is dropped first")
+    }
 }

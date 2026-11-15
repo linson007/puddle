@@ -101,4 +101,17 @@ final class WorkspaceBackupTests: XCTestCase {
         XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
         XCTAssertEqual(try WorkspaceBackup.read(url).tasksCount, 0)
     }
+    func testPortableBackupSupportsAConversationBeyondTenThousandMessages() throws {
+        var state = AppSnapshot()
+        state.conversations = [Conversation(lines: (0..<12_000).map { index in
+            ChatLine(role: index.isMultiple(of: 2) ? "user" : "assistant", content: "Long conversation message \(index)")
+        })]
+        let data = try WorkspaceBackup.encode(state)
+        let preview = try WorkspaceBackup.inspect(data)
+        XCTAssertEqual(preview.conversationsCount, 1)
+        let (restored, report) = WorkspaceBackup.merging(preview, into: AppSnapshot())
+        XCTAssertEqual(report.conversationsAdded, 1)
+        XCTAssertEqual(restored.conversations.first?.lines.count, 12_000)
+        XCTAssertEqual(restored.conversations.first?.lines.last?.content, "Long conversation message 11999")
+    }
 }

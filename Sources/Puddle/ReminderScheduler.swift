@@ -35,6 +35,10 @@ extension NotificationScheduling { func clearDeliveredReminders() async {} }
 
 /// Serialize reconciliation so a slow earlier request cannot restore a deleted reminder.
 @MainActor final class ReminderScheduler: ReminderScheduling {
+    /// macOS keeps a bounded number of pending local notifications. Schedule the
+    /// nearest due commitments and roll the window forward as they fire rather
+    /// than silently losing reminders in a long-lived workspace.
+    static let maximumScheduledReminders = 60
     private var work: Task<Void, Error>?
     private let center: any NotificationScheduling
     init(center: (any NotificationScheduling)? = nil) { self.center = center ?? SystemNotifications() }
@@ -46,8 +50,12 @@ extension NotificationScheduling { func clearDeliveredReminders() async {} }
             let owned = await center.pendingIdentifiers().filter { $0.hasPrefix("puddle.reminder.") }
             center.removePending(owned)
             guard enabled else { await center.clearDeliveredReminders(); return }
-            for task in tasks where !task.completed && task.notifiedAt == nil {
-                guard let due = task.dueAt, due > Date() else { continue }
+            let upcoming = tasks
+                .filter { !$0.completed && $0.notifiedAt == nil && ($0.dueAt ?? .distantPast) > Date() }
+                .sorted { ($0.dueAt ?? .distantFuture) == ($1.dueAt ?? .distantFuture) ? $0.id.uuidString < $1.id.uuidString : ($0.dueAt ?? .distantFuture) < ($1.dueAt ?? .distantFuture) }
+                .prefix(Self.maximumScheduledReminders)
+            for task in upcoming {
+                guard let due = task.dueAt else { continue }
                 let content = UNMutableNotificationContent()
                 content.title = "Puddle reminder"; content.body = "A commitment is due. Open Puddle to review."; content.sound = .default
                 content.userInfo = ["taskID": task.id.uuidString]

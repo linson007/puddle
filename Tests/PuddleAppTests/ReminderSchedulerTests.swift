@@ -44,4 +44,17 @@ import PuddleCore
         try await scheduler.reconcile(tasks: [AssistantTask(title: "Overdue", dueAt: .distantPast), notified], enabled: true)
         XCTAssertEqual(Array(center.requests.keys), ["other.notification"])
     }
+    func testSchedulingKeepsTheNearestBoundedWindowForLongLivedWorkspaces() async throws {
+        let center = FakeNotifications(), scheduler = ReminderScheduler(center: center)
+        let start = Date().addingTimeInterval(300)
+        let tasks = (0..<200).map { index in
+            AssistantTask(title: "Commitment \(index)", dueAt: start.addingTimeInterval(Double(index) * 3600))
+        }
+        try await scheduler.reconcile(tasks: tasks, enabled: true)
+        XCTAssertEqual(center.requests.count, ReminderScheduler.maximumScheduledReminders)
+        let scheduled = Set(center.requests.keys)
+        for task in tasks.prefix(ReminderScheduler.maximumScheduledReminders) {
+            XCTAssertTrue(scheduled.contains("puddle.reminder.\(task.id.uuidString)"), "Nearest commitments must be scheduled first")
+        }
+    }
 }

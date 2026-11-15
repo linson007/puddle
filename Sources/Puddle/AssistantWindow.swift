@@ -405,7 +405,7 @@ private struct ConversationHistoryView: View {
                          : "No conversations match your search.").foregroundStyle(.secondary)
                 }
             }
-        }.padding(30).task(id: "\(store.workspaceRevision):\(search)") {
+        }.padding(30).task(id: historySearchKey) {
             searching = true
             if !search.isEmpty { do { try await Task.sleep(for: .milliseconds(150)) } catch { return } }
             let snapshot = store.state, query = search
@@ -414,6 +414,12 @@ private struct ConversationHistoryView: View {
             guard !Task.isCancelled else { return }
             matches = found; searching = false
         }
+    }
+    /// Search only when the query or the conversation list changes. Using the
+    /// whole workspace revision would rescan a six-month history on every chat
+    /// message appended by an unrelated turn.
+    private var historySearchKey: String {
+        "\(store.state.conversations.count):\(store.state.currentConversationID.uuidString):\(store.state.chat.isEmpty):\(search)"
     }
 }
 

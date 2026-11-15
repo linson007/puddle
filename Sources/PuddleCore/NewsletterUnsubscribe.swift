@@ -1,7 +1,7 @@
 import Foundation
 import Darwin
 
-public struct NewsletterTarget: Codable, Equatable, Sendable {
+public struct NewsletterTarget: Codable, Equatable, Hashable, Sendable {
     public let sender: String
     public let url: URL
     public init(sender: String, url: URL) { self.sender = sender; self.url = url }

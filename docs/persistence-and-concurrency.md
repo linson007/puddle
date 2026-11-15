@@ -17,6 +17,20 @@ before dispatch. Normal Quit waits for pending writes; a failed save offers a
 keep-open choice. Forced termination can still lose work that was not acknowledged.
 Private-session and demo transitions wait for pending saves.
 
+## Derived caches
+
+Indexed document text (up to ten million characters) and cached mail bodies are
+derived, rebuildable data. They are stored in `derived-cache.vault` rather than in
+the always-rewritten index. A structural signature over the in-memory caches
+decides whether a save must re-encode and re-encrypt them. Chat, task and
+settings saves therefore scale with what the user changed, not with the size of
+their knowledge base or inbox cache. The cache is published before the index. If
+a save fails after the cache is written, the cache may be newer than the index;
+both are derived data and reconcile on the next refresh. An unreadable cache is
+preserved under `derived-cache-unreadable-<uuid>.vault`, ignored for startup, and
+mail cursors are reset so the next sync establishes a fresh baseline. The
+logical 120 MiB workspace limit includes the cache.
+
 Live transcription writes `meeting-recovery.vault`, encrypted with the workspace
 key, without rewriting `workspace.vault`. Startup merges recovery text for notes
 that still exist. Saving applied text or explicitly discarding recovery records a

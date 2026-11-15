@@ -9,9 +9,22 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
     private var file: URL { directory.appendingPathComponent("workspace.vault") }
     private var backup: URL { directory.appendingPathComponent("workspace.backup.vault") }
     private var transcripts: URL { directory.appendingPathComponent("transcripts", isDirectory: true) }
+    /// Derived, rebuildable data that is expensive to rewrite on every save.
+    private var cacheFile: URL { directory.appendingPathComponent("derived-cache.vault") }
     private var keyName: String { "workspace-key-" + SHA256.hash(data: Data(directory.standardizedFileURL.path.utf8)).map { String(format: "%02x", $0) }.joined() }
     private let header = Data("PUDDLEVAULT1\n".utf8)
     private let pageHeader = Data("PUDDLECHAT1\n".utf8)
+    private let cacheHeader = Data("PUDDLECACHE1\n".utf8)
+    private let cacheFormat = "puddle-derived-cache-1"
+    /// Indexed document text can be several megabytes and cached inboxes up to
+    /// 50 messages per provider. Keeping them out of the hot index keeps chat
+    /// and task saves proportional to what the user actually changed.
+    private struct DerivedCache: Codable, Sendable {
+        var format = "puddle-derived-cache-1"
+        var knowledgeDocuments: [KnowledgeDocument] = []
+        var messages: [MailMessage] = []
+        var outlookMessages: [MailMessage] = []
+    }
     private let cache = TranscriptVault.Cache()
     public init(directory: URL, secrets: any SecretStore = KeychainStore()) { self.directory = directory; self.secrets = secrets }
     private func key(create: Bool) throws -> SymmetricKey {
@@ -34,6 +47,91 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
     private func openPage(_ data: Data, key: SymmetricKey) throws -> Data {
         guard data.starts(with: pageHeader) else { throw PuddleError("The transcript page is unreadable.") }
         return try AES.GCM.open(AES.GCM.SealedBox(combined: data.dropFirst(pageHeader.count)), using: key, authenticating: pageHeader)
+    }
+    private func sealCache(_ data: Data, key: SymmetricKey) throws -> Data {
+        guard let combined = try AES.GCM.seal(data, using: key, authenticating: cacheHeader).combined else { throw PuddleError("Could not encrypt the workspace cache.") }
+        return cacheHeader + combined
+    }
+    private func openCache(_ data: Data, key: SymmetricKey) throws -> Data {
+        guard data.starts(with: cacheHeader) else { throw PuddleError("The workspace cache is unreadable.") }
+        return try AES.GCM.open(AES.GCM.SealedBox(combined: data.dropFirst(cacheHeader.count)), using: key, authenticating: cacheHeader)
+    }
+    /// Moves index-backed document text and cached mail bodies into the
+    /// in-memory snapshot. The sidecar is derived data: a damaged copy is
+    /// preserved, logged and ignored rather than blocking the workspace.
+    private func attachDerivedCache(_ snapshot: inout AppSnapshot, key: SymmetricKey) {
+        cache.derivedDigest = nil; cache.derivedMetadata = nil
+        guard BoundedFile.exists(cacheFile) else {
+            // No cache generation exists. If the index still carries a mail
+            // cursor, the cache was removed or never written: reset the cursor
+            // so the next sync rebuilds a clean baseline instead of silently
+            // showing an empty inbox.
+            if snapshot.messages.isEmpty, snapshot.lastSync != nil { snapshot.lastSync = nil; snapshot.mailHistoryID = nil }
+            if snapshot.outlookMessages.isEmpty, snapshot.outlookLastSync != nil { snapshot.outlookLastSync = nil }
+            return
+        }
+        do {
+            try TranscriptVault.rejectNonregular(cacheFile)
+            let data = try BoundedFile.read(cacheFile, maximumBytes: 64 * 1024 * 1024)
+            let plain = try openCache(data, key: key)
+            let decoded = try JSONDecoder().decode(DerivedCache.self, from: plain)
+            guard decoded.format == cacheFormat,
+                  decoded.knowledgeDocuments.count <= 20_000,
+                  decoded.messages.count <= 500, decoded.outlookMessages.count <= 500 else {
+                throw PuddleError("The workspace cache has an unsupported format or too many records.")
+            }
+            snapshot.knowledgeDocuments = decoded.knowledgeDocuments
+            snapshot.messages = decoded.messages
+            snapshot.outlookMessages = decoded.outlookMessages
+            cache.derivedDigest = derivedSignature(knowledge: decoded.knowledgeDocuments, messages: decoded.messages, outlook: decoded.outlookMessages)
+            cache.derivedMetadata = try TranscriptVault.fingerprint(cacheFile)
+        } catch {
+            PuddleDiagnostics.failure(.persistence, "Load workspace cache", error)
+            let preserved = directory.appendingPathComponent("derived-cache-unreadable-\(UUID()).vault")
+            try? FileManager.default.moveItem(at: cacheFile, to: preserved)
+            // Cached mail bodies are gone with the unreadable sidecar. Reset the
+            // incremental cursors so the next sync establishes a clean baseline
+            // instead of marking an entire inbox as new.
+            snapshot.messages = []; snapshot.outlookMessages = []
+            snapshot.lastSync = nil; snapshot.mailHistoryID = nil; snapshot.outlookLastSync = nil
+        }
+    }
+    /// A structural signature lets an unchanged cache skip JSON encoding,
+    /// encryption and disk writes on ordinary chat or task saves. `Hasher` is
+    /// compared only inside one process, so its per-process seed is sufficient.
+    private func derivedSignature(knowledge: [KnowledgeDocument], messages: [MailMessage], outlook: [MailMessage]) -> Data {
+        var hasher = Hasher()
+        hasher.combine(knowledge); hasher.combine(messages); hasher.combine(outlook)
+        var value = hasher.finalize()
+        return withUnsafeBytes(of: &value) { Data($0) }
+    }
+    private func derivedSignature(for state: AppSnapshot) -> Data {
+        derivedSignature(knowledge: state.knowledgeDocuments, messages: state.messages, outlook: state.outlookMessages)
+    }
+    private func encodeDerivedCache(_ state: AppSnapshot) throws -> Data {
+        let value = DerivedCache(knowledgeDocuments: state.knowledgeDocuments, messages: state.messages, outlookMessages: state.outlookMessages)
+        // Persist a cache generation when a provider cursor exists even if the
+        // inbox is empty; the file's presence distinguishes "empty cache" from
+        // "cache was lost" on the next load.
+        guard !value.knowledgeDocuments.isEmpty || !value.messages.isEmpty || !value.outlookMessages.isEmpty
+            || state.lastSync != nil || state.outlookLastSync != nil else { return Data() }
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        return try encoder.encode(value)
+    }
+    /// Writes the derived cache only when its signature changed. The cache is
+    /// published before the index so a failed index commit cannot leave the
+    /// durable index pointing at cache data that was never stored.
+    private func publishDerivedCache(_ plain: Data?, signature: Data, isCurrent: Bool, key: SymmetricKey) throws {
+        if isCurrent { cache.derivedDigest = signature; return }
+        guard let plain else { throw PuddleError("The workspace cache changed while saving. Reload before retrying.") }
+        if plain.isEmpty {
+            if BoundedFile.exists(cacheFile) { try FileManager.default.removeItem(at: cacheFile); try DurableFile.syncDirectory(directory) }
+            cache.derivedDigest = signature; cache.derivedMetadata = nil
+            return
+        }
+        try write(sealCache(plain, key: key), to: cacheFile)
+        cache.derivedDigest = signature
+        cache.derivedMetadata = try TranscriptVault.fingerprint(cacheFile)
     }
     private func fingerprint(_ data: Data, key: SymmetricKey) -> Data {
         var hash = SHA256(); key.withUnsafeBytes { hash.update(bufferPointer: $0) }; hash.update(data: data)
@@ -93,16 +191,18 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
         let result: SnapshotLoadResult
         do {
             let data = try BoundedFile.read(file)
-            let snapshot = try decode(data, key: key)
+            var snapshot = try decode(data, key: key)
+            attachDerivedCache(&snapshot, key: key)
             cache.primaryDigest = fingerprint(data, key: key)
             cache.primaryMetadata = try TranscriptVault.fingerprint(file)
             cache.primaryKeyDigest = fingerprint(header, key: key)
             result = SnapshotLoadResult(snapshot: snapshot, notice: cache.recoveredPages ? "Recovered damaged transcript pages from encrypted recovery copies. All messages were retained; damaged files were preserved." : nil)
         } catch let error as SnapshotVersionError { throw error }
         catch {
-            guard let data = try? BoundedFile.read(backup), let snapshot = try? decode(data, key: key) else {
+            guard let data = try? BoundedFile.read(backup), var snapshot = try? decode(data, key: key) else {
                 throw PuddleError("Puddle could not decrypt its workspace or recovery copy. Unlock Keychain or restore a portable backup. All files were preserved.")
             }
+            attachDerivedCache(&snapshot, key: key)
             if BoundedFile.exists(file) { try fm.moveItem(at: file, to: directory.appendingPathComponent("workspace-unreadable-\(UUID()).vault")) }
             try write(data, to: file)
             cache.primaryDigest = fingerprint(data, key: key)
@@ -172,10 +272,23 @@ public struct EncryptedSnapshotStore: SnapshotPersistence {
                 guard try BoundedFile.read(preserved) == original else { throw PuddleError("Pre-migration verification failed. The original workspace was preserved.") }
             }
         }
-        let prepared = try TranscriptVault.prepare(state, directory: transcripts, cache: cache,
+        let signature = derivedSignature(for: state)
+        let cacheExists = BoundedFile.exists(cacheFile)
+        if cacheExists { try TranscriptVault.rejectNonregular(cacheFile) }
+        let cacheMetadata = cacheExists ? (try? TranscriptVault.fingerprint(cacheFile)) : nil
+        if let observed = cache.derivedMetadata, let cacheMetadata, observed != cacheMetadata {
+            throw PuddleError("The workspace cache changed in another process. Reload it before saving; your stale cache was not written.")
+        }
+        let cacheIsCurrent = cacheExists && cache.derivedDigest == signature
+        let derivedPlain: Data? = cacheIsCurrent ? nil : try encodeDerivedCache(state)
+        let reserve = cacheIsCurrent ? max(0, Int(cacheMetadata?.bytes ?? 0)) : (derivedPlain?.count ?? 0)
+        var hot = state
+        hot.knowledgeDocuments = []; hot.messages = []; hot.outlookMessages = []
+        let prepared = try TranscriptVault.prepare(hot, directory: transcripts, cache: cache, reserve: reserve,
             seal: { try sealPage($0, key: key) }, open: { try openPage($0, key: key) })
         var indexPublished = false
         do {
+            try publishDerivedCache(derivedPlain, signature: signature, isCurrent: cacheIsCurrent, key: key)
             let encrypted = try seal(prepared.data, key: key)
             if let previous {
                 if BoundedFile.exists(backup) { _ = try TranscriptVault.fingerprint(backup) }
