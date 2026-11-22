@@ -14,20 +14,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  select-jobs:
+    # Pull requests run only the required "Swift (debug)" check. Pushes to main
+    # add the release bundle check, and manual runs cover the macOS 15 / Xcode 27
+    # compatibility matrix. Skipping unneeded macOS jobs avoids burning hosted
+    # runner minutes on duplicate configurations.
+    name: Select CI jobs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      include: ${{ steps.matrix.outputs.include }}
+    steps:
+      - name: Choose matrix entries for this event
+        id: matrix
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - "$EVENT_NAME" <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          import sys
+
+          xcode_26 = "/Applications/Xcode.app/Contents/Developer"
+          debug = {
+              "name": "Swift (debug)",
+              "runner": "macos-26",
+              "configuration": "debug",
+              "xcode": xcode_26,
+          }
+          release = {
+              "name": "Swift (release)",
+              "runner": "macos-26",
+              "configuration": "release",
+              "xcode": xcode_26,
+          }
+          macos_15 = {
+              "name": "Swift (macos-15, debug)",
+              "runner": "macos-15",
+              "configuration": "debug",
+              "xcode": "/Applications/Xcode_26.3.app/Contents/Developer",
+          }
+          xcode_27 = {
+              "name": "Swift (xcode-27, debug)",
+              "runner": "xcode-27",
+              "configuration": "debug",
+              "xcode": xcode_26,
+          }
+
+          if sys.argv[1] == "pull_request":
+              include = [debug]
+          elif sys.argv[1] == "push":
+              include = [debug, release]
+          else:
+              include = [debug, release, macos_15, xcode_27]
+
+          print("include=" + json.dumps(include, separators=(",", ":")))
+          PY
+
   build-and-test:
-    # Keep the existing required status names on macOS 26. Older/newer runtime
-    # coverage adds separate checks without changing repository protection.
+    needs: select-jobs
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - { name: 'Swift (macos-15, debug)', runner: macos-15, configuration: debug, xcode: /Applications/Xcode_26.3.app/Contents/Developer }
-          - { name: 'Swift (debug)', runner: macos-26, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
-          - { name: 'Swift (release)', runner: macos-26, configuration: release, xcode: /Applications/Xcode.app/Contents/Developer }
-          - { name: 'Swift (xcode-27, debug)', runner: xcode-27, configuration: debug, xcode: /Applications/Xcode.app/Contents/Developer }
+        include: ${{ fromJSON(needs.select-jobs.outputs.include) }}
     env:
       DEVELOPER_DIR: ${{ matrix.xcode }}
     steps:
