@@ -37,9 +37,11 @@ Leave live opt-ins unset for ordinary changes. A passing fixture suite covers
 application behavior under those fixtures; it does not establish model quality,
 real provider behavior, permission delivery, or public-release readiness.
 
-The [CI workflow](../.github/workflows/ci.yml) runs debug fixtures on macOS 15,
-26 and 27, release fixtures on macOS 26, complete Swift 6 concurrency checks,
-translation completeness, and release bundle verification. It builds against a
+The [CI workflow](../.github/workflows/ci.yml) runs debug fixtures on macOS 26
+for every pull request, adds release fixtures and bundle verification on pushes
+to main, and reserves macOS 15 and macOS 27 (`xcode-27`) debug runs for manual
+`workflow_dispatch` jobs, where the full matrix runs. Every job includes complete
+Swift 6 concurrency checks and translation completeness. It builds against a
 **macOS 14 deployment target**, so unguarded newer API use fails compilation.
 Live transcription requires macOS 26+. macOS 14 remains supported but has no
 hosted runtime job: GitHub retired that runner on 2 November 2026. macOS 27 uses
@@ -48,9 +50,9 @@ the `xcode-27` label. See the [runner catalog](https://github.com/actions/runner
 | Environment | Xcode / Swift | Coverage |
 | --- | --- | --- |
 | Local macOS 26.6 (25G72), Apple Silicon | Xcode 27.2 / Swift 6.4.2 | Debug, release, bundle and targeted regressions |
-| CI macOS 15 | Xcode 26.3 / bundled Swift 6 | Debug, older runtime paths |
-| CI macOS 26 | Default Xcode / bundled Swift 6 (printed in each run) | Debug, release, bundle |
-| CI macOS 27 (`xcode-27`) | Default Xcode 27 / bundled Swift 6 | Debug, newest Speech format behavior |
+| CI macOS 15 | Xcode 26.3 / bundled Swift 6 | Debug, older runtime paths (manual runs) |
+| CI macOS 26 | Default Xcode / bundled Swift 6 (printed in each run) | Debug on every pull request; release and bundle on main pushes |
+| CI macOS 27 (`xcode-27`) | Default Xcode 27 / bundled Swift 6 | Debug, newest Speech format behavior (manual runs) |
 | macOS 14 | Deployment target only | Availability checking; native runtime review remains manual |
 
 The macOS 14 runtime row is a **blocking public-release gate**. For the exact
